@@ -91,3 +91,7 @@ class Shipment(models.Model):
     actual_delivery_date = fields.Date(string='Actual Delivery Date')
 
     order_payment_type = fields.Selection([('prepaid', 'Prepaid'), ('cod', 'Cash on Delivery')], string='Order Payment Type', required=True, default='prepaid')
+
+    delivery_charges = fields.Monetary(string='Delivery Charges', currency_field='currency_id')
+    total_weight = fields.Float(string='Total Weight (kg)')
+    currency_id = fields.Many2one('res.currency', string='Currency', default=lambda self: self.env.company.currency_id.id)

@@ -20,7 +20,7 @@ Features:
     """,
     'author': 'Odoocrafts',
     'website': 'https://keralariders.com',
-    'depends': ['base', 'mail', 'contacts', 'portal', 'website'],
+    'depends': ['base', 'mail', 'contacts', 'portal', 'website', 'web_tree_dynamic_colored_field'],
     'data': [
         "security/groups.xml",
         "security/ir.model.access.csv",
