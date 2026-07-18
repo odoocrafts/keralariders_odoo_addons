@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="0">
+
+        <!-- Privilege for Logistics groups -->
+        <record model="res.groups.privilege" id="res_groups_privilege_logistics">
+            <field name="name">Logistics</field>
+            <field name="category_id" ref="base.module_category_operations"/>
+        </record>
+
+        <record id="group_logistics_admin" model="res.groups">
+            <field name="name">Administrator</field>
+            <field name="sequence">20</field>
+            <field name="privilege_id" ref="res_groups_privilege_logistics"/>
+            <!-- <field name="implied_ids" eval="[(4, ref('group_logistics_executive'))]"/> -->
+            <field name="user_ids" eval="[(4, ref('base.user_root')), (4, ref('base.user_admin'))]"/>
+            <field name="comment">Full access to all logistics management features.</field>
+        </record>
+    </data>
+</odoo>

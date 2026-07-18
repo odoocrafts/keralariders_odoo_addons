@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <record id="view_logistics_wallet_tree" model="ir.ui.view">
+        <field name="name">logistics.wallet.list</field>
+        <field name="model">logistics.wallet</field>
+        <field name="arch" type="xml">
+            <list string="Wallets">
+                <field name="name"/>
+                <field name="seller_id"/>
+                <field name="balance" widget="monetary" options="{'currency_field': 'currency_id'}"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_logistics_wallet_form" model="ir.ui.view">
+        <field name="name">logistics.wallet.form</field>
+        <field name="model">logistics.wallet</field>
+        <field name="arch" type="xml">
+            <form string="Wallet">
+                <sheet>
+                    <group>
+                        <field name="seller_id"/>
+                        <field name="name"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_logistics_wallet_search" model="ir.ui.view">
+        <field name="name">logistics.wallet.search</field>
+        <field name="model">logistics.wallet</field>
+        <field name="arch" type="xml">
+            <search string="Wallets">
+                <field name="name"/>
+                <field name="seller_id"/>
+                <filter name="filter_seller" string="By Seller" domain="[]"/>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_logistics_wallet" model="ir.actions.act_window">
+        <field name="name">Wallets</field>
+        <field name="res_model">logistics.wallet</field>
+        <field name="view_mode">list,form</field>
+        <field name="view_id" ref="view_logistics_wallet_tree"/>
+        <field name="search_view_id" ref="view_logistics_wallet_search"/>
+    </record>
+
+    <!-- Wallet Transaction Views and Actions -->
+    <record id="view_logistics_wallet_transaction_tree" model="ir.ui.view">
+        <field name="name">logistics.wallet.transaction.list</field>
+        <field name="model">logistics.wallet.transaction</field>
+        <field name="arch" type="xml">
+            <list string="Wallet Transactions" editable="bottom">
+                <field name="transaction_date" width="100"/>
+                <field name="wallet_id" width="100"/>
+                <field name="amount" width="100" string="Amount" sum="Amount"/>
+                <field name="reference" width="100"/>
+                <field name="transaction_type" width="100"/>
+
+            </list>
+        </field>
+    </record>
+
+    <record id="view_logistics_wallet_transaction_form" model="ir.ui.view">
+        <field name="name">logistics.wallet.transaction.form</field>
+        <field name="model">logistics.wallet.transaction</field>
+        <field name="arch" type="xml">
+            <form string="Wallet Transaction">
+                <sheet>
+                    <group>
+                        <field name="wallet_id"/>
+                        <field name="transaction_date"/>
+                        <field name="transaction_type"/>
+                        <field name="amount"/>
+                        <field name="reference"/>
+                        <field name="description"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_logistics_wallet_transaction_search" model="ir.ui.view">
+        <field name="name">logistics.wallet.transaction.search</field>
+        <field name="model">logistics.wallet.transaction</field>
+        <field name="arch" type="xml">
+            <search string="Wallet Transactions">
+                <field name="wallet_id"/>
+                <field name="transaction_date"/>
+                <field name="transaction_type"/>
+                <filter name="filter_type_credit" string="Credit" domain="[('transaction_type', '=', 'credit')]"/>
+                <filter name="filter_type_debit" string="Debit" domain="[('transaction_type', '=', 'debit')]"/>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_logistics_wallet_transaction" model="ir.actions.act_window">
+        <field name="name">Wallet Transactions</field>
+        <field name="res_model">logistics.wallet.transaction</field>
+        <field name="view_mode">list,form</field>
+        <field name="view_id" ref="view_logistics_wallet_transaction_tree"/>
+        <field name="search_view_id" ref="view_logistics_wallet_transaction_search"/>
+    </record>
+
+    <menuitem id="menu_logistics_wallet"
+                name="Wallets"
+                parent="menu_logistics_root"
+                sequence="10"
+    />
+    <menuitem id="menu_logistics_wallet_wallet"
+                name="Wallets"
+                parent="menu_logistics_wallet"
+                action="action_logistics_wallet"
+                sequence="10"
+    />
+    <menuitem id="menu_wallet_transactions"
+              name="Wallet Transactions"
+              parent="menu_logistics_wallet"
+              action="action_logistics_wallet_transaction"
+              sequence="20"/>
+
+
+</odoo>
