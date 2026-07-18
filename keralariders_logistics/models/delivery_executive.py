@@ -3,7 +3,7 @@ from odoo import models, fields, api, _
 class DeliveryExecutive(models.Model):
     _name = 'logistics.delivery.executive'
     _description = 'Delivery Executive'
-    _inherit = ['mail.thread']
+    _inherit = ['mail.thread', 'mail.activity.mixin']
     _order = 'name'
 
     name = fields.Char(required=True, tracking=True, string='Executive Name')

@@ -3,6 +3,7 @@ from odoo import models, fields, api
 class Seller(models.Model):
     _name = 'logistics.seller'
     _description = 'Seller/Vendor'
+    _inherit = ['mail.thread', 'mail.activity.mixin']
 
     partner_id = fields.Many2one('res.partner', string='Partner')
     name = fields.Char(string='Seller Name', related='partner_id.name', required=True, store=True, readonly=False)

@@ -3,6 +3,7 @@ from odoo import models, fields, api
 class Wallet(models.Model):
     _name = 'logistics.wallet'
     _description = 'Wallet'
+    _inherit = ['mail.thread', 'mail.activity.mixin']
 
     name = fields.Char(string='Wallet Name', required=True, compute='_compute_wallet_name', store=True, readonly=False)
     

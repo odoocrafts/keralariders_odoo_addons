@@ -93,6 +93,7 @@
                         <field name="actual_delivery_date"/>
                     </group>
                 </sheet>
+                <chatter/>
             </form>
         </field>
     </record>
