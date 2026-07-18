@@ -71,7 +71,7 @@
             <list string="Wallet Transactions" editable="bottom">
                 <field name="transaction_date" width="100"/>
                 <field name="wallet_id" width="100"/>
-                <field name="amount" width="100" string="Amount" sum="Amount"/>
+                <field name="amount" width="100" string="Amount" sum="Amount" options='{"fg_color": "red: amount &lt; 0; green: amount >= 0"}'/>
                 <field name="reference" width="100"/>
                 <field name="transaction_type" width="100"/>
                 <field name="currency_id" column_invisible="1"/>
