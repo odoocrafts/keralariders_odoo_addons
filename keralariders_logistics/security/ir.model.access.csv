@@ -3,3 +3,5 @@ access_seller_admin,access_seller_admin,model_logistics_seller,group_logistics_a
 access_wallet_admin,access_wallet_admin,model_logistics_wallet,group_logistics_admin,1,1,1,1
 access_wallet_transaction_admin,access_wallet_transaction_admin,model_logistics_wallet_transaction,group_logistics_admin,1,1,1,1
 access_delivery_executive_admin,access_delivery_executive_admin,model_logistics_delivery_executive,group_logistics_admin,1,1,1,1
+access_pincode_all,access_pincode_all,model_logistics_pincode,base.group_user,1,1,1,0
+access_district_all,access_district_all,model_logistics_district,base.group_user,1,1,1,0

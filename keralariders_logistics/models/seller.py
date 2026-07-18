@@ -1,22 +1,5 @@
 from odoo import models, fields, api
 
-districts = [
-    ('Alappuzha', 'Alappuzha'),
-    ('Ernakulam', 'Ernakulam'),
-    ('Idukki', 'Idukki'),
-    ('Kannur', 'Kannur'),
-    ('Kasaragod', 'Kasaragod'),
-    ('Kollam', 'Kollam'),
-    ('Kottayam', 'Kottayam'),
-    ('Kozhikode', 'Kozhikode'),
-    ('Malappuram', 'Malappuram'),
-    ('Palakkad', 'Palakkad'),   
-    ('Pathanamthitta', 'Pathanamthitta'),
-    ('Thiruvananthapuram', 'Thiruvananthapuram'),
-    ('Thrissur', 'Thrissur'),
-    ('Wayanad', 'Wayanad'),
-]
-
 class Seller(models.Model):
     _name = 'logistics.seller'
     _description = 'Seller/Vendor'
@@ -30,9 +13,16 @@ class Seller(models.Model):
     city = fields.Char(string='City', related='partner_id.city', store=True, readonly=False,)
     state_id = fields.Many2one('res.country.state', string='State', related='partner_id.state_id', store=True, readonly=False, default=lambda self: self.env.company.state_id.id, domain="[('country_id', '=', country_id)]")
     country_id = fields.Many2one('res.country', string='Country', related='partner_id.country_id', store=True, readonly=False,  default=lambda self: self.env.company.partner_id.country_id.id)
-    zip = fields.Char(string='ZIP', related='partner_id.zip', store=True, readonly=False)
+    zip = fields.Char(string='Pincode', related='partner_id.zip', store=True, readonly=False)
     tax_id = fields.Char(string='GSTIN', related='partner_id.vat', store=True, readonly=False)
-    district = fields.Selection(selection=districts, string='District')
+    district_id = fields.Many2one('logistics.district', string='District')
+
+    @api.onchange('zip')
+    def _onchange_zip(self):
+        if self.zip:
+            pincode_info = self.env['logistics.district'].get_district_from_pincode(self.zip)
+            self.district_id = pincode_info['district_id'].id if pincode_info['district_id'] else False
+            self.state_id = pincode_info['district_id'].state_id.id if pincode_info['district_id'] else False
 
     # @api.onchange('state_id')
     # def _onchange_state_id(self):

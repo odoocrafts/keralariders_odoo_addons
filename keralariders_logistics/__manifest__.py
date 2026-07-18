@@ -24,6 +24,8 @@ Features:
     'data': [
         "security/groups.xml",
         "security/ir.model.access.csv",
+        "data/districts.xml",
+        "data/logistics.pincode.csv",
         "views/seller_views.xml",
         "views/wallet_views.xml",
         "views/delivery_executive_views.xml",

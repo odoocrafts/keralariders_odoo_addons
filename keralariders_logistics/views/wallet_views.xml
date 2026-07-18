@@ -18,8 +18,8 @@
         <field name="arch" type="xml">
             <form string="Wallet">
                 <sheet>
-                    <group>
-                        <field name="seller_id"/>
+                    <group string="Wallet Information">
+                        <field name="seller_id" options="{'no_create': True}"/>
                         <field name="name"/>
                     </group>
                 </sheet>

@@ -13,7 +13,7 @@
                 <field name="state_id"/>
                 <field name="country_id"/>
                 <field name="tax_id"/>
-                <field name="district"/>
+                <field name="district_id"/>
             </list>
         </field>
     </record>
@@ -54,11 +54,11 @@
                         <group string="Address Information">
                             <field name="street" />
                             <field name="street2" />
-                            <field name="district"/>
+                            <field name="zip" string="Pincode"/>
+                            <field name="district_id" options="{'no_create': True}" />
                             <field name="city" />
                             <field name="country_id" options="{'no_create': True}" />
                             <field name="state_id" options="{'no_create': True}" />
-                            <field name="zip" />
                             <field name="tax_id" />
                         </group>
 
@@ -80,7 +80,7 @@
                 <field name="state_id"/>
                 <field name="country_id"/>
                 <field name="tax_id"/>
-                <field name="district"/>
+                <field name="district_id"/>
                 <filter string="With GSTIN" name="with_gstin" domain="[['tax_id','!=',False]]"/>
             </search>
         </field>

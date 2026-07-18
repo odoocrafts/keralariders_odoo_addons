@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <data noupdate="0">
+        <record id="kerala_district_1" model="logistics.district">
+            <field name="name">Kasargod</field>
+            <field name="state_id" ref="base.state_in_kl"/>
+        </record>
+        <record id="kerala_district_2" model="logistics.district">
+            <field name="name">Kannur</field>
+            <field name="state_id" ref="base.state_in_kl"/>
+        </record>
+        <record id="kerala_district_3" model="logistics.district">
+            <field name="name">Wayanad</field>
+            <field name="state_id" ref="base.state_in_kl"/>
+        </record>
+        <record id="kerala_district_4" model="logistics.district">
+            <field name="name">Kozhikode</field>
+            <field name="state_id" ref="base.state_in_kl"/>
+        </record>
+        <record id="kerala_district_5" model="logistics.district">
+            <field name="name">Malappuram</field>
+            <field name="state_id" ref="base.state_in_kl"/>
+        </record>
+        <record id="kerala_district_6" model="logistics.district">
+            <field name="name">Palakkad</field>
+            <field name="state_id" ref="base.state_in_kl"/>
+        </record>
+        <record id="kerala_district_7" model="logistics.district">
+            <field name="name">Thrissur</field>
+            <field name="state_id" ref="base.state_in_kl"/>
+        </record>
+        <record id="kerala_district_8" model="logistics.district">
+            <field name="name">Ernakulam</field>
+            <field name="state_id" ref="base.state_in_kl"/>
+        </record>
+        <record id="kerala_district_9" model="logistics.district">
+            <field name="name">Idukki</field>
+            <field name="state_id" ref="base.state_in_kl"/>
+        </record>
+        <record id="kerala_district_10" model="logistics.district">
+            <field name="name">Kottayam</field>
+            <field name="state_id" ref="base.state_in_kl"/>
+        </record>
+        <record id="kerala_district_11" model="logistics.district">
+            <field name="name">Alappuzha</field>
+            <field name="state_id" ref="base.state_in_kl"/>
+        </record>
+        <record id="kerala_district_12" model="logistics.district">
+            <field name="name">Pathanamthitta</field>
+            <field name="state_id" ref="base.state_in_kl"/>
+        </record>
+        <record id="kerala_district_13" model="logistics.district">
+            <field name="name">Kollam</field>
+            <field name="state_id" ref="base.state_in_kl"/>
+        </record>
+        <record id="kerala_district_14" model="logistics.district">
+            <field name="name">Thiruvananthapuram</field>
+            <field name="state_id" ref="base.state_in_kl"/>
+        </record>
+    </data>
+</odoo>
