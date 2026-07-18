@@ -1,4 +1,5 @@
 from odoo import models, fields, api, _
+from .delivery_charges import calculate_delivery_charges
 
 class Shipment(models.Model):
     _name = 'logistics.shipment'
@@ -92,6 +93,13 @@ class Shipment(models.Model):
 
     order_payment_type = fields.Selection([('prepaid', 'Prepaid'), ('cod', 'Cash on Delivery')], string='Order Payment Type', required=True, default='prepaid')
 
-    delivery_charges = fields.Monetary(string='Delivery Charges', currency_field='currency_id')
-    total_weight = fields.Float(string='Total Weight (kg)')
+    delivery_charges = fields.Monetary(string='Delivery Charges', currency_field='currency_id', compute='_compute_delivery_charges', store=True, readonly=False)
+    @api.depends('total_weight', 'shipping_from_district_id', 'shipping_to_district_id')
+    def _compute_delivery_charges(self):
+        for record in self:
+            if record.total_weight and record.shipping_from_district_id and record.shipping_to_district_id:
+                same_district = (record.shipping_from_district_id == record.shipping_to_district_id)
+                record.delivery_charges = calculate_delivery_charges(record.total_weight, same_district)
+    tax_percentage = fields.Float(string='Tax Percentage', default=18.0)
+    total_weight = fields.Float(string='Total Weight (Kg)')
     currency_id = fields.Many2one('res.currency', string='Currency', default=lambda self: self.env.company.currency_id.id)

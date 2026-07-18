@@ -57,6 +57,12 @@
                             <field name="order_date"/>
                             <field name="order_payment_type"/>
                         </group>
+                        <group string="Delivery Charges">
+                            <field name="currency_id" invisible="1"/>
+                            <field name="total_weight"/>
+                            <field name="tax_percentage" widget="percentage" string="Tax (GST) %"/>
+                            <field name="delivery_charges"/>
+                        </group>
                     </group>
                     <group>
                         <group string="Shipping From (Seller)">
