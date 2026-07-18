@@ -55,6 +55,7 @@ class Shipment(models.Model):
     shipping_to_email = fields.Char(string='Shipping To Email')
 
     # Billing Address
+    billing_same_as_shipping = fields.Boolean(string='Same as Shipping', default=True)
     billing_name = fields.Char(string='Billing Name',)
     billing_address = fields.Text(string='Billing Address')
     billing_zip = fields.Char(string='Billing Pincode')
@@ -68,6 +69,16 @@ class Shipment(models.Model):
     billing_district_id = fields.Many2one('logistics.district', string='Billing District')
     billing_state_id = fields.Many2one('res.country.state', string='Billing State', default=lambda self: self.env.company.state_id.id)
     billing_country_id = fields.Many2one('res.country', string='Billing Country', default=lambda self: self.env.company.partner_id.country_id.id)
+
+    @api.onchange('shipping_to_name', 'shipping_to_address', 'shipping_to_zip', 'shipping_to_district_id', 'shipping_to_state_id', 'shipping_to_country_id')
+    def _onchange_shipping_to_address(self):
+        if self.billing_same_as_shipping:
+            self.billing_name = self.shipping_to_name
+            self.billing_address = self.shipping_to_address
+            self.billing_zip = self.shipping_to_zip
+            self.billing_district_id = self.shipping_to_district_id
+            self.billing_state_id = self.shipping_to_state_id
+            self.billing_country_id = self.shipping_to_country_id
 
     estimated_delivery_date = fields.Date(string='Estimated Delivery Date')
     actual_delivery_date = fields.Date(string='Actual Delivery Date')

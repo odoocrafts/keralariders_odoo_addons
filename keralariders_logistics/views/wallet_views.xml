@@ -7,7 +7,7 @@
             <list string="Wallets">
                 <field name="name"/>
                 <field name="seller_id"/>
-                <field name="balance" widget="monetary" options="{'currency_field': 'currency_id'}"/>
+                <field name="balance" widget="monetary" options="{'currency_field': 'currency_id', 'fg_color': 'red: balance &lt; 0; green: balance >= 0'}"/>
                 <field name="currency_id" column_invisible="1"/>
             </list>
         </field>
