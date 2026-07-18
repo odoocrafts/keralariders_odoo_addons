@@ -5,3 +5,4 @@ access_wallet_transaction_admin,access_wallet_transaction_admin,model_logistics_
 access_delivery_executive_admin,access_delivery_executive_admin,model_logistics_delivery_executive,group_logistics_admin,1,1,1,1
 access_pincode_all,access_pincode_all,model_logistics_pincode,base.group_user,1,1,1,0
 access_district_all,access_district_all,model_logistics_district,base.group_user,1,1,1,0
+access_shipment_admin,access_shipment_admin,model_logistics_shipment,group_logistics_admin,1,1,1,1
