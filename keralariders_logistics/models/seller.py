@@ -56,6 +56,7 @@ class Seller(models.Model):
             rec.partner_id = self.env['res.partner'].create(partner_vals).id
             # Create a new Wallet record for the seller
             wallet_vals = {
+                'name': f"{rec.name} - Wallet",
                 'seller_id': rec.id,
             }
             self.env['logistics.wallet'].create(wallet_vals)

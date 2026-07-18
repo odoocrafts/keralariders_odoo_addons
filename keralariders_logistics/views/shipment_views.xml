@@ -58,54 +58,40 @@
                             <field name="order_payment_type"/>
                         </group>
                     </group>
-                    <notebook>
-                        <page string="Shipping From">
-                            <group>
-                                <group>
-                                    <field name="shipping_from_name" string="Name"/>
-                                    <field name="shipping_from_address" string="Address"/>
-                                    <field name="shipping_from_zip" string="Pincode"/>
-                                    <field name="shipping_from_district_id" string="District"/>
-                                    <field name="shipping_from_state_id" string="State"/>
-                                    <field name="shipping_from_country_id" string="Country"/>
-                                </group>
-                            </group>
-                        </page>
-                        <page string="Shipping To">
-                            <group>
-                                <group>
-                                    <field name="shipping_to_name" string="Name"/>
-                                    <field name="shipping_to_address" string="Address"/>
-                                    <field name="shipping_to_zip" string="Pincode"/>
-                                    <field name="shipping_to_district_id" string="District"/>
-                                    <field name="shipping_to_state_id" string="State"/>
-                                    <field name="shipping_to_country_id" string="Country"/>
-                                </group>
-                                <group>
-                                    <field name="shipping_to_mobile" string="Mobile"/>
-                                    <field name="shipping_to_email" string="Email"/>
-                                </group>
-                            </group>
-                        </page>
-                        <page string="Billing Address">
-                            <group>
-                                <group>
-                                    <field name="billing_name" string="Name"/>
-                                    <field name="billing_address" string="Address"/>
-                                    <field name="billing_zip" string="Pincode"/>
-                                    <field name="billing_district_id" string="District"/>
-                                    <field name="billing_state_id" string="State"/>
-                                    <field name="billing_country_id" string="Country"/>
-                                </group>
-                            </group>
-                        </page>
-                        <page string="Delivery">
-                            <group>
-                                <field name="estimated_delivery_date"/>
-                                <field name="actual_delivery_date"/>
-                            </group>
-                        </page>
-                    </notebook>
+                    <group>
+                        <group string="Shipping From (Seller)">
+                            <field name="shipping_from_name" string="Name"/>
+                            <field name="shipping_from_address" string="Address"/>
+                            <field name="shipping_from_zip" string="Pincode"/>
+                            <field name="shipping_from_district_id" string="District"/>
+                            <field name="shipping_from_state_id" string="State"/>
+                            <field name="shipping_from_country_id" string="Country"/>
+                        </group>
+                        <group string="Shipping To (Customer)">
+                            <field name="shipping_to_name" string="Name"/>
+                            <field name="shipping_to_address" string="Address"/>
+                            <field name="shipping_to_zip" string="Pincode"/>
+                            <field name="shipping_to_district_id" string="District"/>
+                            <field name="shipping_to_state_id" string="State"/>
+                            <field name="shipping_to_country_id" string="Country"/>
+                            <field name="shipping_to_mobile" string="Mobile"/>
+                            <field name="shipping_to_email" string="Email"/>
+                        </group>
+                    </group>
+                    <group string="Billing Address">
+                        <group>
+                            <field name="billing_name" string="Name"/>
+                            <field name="billing_address" string="Address"/>
+                            <field name="billing_zip" string="Pincode"/>
+                            <field name="billing_district_id" string="District"/>
+                            <field name="billing_state_id" string="State"/>
+                            <field name="billing_country_id" string="Country"/>
+                        </group>
+                    </group>
+                    <group string="Delivery">
+                        <field name="estimated_delivery_date"/>
+                        <field name="actual_delivery_date"/>
+                    </group>
                 </sheet>
             </form>
         </field>
@@ -125,6 +111,6 @@
     </record>
 
     <!-- Menu Item -->
-    <menuitem id="menu_shipment" name="Shipments" action="action_shipment" parent="menu_logistics_root" sequence="10"/>
+    <menuitem id="menu_shipment" name="Shipments" action="action_shipment" parent="menu_logistics_root" sequence="5"/>
 
 </odoo>

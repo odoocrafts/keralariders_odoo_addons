@@ -8,6 +8,7 @@
                 <field name="name"/>
                 <field name="seller_id"/>
                 <field name="balance" widget="monetary" options="{'currency_field': 'currency_id'}"/>
+                <field name="currency_id" column_invisible="1"/>
             </list>
         </field>
     </record>
@@ -18,6 +19,21 @@
         <field name="arch" type="xml">
             <form string="Wallet">
                 <sheet>
+                    <div class="oe_button_box" name="button_box">
+                        <button name="action_view_transactions" type="object"
+                                class="oe_stat_button" icon="fa-money">
+                            <div class="o_stat_info">
+                                <span>
+                                    <field name="currency_id" invisible="1"/>
+                                    <i class="fa fa-arrow-down" style="color:green;margin-right:4px;"/>
+                                    <field name="total_credit" class="o_stat_value" widget="monetary" options="{'currency_field': 'currency_id'}"/>
+                                    <i class="fa fa-arrow-up" style="color:red;margin:0 4px;"/>
+                                    <field name="total_debit" class="o_stat_value" widget="monetary" options="{'currency_field': 'currency_id'}"/>
+                                </span>
+                                <span class="o_stat_text">Transactions</span>
+                            </div>
+                        </button>
+                    </div>
                     <group string="Wallet Information">
                         <field name="seller_id" options="{'no_create': True}"/>
                         <field name="name"/>
@@ -58,6 +74,7 @@
                 <field name="amount" width="100" string="Amount" sum="Amount"/>
                 <field name="reference" width="100"/>
                 <field name="transaction_type" width="100"/>
+                <field name="currency_id" column_invisible="1"/>
 
             </list>
         </field>
