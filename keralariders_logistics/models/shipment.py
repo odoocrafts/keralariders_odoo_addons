@@ -7,6 +7,13 @@ class Shipment(models.Model):
     # _order = 'create_date desc'
 
     name = fields.Char(string='Shipment Reference (AWB)', required=True, copy=False, readonly=True, index=True, default=lambda self: _('New'))
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        for vals in vals_list:
+            if vals.get('name', _('New')) == _('New'):
+                vals['name'] = self.env['ir.sequence'].next_by_code('logistics.shipment') or _('New')
+        return super(Shipment, self).create(vals_list)
     seller_id = fields.Many2one('logistics.seller', string='Seller', required=True)
     delivery_executive_id = fields.Many2one('logistics.delivery.executive', string='Delivery Executive')
     order_date = fields.Date(string='Order Date', required=True, default=fields.Date.context_today)

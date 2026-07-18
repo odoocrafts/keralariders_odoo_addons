@@ -32,7 +32,7 @@
                                     <field name="wallet_count" class="o_stat_value" widget="integer"/>
                                     |
                                     <field name="currency_id" invisible="1"/>
-                                    <field name="total_wallet_balance" class="o_stat_value" widget="monetary" options="{'currency_field': 'currency_id'}"/>
+                                    <field name="total_wallet_balance" class="o_stat_value" widget="monetary" options="{'currency_field': 'currency_id'}" decoration-success="total_wallet_balance > 0" decoration-danger="total_wallet_balance &lt; 0"/>
                                 </span>
                                 <span class="o_stat_text">Wallets</span>
                             </div>

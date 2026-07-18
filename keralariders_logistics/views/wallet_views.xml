@@ -37,6 +37,7 @@
                     <group string="Wallet Information">
                         <field name="seller_id" options="{'no_create': True}"/>
                         <field name="name"/>
+                        <field name="balance" widget="monetary" decoration-success="balance > 0" decoration-danger="balance &lt; 0"/>
                     </group>
                 </sheet>
                 <chatter/>

@@ -26,6 +26,7 @@ Features:
         "security/ir.model.access.csv",
         "data/districts.xml",
         "data/logistics.pincode.csv",
+        "data/sequence.xml",
         "views/seller_views.xml",
         "views/wallet_views.xml",
         "views/delivery_executive_views.xml",
