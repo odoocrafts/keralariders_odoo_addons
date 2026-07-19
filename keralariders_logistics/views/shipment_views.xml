@@ -44,6 +44,9 @@
         <field name="model">logistics.shipment</field>
         <field name="arch" type="xml">
             <form string="Shipment">
+                <header>
+                <field name="state" widget="statusbar" options="{'clickable':1}"/>
+                </header>
                 <sheet>
                     <div class="oe_title" >
                         <h1 class="text-info">

@@ -1,6 +1,19 @@
 from odoo import models, fields, api, _
 from .delivery_charges import calculate_delivery_charges
 
+delivery_states = [
+    ('order_added', 'Order Added'),
+    ('pickup_requested', 'Pickup Requested'),
+    ('picked', 'Picked'),
+    ('in_transit', 'In Transit'),
+    ('delivered', 'Delivered'),
+    ('cancelled', 'Cancelled'),
+    ('return_requested', 'Return Requested'),
+    ('return_picked', 'Return Picked'),
+    ('returned', 'Returned'),
+    ('cancel', 'Cancelled'),
+]
+
 class Shipment(models.Model):
     _name = 'logistics.shipment'
     _description = 'Shipment'
@@ -114,3 +127,5 @@ class Shipment(models.Model):
     pickup_requested_on = fields.Datetime(string='Pickup Requested On')
     picked_on = fields.Datetime(string='Picked On')
     delivered_on = fields.Datetime(string='Delivered On')
+
+    state = fields.Selection(delivery_states, string='Delivery Status', default='order_added', tracking=True)
