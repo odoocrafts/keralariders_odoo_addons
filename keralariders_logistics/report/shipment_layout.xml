@@ -29,11 +29,11 @@
                                 <td style="width:40%;text-align:left;">
                                     <h3 style="margin:0;font-size:16px;">
                                         <b>
-                                            <u>AWB / Shipping Label</u>
+                                            <u>AWB / Shipping Note</u>
                                         </b>
                                     </h3>
-                                    <h4 style="margin:4px 0;font-size:13px;">
-                                        <span t-field="o.name" />
+                                    <h4 style="margin:4px 0;font-size:14px;">
+                                        # <strong t-field="o.name" />
                                     </h4>
                                 </td>
                                 <td class="text-end">
@@ -52,10 +52,10 @@
                             </tr>
                             <tr>
                                 <td style="padding:4px;">
-                                    <b>Seller</b>
+                                    <b>Tracking Reference</b>
                                 </td>
                                 <td style="padding:4px;">
-                                    <span t-field="o.seller_id" />
+                                    <span t-field="o.name" />
                                 </td>
                                 <td style="padding:4px;">
                                     <b>Est. Delivery</b>
@@ -150,7 +150,7 @@
                                     <b>Item Description</b>
                                 </td>
                                 <td style="padding:4px;">
-                                    <b>Total Order Value</b>
+                                    <b>Total Value</b>
                                 </td>
                             </tr>
                             <tr>
