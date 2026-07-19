@@ -31,6 +31,7 @@ Features:
         "views/wallet_views.xml",
         "views/delivery_executive_views.xml",
         "views/shipment_views.xml",
+        "report/shipment_layout.xml",
     ],
     'installable': True,
     'application': True,

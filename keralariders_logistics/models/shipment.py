@@ -28,6 +28,9 @@ class Shipment(models.Model):
             if vals.get('name', _('New')) == _('New'):
                 vals['name'] = self.env['ir.sequence'].next_by_code('logistics.shipment') or _('New')
         return super(Shipment, self).create(vals_list)
+
+    company_id = fields.Many2one('res.company', string='Company', required=True, default=lambda self: self.env.company)
+
     seller_id = fields.Many2one('logistics.seller', string='Seller', required=True)
     delivery_executive_id = fields.Many2one('logistics.delivery.executive', string='Delivery Executive')
     order_date = fields.Date(string='Order Date', required=True, default=fields.Date.context_today)
