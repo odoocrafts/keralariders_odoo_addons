@@ -2,318 +2,177 @@
 
 <odoo>
 
+    <record id="paperformat_shipping_label" model="report.paperformat">
+        <field name="name">Shipping Label Paperformat</field>
+        <field name="default" eval="True" />
+        <field name="format">A4</field>
+        <field name="orientation">Portrait</field>
+        <field name="margin_top">10</field>
+        <field name="margin_bottom">10.00</field>
+        <field name="margin_left">4.0</field>
+        <field name="margin_right">4.0</field>
+        <field name="header_line" eval="False" />
+        <field name="header_spacing">10</field>
+        <field name="dpi">90</field>
+    </record>
+
     <template id="report_shipment_document">
         <t t-call="web.html_container">
             <t t-foreach="docs" t-as="o">
-                <t t-set="company" t-value="o.company_id"/>
-                <t t-call="web.external_layout">
-
-                    <div class="page">
-
-                        <!-- HEADER -->
-
-                        <table style="width:100%;border-bottom:2px solid #222;margin-bottom:20px;">
+                <t t-set="company" t-value="o.company_id" />
+                <t t-call="web.basic_layout">
+                    <div class="page" style="font-family:Arial,sans-serif;font-size:12px;"> <!--
+                        HEADER -->
+                        <table
+                            style="width:100%;border-bottom:2px solid #222;margin-bottom:12px;padding-bottom:8px;">
                             <tr>
-
                                 <td style="width:40%;text-align:left;">
-                                    <h3 style="margin:0;"><b><u>Delivery Note</u></b></h3>
-                                    <h4 style="margin:0;">
-                                        <span t-field="o.name"/>
+                                    <h3 style="margin:0;font-size:16px;">
+                                        <b>
+                                            <u>Delivery Note</u>
+                                        </b>
+                                    </h3>
+                                    <h4 style="margin:4px 0;font-size:13px;">
+                                        <span t-field="o.name" />
                                     </h4>
                                 </td>
                                 <td class="text-end">
-                                    <img t-att-src="'/report/barcode/Code128/%s?humanreadable=1&amp;width=288&amp;height=65' % o.name"/>
+                                    <img
+                                        t-att-src="'/report/barcode/Code128/%s?humanreadable=1&amp;width=288&amp;height=65' % o.name" />
                                 </td>
-
                             </tr>
-                        </table>
-
-
-                        <!-- SHIPMENT INFO -->
-
+                        </table> <!--
+                        SHIPMENT INFO -->
                         <table class="table table-sm table-bordered"
-                               style="width:100%;margin-bottom:20px;">
-
+                            style="width:100%;margin-bottom:10px;font-size:10px;">
                             <tr style="background:#f2f2f2;">
-                                <th colspan="4">
-                                    Shipment Information
+                                <th colspan="4" style="padding:6px;font-size:11px;">
+                                    <b>Shipment Information</b>
                                 </th>
                             </tr>
-
                             <tr>
-                                <td><strong>Seller</strong></td>
-                                <td><span t-field="o.seller_id"/></td>
-
-                                <td><strong>Status</strong></td>
-                                <td><span t-field="o.state"/></td>
-                            </tr>
-
-                            <tr>
-                                <td><strong>Order Date</strong></td>
-                                <td><span t-field="o.order_date"/></td>
-
-                                <td><strong>Payment Type</strong></td>
-                                <td><span t-field="o.order_payment_type"/></td>
-                            </tr>
-
-                            <tr>
-                                <td><strong>Delivery Executive</strong></td>
-                                <td><span t-field="o.delivery_executive_id"/></td>
-
-                                <td><strong>Estimated Delivery</strong></td>
-                                <td><span t-field="o.estimated_delivery_date"/></td>
-                            </tr>
-
-                            <tr>
-                                <td><strong>Total Weight</strong></td>
-                                <td>
-                                    <span t-field="o.total_weight"/> Kg
+                                <td style="padding:4px;">
+                                    <b>Seller</b>
                                 </td>
-
-                                <td><strong>COD Amount</strong></td>
-                                <td>
-                                    <span t-field="o.cod_amount"/>
+                                <td style="padding:4px;">
+                                    <span t-field="o.seller_id" />
+                                </td>
+                                <td style="padding:4px;">
+                                    <b>Est. Delivery</b>
+                                </td>
+                                <td style="padding:4px;">
+                                    <span t-field="o.estimated_delivery_date" />
                                 </td>
                             </tr>
-
-                        </table>
-
-
-                        <!-- ADDRESSES -->
-
-                        <table style="width:100%;margin-bottom:20px;">
-
                             <tr>
-
-                                <!-- FROM -->
-
-                                <td style="width:49%;vertical-align:top;border:1px solid #bbb;padding:10px;">
-
-                                    <div style="font-weight:bold;background:#f2f2f2;padding:5px;margin:-10px -10px 10px -10px;">
-                                        SHIP FROM
-                                    </div>
-
-                                    <strong t-field="o.shipping_from_name"/>
-
-                                    <br/>
-
-                                    <span t-field="o.shipping_from_address"/>
-
-                                    <br/>
-
-                                    <span t-field="o.shipping_from_district_id"/>
-                                    ,
-
-                                    <span t-field="o.shipping_from_state_id"/>
-
-                                    <br/>
-
-                                    PIN :
-                                    <span t-field="o.shipping_from_zip"/>
-
+                                <td style="padding:4px;">
+                                    <b>Order Date</b>
                                 </td>
-
-
+                                <td style="padding:4px;">
+                                    <span t-field="o.order_date" />
+                                </td>
+                                <td style="padding:4px;">
+                                    <b>Payment Type</b>
+                                </td>
+                                <td style="padding:4px;">
+                                    <span t-field="o.order_payment_type" />
+                                </td>
+                            </tr>
+                            <tr>
+                                <td style="padding:4px;">
+                                    <b>Total Weight</b>
+                                </td>
+                                <td style="padding:4px;"><span t-field="o.total_weight" /> Kg</td>
+                                <td style="padding:4px;">
+                                    <b>COD Amount</b>
+                                </td>
+                                <td style="padding:4px;">
+                                    <span t-field="o.cod_amount" />
+                                </td>
+                            </tr>
+                        </table> <!--
+                        ADDRESSES -->
+                        <table style="width:100%;margin-bottom:10px;">
+                            <tr>
+                                <td
+                                    style="width:49%;vertical-align:top;border:1px solid #bbb;padding:8px;font-size:10px;">
+                                    <div
+                                        style="font-weight:bold;background:#f2f2f2;padding:4px;margin:-8px -8px 6px -8px;font-size:11px;">SHIP
+                                    FROM</div> <b t-field="o.shipping_from_name" /><br /> <span
+                                        t-field="o.shipping_from_address" /><br /> <span
+                                        t-field="o.shipping_from_district_id" />, <span
+                                        t-field="o.shipping_from_state_id" /><br /> <b>PIN:</b> <span
+                                        t-field="o.shipping_from_zip" />
+                                </td>
                                 <td style="width:2%;"></td>
-
-
-                                <!-- TO -->
-
-                                <td style="width:49%;vertical-align:top;border:1px solid #bbb;padding:10px;">
-
-                                    <div style="font-weight:bold;background:#f2f2f2;padding:5px;margin:-10px -10px 10px -10px;">
-                                        SHIP TO
-                                    </div>
-
-                                    <strong t-field="o.shipping_to_name"/>
-
-                                    <br/>
-
-                                    <span t-field="o.shipping_to_address"/>
-
-                                    <br/>
-
-                                    <span t-field="o.shipping_to_district_id"/>
-
-                                    ,
-
-                                    <span t-field="o.shipping_to_state_id"/>
-
-                                    <br/>
-
-                                    PIN :
-                                    <span t-field="o.shipping_to_zip"/>
-
-                                    <br/>
-
-                                    Mobile :
-                                    <span t-field="o.shipping_to_mobile"/>
-
-                                    <br/>
-
-                                    Email :
-                                    <span t-field="o.shipping_to_email"/>
-
+                                <td
+                                    style="width:49%;vertical-align:top;border:1px solid #bbb;padding:8px;font-size:10px;">
+                                    <div
+                                        style="font-weight:bold;background:#f2f2f2;padding:4px;margin:-8px -8px 6px -8px;font-size:11px;">SHIP
+                                    TO</div> <b t-field="o.shipping_to_name" /><br /> <span
+                                        t-field="o.shipping_to_address" /><br /> <span
+                                        t-field="o.shipping_to_district_id" />, <span
+                                        t-field="o.shipping_to_state_id" /><br /> <b>PIN:</b> <span
+                                        t-field="o.shipping_to_zip" /><br /> <b>Mobile:</b> <span
+                                        t-field="o.shipping_to_mobile" /><br /> <b>Email:</b> <span
+                                        t-field="o.shipping_to_email" />
                                 </td>
-
                             </tr>
-
-                        </table>
-
-
-                        <!-- BILLING -->
-
-                        <table class="table table-sm table-bordered">
-
+                        </table> <!--
+                        BILLING -->
+                        <table class="table table-sm table-bordered"
+                            style="margin-bottom:8px;font-size:10px;">
                             <tr style="background:#f2f2f2;">
-                                <th>
-                                    Billing Address
+                                <th style="padding:6px;font-size:11px;">
+                                    <b>Billing Address</b>
                                 </th>
                             </tr>
-
                             <tr>
-
-                                <td>
-
-                                    <strong t-field="o.billing_name"/>
-
-                                    <br/>
-
-                                    <span t-field="o.billing_address"/>
-
-                                    <br/>
-
-                                    <span t-field="o.billing_district_id"/>
-
-                                    ,
-
-                                    <span t-field="o.billing_state_id"/>
-
-                                    <br/>
-
-                                    PIN :
-                                    <span t-field="o.billing_zip"/>
-
+                                <td style="padding:6px;">
+                                    <b t-field="o.billing_name" /><br /> <span
+                                        t-field="o.billing_address" /><br /> <span
+                                        t-field="o.billing_district_id" />, <span
+                                        t-field="o.billing_state_id" /><br /> <b>PIN:</b> <span
+                                        t-field="o.billing_zip" />
                                 </td>
-
                             </tr>
-
-                        </table>
-
-
-                        <br/>
-
-
-                        <!-- ITEM -->
-
-                        <table class="table table-sm table-bordered">
-
+                        </table> <!--
+                        ITEM -->
+                        <table class="table table-sm table-bordered"
+                            style="margin-bottom:8px;font-size:10px;">
                             <tr style="background:#f2f2f2;">
-                                <th colspan="2">
-                                    Shipment Details
+                                <th colspan="2" style="padding:6px;font-size:11px;">
+                                    <b>Shipment Details</b>
                                 </th>
                             </tr>
-
                             <tr>
-
-                                <td width="30%">
-                                    Item Description
+                                <td style="padding:4px;width:30%;">
+                                    <b>Item Description</b>
                                 </td>
-
-                                <td>
-                                    <span t-field="o.item_description"/>
+                                <td style="padding:4px;">
+                                    <span t-field="o.item_description" />
                                 </td>
-
                             </tr>
-
                             <tr>
-
-                                <td>
-                                    Total Order Value
+                                <td style="padding:4px;">
+                                    <b>Total Order Value</b>
                                 </td>
-
-                                <td>
-                                    <span t-field="o.total_order_value"/>
+                                <td style="padding:4px;">
+                                    <span t-field="o.total_order_value" />
                                 </td>
-
                             </tr>
-
                         </table>
-
-
-                        <br/>
-
-
-                        <!-- CHARGES -->
-
-                        <table style="width:40%;float:right;"
-                               class="table table-sm table-bordered">
-
-                            <tr style="background:#f2f2f2;">
-                                <th colspan="2">
-                                    Charges
-                                </th>
-                            </tr>
-
-                            <tr>
-
-                                <td>Subtotal</td>
-
-                                <td style="text-align:right;">
-                                    <span t-field="o.delivery_charges_subtotal"/>
-                                </td>
-
-                            </tr>
-
-                            <tr>
-
-                                <td>Tax</td>
-
-                                <td style="text-align:right;">
-                                    <span t-esc="o.tax_percentage * 100"/> %
-                                </td>
-
-                            </tr>
-
-                            <tr>
-
-                                <td>
-                                    <strong>Total</strong>
-                                </td>
-
-                                <td style="text-align:right;">
-                                    <strong>
-                                        <span t-field="o.delivery_charges_total"/>
-                                    </strong>
-                                </td>
-
-                            </tr>
-
-                        </table>
-
-                        <div style="clear:both;"></div>
-
-                        <br/>
-
-                        <!-- NOTES -->
-
-                        <div style="border:1px solid #ccc;padding:10px;">
-
-                            <strong>Seller Notes</strong>
-
-                            <br/>
-
-                            <span t-field="o.seller_notes"/>
-
+                        <div style="clear:both;"></div> <!-- NOTES -->
+                        <div
+                            style="border:1px solid #ccc;padding:8px;margin-top:8px;font-size:10px;">
+                            <b>Notes</b>
+                            <br />
+                            <span t-field="o.seller_notes" />
                         </div>
                     </div>
-
                 </t>
-
             </t>
-
         </t>
-
     </template>
 
     <record id="action_report_shipment" model="ir.actions.report">
@@ -323,7 +182,8 @@
         <field name="report_name">keralariders_logistics.report_shipment_document</field>
         <field name="report_file">keralariders_logistics.report_shipment_document</field>
         <field name="print_report_name">'AWB - %s' % (object.name)</field>
-        <field name="binding_model_id" ref="model_logistics_shipment"/>
+        <field name="binding_model_id" ref="model_logistics_shipment" />
         <field name="binding_type">report</field>
+        <field name="paperformat_id" ref="paperformat_shipping_label" />
     </record>
 </odoo>
