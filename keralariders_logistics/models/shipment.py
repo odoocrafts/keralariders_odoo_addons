@@ -106,7 +106,7 @@ class Shipment(models.Model):
 
     order_payment_type = fields.Selection([('prepaid', 'Prepaid'), ('cod', 'Cash on Delivery'), ('na', 'Not Applicable')], string='Order Payment Type', required=True, default='prepaid')
 
-    delivery_charges_subtotal = fields.Monetary(string='Delivery Charges', currency_field='currency_id', compute='_compute_delivery_charges', store=True, readonly=False)
+    delivery_charges_subtotal = fields.Monetary(string='Delivery Charges (Subtotal)', currency_field='currency_id', compute='_compute_delivery_charges', store=True, readonly=False)
     @api.depends('total_weight', 'shipping_from_district_id', 'shipping_to_district_id', 'tax_percentage')
     def _compute_delivery_charges(self):
         for record in self:
@@ -122,6 +122,14 @@ class Shipment(models.Model):
     item_description = fields.Text(string='Item Description')
     total_order_value = fields.Monetary(string='Total Order Amount', currency_field='currency_id', default=0.0)
     cod_amount = fields.Monetary(string='COD Amount', currency_field='currency_id', default=0.0)
+    @api.onchange('order_payment_type')
+    def _onchange_order_payment_type(self):
+        if self.order_payment_type == 'prepaid':
+            self.cod_amount = 0.0
+        elif self.order_payment_type == 'cod':
+            self.cod_amount = self.total_order_value
+        else:
+            self.cod_amount = 0.0
     seller_notes = fields.Text(string='Seller Notes')
 
     pickup_requested_on = fields.Datetime(string='Pickup Requested On')
