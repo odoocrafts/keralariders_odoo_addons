@@ -93,13 +93,15 @@ class Shipment(models.Model):
 
     order_payment_type = fields.Selection([('prepaid', 'Prepaid'), ('cod', 'Cash on Delivery')], string='Order Payment Type', required=True, default='prepaid')
 
-    delivery_charges = fields.Monetary(string='Delivery Charges', currency_field='currency_id', compute='_compute_delivery_charges', store=True, readonly=False)
-    @api.depends('total_weight', 'shipping_from_district_id', 'shipping_to_district_id')
+    delivery_charges_subtotal = fields.Monetary(string='Delivery Charges', currency_field='currency_id', compute='_compute_delivery_charges', store=True, readonly=False)
+    @api.depends('total_weight', 'shipping_from_district_id', 'shipping_to_district_id', 'tax_percentage')
     def _compute_delivery_charges(self):
         for record in self:
             if record.total_weight and record.shipping_from_district_id and record.shipping_to_district_id:
                 same_district = (record.shipping_from_district_id == record.shipping_to_district_id)
-                record.delivery_charges = calculate_delivery_charges(record.total_weight, same_district)
-    tax_percentage = fields.Float(string='Tax Percentage', default=18.0)
-    total_weight = fields.Float(string='Total Weight (Kg)')
+                record.delivery_charges_subtotal = calculate_delivery_charges(record.total_weight, same_district)
+            record.delivery_charges_total = record.delivery_charges_subtotal * (1 + record.tax_percentage) if record.tax_percentage else record.delivery_charges_subtotal
+    delivery_charges_total = fields.Monetary(string='Delivery Charges (Incl. Tax)', currency_field='currency_id', compute='_compute_delivery_charges', store=True)
+    tax_percentage = fields.Float(string='Tax Percentage', default=0.18)
+    total_weight = fields.Float(string='Total Weight (Kg)', digits=(16, 3), default=0.0)
     currency_id = fields.Many2one('res.currency', string='Currency', default=lambda self: self.env.company.currency_id.id)

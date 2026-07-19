@@ -29,7 +29,7 @@ Additional: for each additional 500 g beyond 3 kg, add 25
 GST: add 18% extra
 """
 
-def calculate_delivery_charges(weight: float, same_district: bool, gst_percent: float = 0.18) -> float:
+def calculate_delivery_charges(weight: float, same_district: bool) -> float:
     if weight <= 0:
         return 0
 
@@ -52,8 +52,4 @@ def calculate_delivery_charges(weight: float, same_district: bool, gst_percent: 
         additional_charges = (additional_weight // 0.5) * 25
         charge = (80 if same_district else 125) + additional_charges
 
-    # Add GST of 18%
-    gst = charge * gst_percent
-    total_charge = charge + gst
-
-    return total_charge
+    return charge
