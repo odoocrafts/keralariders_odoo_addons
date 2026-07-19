@@ -91,7 +91,7 @@ class Shipment(models.Model):
     estimated_delivery_date = fields.Date(string='Estimated Delivery Date')
     actual_delivery_date = fields.Date(string='Actual Delivery Date')
 
-    order_payment_type = fields.Selection([('prepaid', 'Prepaid'), ('cod', 'Cash on Delivery')], string='Order Payment Type', required=True, default='prepaid')
+    order_payment_type = fields.Selection([('prepaid', 'Prepaid'), ('cod', 'Cash on Delivery'), ('na', 'Not Applicable')], string='Order Payment Type', required=True, default='prepaid')
 
     delivery_charges_subtotal = fields.Monetary(string='Delivery Charges', currency_field='currency_id', compute='_compute_delivery_charges', store=True, readonly=False)
     @api.depends('total_weight', 'shipping_from_district_id', 'shipping_to_district_id', 'tax_percentage')
@@ -105,3 +105,12 @@ class Shipment(models.Model):
     tax_percentage = fields.Float(string='Tax Percentage', default=0.18)
     total_weight = fields.Float(string='Total Weight (Kg)', digits=(16, 3), default=0.0)
     currency_id = fields.Many2one('res.currency', string='Currency', default=lambda self: self.env.company.currency_id.id)
+
+    item_description = fields.Text(string='Item Description')
+    total_order_value = fields.Monetary(string='Total Order Amount', currency_field='currency_id', default=0.0)
+    cod_amount = fields.Monetary(string='COD Amount', currency_field='currency_id', default=0.0)
+    seller_notes = fields.Text(string='Seller Notes')
+
+    pickup_requested_on = fields.Datetime(string='Pickup Requested On')
+    picked_on = fields.Datetime(string='Picked On')
+    delivered_on = fields.Datetime(string='Delivered On')

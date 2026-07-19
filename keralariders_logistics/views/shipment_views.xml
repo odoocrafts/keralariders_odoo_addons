@@ -56,6 +56,8 @@
                             <field name="delivery_executive_id"/>
                             <field name="order_date"/>
                             <field name="order_payment_type"/>
+                            <field name="cod_amount" invisible="order_payment_type != 'cod'"/>
+
                         </group>
                         <group string="Delivery Charges">
                             <field name="currency_id" invisible="1"/>
@@ -65,6 +67,12 @@
                             <field name="delivery_charges_total" force_save="1"/>
                         </group>
                     </group>
+                    <group string="Products &amp; Item Details">
+                        <field name="item_description"/>
+                        <field name="total_order_value"/>
+                        <field name="seller_notes"/>
+                    </group>
+
                     <group>
                         <group string="Shipping From (Seller)">
                             <field name="shipping_from_name" string="Name"/>
