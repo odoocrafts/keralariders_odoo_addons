@@ -1,3 +1,5 @@
+import math
+
 """
 Delivery charge slabs and rates:
 
@@ -33,23 +35,31 @@ def calculate_delivery_charges(weight: float, same_district: bool) -> float:
     if weight <= 0:
         return 0
 
-    # Define the base charges based on weight and district
-    if weight <= 0.5:
-        charge = 50
-    elif weight <= 1:
-        charge = 50 if same_district else 65
-    elif weight <= 1.5:
-        charge = 50 if same_district else 75
-    elif weight <= 2:
-        charge = 60 if same_district else 90
-    elif weight <= 2.5:
-        charge = 70 if same_district else 105
-    elif weight <= 3:
-        charge = 80 if same_district else 125
+    charge = 0
+    # Check if weight less than max base weight
+    if weight <= 3:
+        # Define the base charges based on weight and district
+        if 0 < weight <= 0.5: # 1 g to 500 g
+            charge = 40 if same_district else 55
+        elif 0.5 < weight <= 1: # 500 g to 1 kg
+            charge = 50 if same_district else 70
+        elif 1 < weight <= 1.5: # 1 kg to 1.5 kg
+            charge = 55 if same_district else 85
+        elif 1.5 < weight <= 2: # 1.5 kg to 2 kg
+            charge = 65 if same_district else 110
+        elif 2 < weight <= 2.5: # 2 kg to 2.5 kg
+            charge = 80 if same_district else 125
+        elif 2.5 < weight <= 3: # 2.5 kg to 3 kg
+            charge = 90 if same_district else 140
     else:
         # For weights above 3 kg, calculate additional charges
+        base_charge = 90 if same_district else 140 # Max Base charge
         additional_weight = weight - 3
-        additional_charges = (additional_weight // 0.5) * 25
-        charge = (80 if same_district else 125) + additional_charges
+
+        # Charge ₹25 for every started 500 g above 3 kg
+        additional_slabs = math.ceil((additional_weight) / 0.5)
+
+        additional_charges = additional_slabs * 25 # Additional 25rs per for each 500gm
+        charge = base_charge + additional_charges
 
     return charge
