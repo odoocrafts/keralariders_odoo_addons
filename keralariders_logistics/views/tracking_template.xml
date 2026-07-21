@@ -1,7 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
     <template id="tracking_search_page" name="Shipment Tracking Search">
-        <t t-call="web.frontend_layout">
+        <t t-call="web.layout">
+            <t t-set="head">
+                <t t-call-assets="web.assets_frontend" t-js="false"/>
+                <t t-call-assets="web.assets_frontend" t-css="false"/>
+            </t>
             <t t-set="title">Track Your Shipment</t>
             <div class="container mt-5 mb-5">
                 <div class="row justify-content-center">
@@ -37,7 +41,11 @@
     </template>
 
     <template id="tracking_page" name="Shipment Tracking">
-        <t t-call="web.frontend_layout">
+        <t t-call="web.layout">
+            <t t-set="head">
+                <t t-call-assets="web.assets_frontend" t-js="false"/>
+                <t t-call-assets="web.assets_frontend" t-css="false"/>
+            </t>
             <t t-set="title">Track Shipment <t t-esc="shipment.name"/></t>
             <div class="container mt-5 mb-5">
                 <div class="card shadow-sm border-0 rounded">
