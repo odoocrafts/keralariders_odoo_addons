@@ -33,6 +33,7 @@ Features:
         "views/shipment_views.xml",
         "report/shipment_layout.xml",
     ],
+    'images': ['static/description/icon.png'],
     'installable': True,
     'application': True,
     'license': 'LGPL-3',
