@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <record id="view_logistics_wallet_recharge_request_tree" model="ir.ui.view">
+        <field name="name">logistics.wallet.recharge.request.list</field>
+        <field name="model">logistics.wallet.recharge.request</field>
+        <field name="arch" type="xml">
+            <list string="Wallet Recharge Requests">
+                <field name="name" width="100"/>
+                <field name="request_date" width="100"/>
+                <field name="seller_id" width="100"/>
+                <field name="wallet_id" width="100"/>
+                <field name="requested_amount" widget="monetary" options="{'currency_field': 'currency_id'}" width="100"/>
+                <field name="recharged_amount" widget="monetary" options="{'currency_field': 'currency_id'}" width="100"/>
+                <field name="approved_date" width="100"/>
+                <field name="approved_by" width="100"/>
+                <field name="currency_id" column_invisible="1"/>
+                <field name="company_id" column_invisible="1"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_logistics_wallet_recharge_request_form" model="ir.ui.view">
+        <field name="name">logistics.wallet.recharge.request.form</field>
+        <field name="model">logistics.wallet.recharge.request</field>
+        <field name="arch" type="xml">
+            <form string="Wallet Recharge Request">
+                <header>
+                    <button name="action_approve_request" string="Approve Request" type="object" class="btn-primary" invisible="wallet_transaction_id or state in ('approved', 'cancelled')"/>
+                    <button name="action_cancel" string="Cancel" type="object" class="btn-secondary" invisible="state in ('cancelled')"/>
+                    <button name="action_reset" string="Reset" type="object" class="btn-secondary" invisible="state != 'cancelled'"/>
+
+                    <field name="state" widget="statusbar"/>
+                </header>
+                <sheet>
+                    <div class="oe_title" >
+                        <h1 class="text-primary">
+                            <field name="name" force_save="1"/>
+                        </h1>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="request_date" readonly="state != 'pending_approval'"/>
+                            <field name="seller_id" options="{'no_create': True}" readonly="state != 'pending_approval'"/>
+                            <field name="wallet_id" options="{'no_create': True}" domain="[('seller_id', '=', seller_id)]" readonly="state != 'pending_approval'"/>
+                            <field name="remarks"/>
+
+                        </group>
+                        <group>
+                            <field name="requested_amount" widget="monetary" options="{'currency_field': 'currency_id'}" readonly="state != 'pending_approval'"/>
+                            <!-- <field name="recharged_amount" widget="monetary" options="{'currency_field': 'currency_id'}" readonly="state != 'pending_approval'"/> -->
+                            <label for="recharged_amount"/>
+                            <div class="d-flex align-items-center">
+                                <field name="recharged_amount"
+                                    class="oe_inline me-2"
+                                    force_save="1" readonly="state != 'pending_approval'"/>
+
+                                <i class="fa fa-check-circle text-success me-2"
+                                invisible="not wallet_transaction_id"/>
+
+                                <button name="action_view_wallet_transaction"
+                                        type="object"
+                                        class="btn btn-primary btn-sm"
+                                        icon="fa-eye"
+                                        string="View Transaction"
+                                        invisible="not wallet_transaction_id"/>
+                            </div>
+                            <field name="approved_date" readonly="state != 'pending_approval'"/>
+                            <field name="approved_by" options="{'no_create': True}" readonly="state != 'pending_approval'"/>
+                            <field name="currency_id" invisible="1"/>
+                            <field name="company_id" invisible="1"/>
+                            <field name="wallet_transaction_id" invisible="1"/>
+                        </group>
+                    </group>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_logistics_wallet_recharge_request_search" model="ir.ui.view">
+        <field name="name">logistics.wallet.recharge.request.search</field>
+        <field name="model">logistics.wallet.recharge.request</field>
+        <field name="arch" type="xml">
+            <search string="Wallet Recharge Requests">
+                <field name="seller_id"/>
+                <field name="wallet_id"/>
+                <field name="approved_by"/>
+                <field name="request_date"/>
+                <filter name="filter_pending" string="Pending Approval" domain="[('approved_date', '=', False)]"/>
+                <filter name="filter_approved" string="Approved" domain="[('approved_date', '!=', False)]"/>
+                <group>
+                    <filter string="Seller" name="group_by_seller" context="{'group_by':'seller_id'}"/>
+                    <filter string="Wallet" name="group_by_wallet" context="{'group_by':'wallet_id'}"/>
+                    <filter string="Request Date" name="group_by_request_date" context="{'group_by':'request_date'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_logistics_wallet_recharge_request" model="ir.actions.act_window">
+        <field name="name">Wallet Recharge Requests</field>
+        <field name="res_model">logistics.wallet.recharge.request</field>
+        <field name="view_mode">list,form</field>
+        <field name="view_id" ref="view_logistics_wallet_recharge_request_tree"/>
+        <field name="search_view_id" ref="view_logistics_wallet_recharge_request_search"/>
+    </record>
+
+    <menuitem id="menu_logistics_wallet_recharge_request"
+              name="Recharge Requests"
+              parent="menu_logistics_wallet"
+              action="action_logistics_wallet_recharge_request"
+              sequence="40"/>
+</odoo>

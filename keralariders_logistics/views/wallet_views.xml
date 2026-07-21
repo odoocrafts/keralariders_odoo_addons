@@ -70,7 +70,7 @@
         <field name="name">logistics.wallet.transaction.list</field>
         <field name="model">logistics.wallet.transaction</field>
         <field name="arch" type="xml">
-            <list string="Wallet Transactions" editable="bottom">
+            <list string="Wallet Transactions" editable="bottom" delete="1">
                 <field name="transaction_date" width="100"/>
                 <field name="wallet_id" width="100"/>
                 <field name="amount" width="100" string="Amount" sum="Amount" options='{"fg_color": "red: amount &lt; 0; green: amount >= 0"}'/>

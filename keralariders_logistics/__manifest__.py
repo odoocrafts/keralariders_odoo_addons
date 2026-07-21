@@ -30,6 +30,7 @@ Features:
         "data/delivery_charges.xml",
         "views/seller_views.xml",
         "views/wallet_views.xml",
+        "views/wallet_recharge_views.xml",
         "views/delivery_executive_views.xml",
         "views/shipment_views.xml",
         "views/delivery_charges_views.xml",

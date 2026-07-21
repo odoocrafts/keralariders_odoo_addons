@@ -1,4 +1,5 @@
-from odoo import models, fields, api
+from odoo import models, fields, api, _
+from odoo.exceptions import UserError
 
 class Wallet(models.Model):
     _name = 'logistics.wallet'
@@ -56,12 +57,80 @@ class WalletTransaction(models.Model):
     amount = fields.Monetary(string='Amount', required=True, currency_field='currency_id')
     transaction_date = fields.Date(string='Transaction Date', default=fields.Date.context_today, required=True)
     description = fields.Text(string='Description')
-    reference = fields.Char(string='Reference')
+    reference = fields.Text(string='Reference')
     currency_id = fields.Many2one('res.currency', string='Currency', default=lambda self: self.env.company.currency_id.id)
     shipment_id = fields.Many2one('logistics.shipment', string="Related Shipment", ondelete="cascade")
-
-    def unlink(self):
-        for rec in self:
-            if rec.shipment_id and rec.shipment_id.wallet_transaction_id.id == rec.id:
-                rec.shipment_id.delete_wallet_transaction()
+    recharge_request_id = fields.Many2one('logistics.wallet.recharge.request', string="Recharge Request", ondelete="cascade")
     
+class WalletRechargeRequest(models.Model):
+    _name = "logistics.wallet.recharge.request"
+    _description = "Wallet Recharge Request"
+    _inherit = ['mail.thread', 'mail.activity.mixin']
+    name = fields.Char(string="Reference", readonly=1, store=True, default=lambda self: _('New'))
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        for vals in vals_list:
+            if vals.get('name', _('New')) == _('New'):
+                vals['name'] = self.env['ir.sequence'].next_by_code('logistics.wallet.recharge.request') or _('New')
+        return super(WalletRechargeRequest, self).create(vals_list)
+    
+    request_date = fields.Datetime(string="Request Date", default=fields.Datetime.now)
+    seller_id = fields.Many2one('logistics.seller', string="Seller", required=True)
+    wallet_id = fields.Many2one('logistics.wallet', string="Wallet", required=True, domain="[('seller_id', '=', seller_id)]", compute="_compute_wallet_id", store=True, readonly=False)
+    @api.depends('seller_id')
+    def _compute_wallet_id(self):
+        for rec in self:
+            if rec.seller_id and rec.seller_id.wallet_ids:
+                rec.wallet_id = rec.seller_id.wallet_ids[0].id
+            else:
+                rec.wallet_id = False
+    requested_amount = fields.Monetary(string="Amount Requested")
+    recharged_amount = fields.Monetary(string="Amount Recharged", compute="_compute_recharged_amount", store=True, readonly=False)
+    
+    @api.depends('requested_amount')
+    def _compute_recharged_amount(self):
+        for rec in self:
+            rec.recharged_amount = rec.requested_amount
+
+    currency_id = fields.Many2one('res.currency', string="Currency", default=lambda self: self.env.company.currency_id.id)
+    company_id = fields.Many2one('res.company', string="Company", default=lambda self: self.env.company.id)
+    approved_date = fields.Datetime(string="Approved On")
+    approved_by = fields.Many2one('res.users', string="Approved By")
+    remarks = fields.Text(string="Remarks")
+    state = fields.Selection([('pending_approval', 'Pending Approval'), ('approved', 'Approved'), ('cancelled', 'Cancelled')], string="Status", default='pending_approval')
+    wallet_transaction_id = fields.Many2one('logistics.wallet.transaction', string="Wallet Transaction")
+
+    def action_approve_request(self):
+        if self.recharged_amount <= 0:
+            raise UserError(f'Recharge amount must be greater than 0.')
+        if not self.wallet_transaction_id:
+            self.approved_by = self.env.user.id
+            self.approved_date = fields.Datetime.now()
+            self.wallet_transaction_id = self.env['logistics.wallet.transaction'].create({
+                'wallet_id': self.wallet_id.id,
+                'amount': self.recharged_amount,
+                'transaction_date': fields.Date.context_today(self),
+                'reference': f'Recharge - {self.display_name}',
+            }).id
+            self.state = 'approved'
+
+    def action_cancel(self):
+        if self.wallet_transaction_id:
+            self.wallet_transaction_id.unlink()
+        self.state = 'cancelled'
+
+    def action_reset(self):
+        self.state = 'pending_approval'
+
+
+    def action_view_wallet_transaction(self):
+        if self.wallet_transaction_id:
+            return {
+                'name': 'Wallet Transaction',
+                'type': 'ir.actions.act_window',
+                'res_model': 'logistics.wallet.transaction',
+                'view_mode': 'list',
+                'domain': [('id', '=', self.wallet_transaction_id.id)],
+                'context': {'default_wallet_id': self.wallet_transaction_id.wallet_id.id},
+            }

@@ -180,7 +180,7 @@ class Shipment(models.Model):
     def delete_wallet_transaction(self):
         if not self.wallet_transaction_id:
             raise UserError(f'No transaction linked to this Shipment')
-        self.wallet_transaction_id = False
+        self.wallet_transaction_id.unlink()
 
     def action_view_wallet_transaction(self):
         if self.wallet_transaction_id:
