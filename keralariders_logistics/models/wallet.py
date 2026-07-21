@@ -58,5 +58,10 @@ class WalletTransaction(models.Model):
     description = fields.Text(string='Description')
     reference = fields.Char(string='Reference')
     currency_id = fields.Many2one('res.currency', string='Currency', default=lambda self: self.env.company.currency_id.id)
+    shipment_id = fields.Many2one('logistics.shipment', string="Related Shipment", ondelete="cascade")
 
+    def unlink(self):
+        for rec in self:
+            if rec.shipment_id and rec.shipment_id.wallet_transaction_id.id == rec.id:
+                rec.shipment_id.delete_wallet_transaction()
     

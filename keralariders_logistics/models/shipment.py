@@ -1,4 +1,5 @@
 from odoo import models, fields, api, _
+from odoo.exceptions import UserError
 import uuid
 
 delivery_states = [
@@ -20,6 +21,10 @@ class Shipment(models.Model):
     _inherit = ['mail.thread', 'mail.activity.mixin']
     # _order = 'create_date desc'
 
+    def _compute_display_name(self):
+        for rec in self:
+            rec.display_name = f"AWB - {rec.name}"
+    
     name = fields.Char(string='Shipment Reference (AWB)', required=True, copy=False, readonly=True, index=True, default=lambda self: _('New'))
     tracking_token = fields.Char(string='Tracking Token', default=lambda self: str(uuid.uuid4()), copy=False, index=True)
     tracking_url = fields.Char(string='Tracking URL', compute='_compute_tracking_url')
@@ -150,3 +155,40 @@ class Shipment(models.Model):
     delivered_on = fields.Datetime(string='Delivered On')
 
     state = fields.Selection(delivery_states, string='Delivery Status', default='order_added', tracking=True)
+
+    wallet_transaction_id = fields.Many2one("logistics.wallet.transaction", string="Wallet Transaction")
+
+    def action_add_wallet_transaction(self):
+        if not self.seller_id:
+            raise UserError(f'Seller must be set before adding Wallet Transaction!')
+        if not self.seller_id.wallet_ids:
+            raise UserError(f'No Wallets found for this Seller!')
+        if not self.wallet_transaction_id:
+            wallet = self.seller_id.wallet_ids[0]
+            # Check wallet balance
+            if wallet.balance < self.delivery_charges_total:
+                raise UserError(f'Insufficient balance available in your Wallet. Please recharge before proceeding')
+            
+            self.wallet_transaction_id = self.env['logistics.wallet.transaction'].create({
+                'wallet_id': wallet.id,
+                'amount': -self.delivery_charges_total,
+                'transaction_date': fields.Date.context_today(self),
+                'shipment_id': self.id,
+                'reference': self.display_name,
+            }).id
+
+    def delete_wallet_transaction(self):
+        if not self.wallet_transaction_id:
+            raise UserError(f'No transaction linked to this Shipment')
+        self.wallet_transaction_id = False
+
+    def action_view_wallet_transaction(self):
+        if self.wallet_transaction_id:
+            return {
+                'name': 'Wallet Transaction',
+                'type': 'ir.actions.act_window',
+                'res_model': 'logistics.wallet.transaction',
+                'view_mode': 'list',
+                'domain': [('id', '=', self.wallet_transaction_id.id)],
+                'context': {'default_wallet_id': self.wallet_transaction_id.wallet_id.id},
+            }

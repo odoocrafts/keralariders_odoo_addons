@@ -82,7 +82,39 @@
                             <field name="total_weight"/>
                             <field name="delivery_charges_subtotal"/>
                             <field name="tax_percentage" widget="percentage" string="Tax (GST) %" invisible="1"/>
-                            <field name="delivery_charges_total" force_save="1"/>
+                            
+                            <!-- <label for="delivery_charges_total"/> -->
+                            <label for="delivery_charges_total"/>
+                            <div class="d-flex align-items-center">
+                                <field name="delivery_charges_total"
+                                    class="oe_inline me-2"
+                                    force_save="1"/>
+
+                                <i class="fa fa-check-circle text-success me-2"
+                                invisible="not wallet_transaction_id"/>
+
+                                <button name="action_add_wallet_transaction"
+                                        type="object"
+                                        class="btn btn-warning btn-sm me-1"
+                                        icon="fa-credit-card"
+                                        string="Deduct from Wallet"
+                                        invisible="wallet_transaction_id"/>
+
+                                <button name="action_view_wallet_transaction"
+                                        type="object"
+                                        class="btn btn-primary btn-sm"
+                                        icon="fa-eye"
+                                        string="View Transaction"
+                                        invisible="not wallet_transaction_id"/>
+
+                                <button name="delete_wallet_transaction"
+                                        type="object"
+                                        string="Remove Transaction"
+                                        class="btn btn-danger btn-sm"
+                                        icon="fa-trash"
+                                        confirm="This will delete the wallet transaction and restore the wallet balance. Continue?"
+                                        invisible="not wallet_transaction_id"/>
+                            </div>
                         </group>
                     </group>
                     <group string="Products &amp; Item Details">
