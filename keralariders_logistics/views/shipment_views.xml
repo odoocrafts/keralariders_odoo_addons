@@ -63,6 +63,7 @@
                             <field name="order_date"/>
                             <field name="order_payment_type"/>
                             <field name="cod_amount" invisible="order_payment_type != 'cod'"/>
+                            <field name="tracking_url" widget="url"/>
 
                         </group>
                         <group string="Delivery Charges">

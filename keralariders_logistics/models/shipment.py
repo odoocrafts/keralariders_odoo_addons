@@ -1,4 +1,5 @@
 from odoo import models, fields, api, _
+import uuid
 from .delivery_charges import calculate_delivery_charges
 
 delivery_states = [
@@ -21,6 +22,16 @@ class Shipment(models.Model):
     # _order = 'create_date desc'
 
     name = fields.Char(string='Shipment Reference (AWB)', required=True, copy=False, readonly=True, index=True, default=lambda self: _('New'))
+    tracking_token = fields.Char(string='Tracking Token', default=lambda self: str(uuid.uuid4()), copy=False, index=True)
+    tracking_url = fields.Char(string='Tracking URL', compute='_compute_tracking_url')
+
+    def _compute_tracking_url(self):
+        base_url = self.env['ir.config_parameter'].sudo().get_param('web.base.url')
+        for shipment in self:
+            if shipment.tracking_token:
+                shipment.tracking_url = f"{base_url}/track/{shipment.tracking_token}"
+            else:
+                shipment.tracking_url = False
 
     @api.model_create_multi
     def create(self, vals_list):
