@@ -1,65 +1,169 @@
+from odoo import api, fields, models, _
+from odoo.exceptions import ValidationError
 import math
 
-"""
-Delivery charge slabs and rates:
 
-1. 1 g to 500 g
-	- Same district: 50
-	- Outside district: 50
+class DeliveryCharges(models.Model):
+    _name = "logistics.delivery.charges"
+    _description = "Delivery Charge Slab"
+    _order = "minimum_weight"
 
-2. 500 g to 1 kg
-	- Same district: 50
-	- Outside district: 65
+    name = fields.Char(
+        string="Name",
+        compute="_compute_name",
+        store=True,
+    )
 
-3. 1 kg to 1.5 kg
-	- Same district: 50
-	- Outside district: 75
+    @api.depends("minimum_weight", "maximum_weight")
+    def _compute_name(self):
+        for rec in self:
+            min_g = int(rec.minimum_weight * 1000)
+            max_g = int(rec.maximum_weight * 1000)
 
-4. 1.5 kg to 2 kg
-	- Same district: 60
-	- Outside district: 90
+            if min_g == 0:
+                rec.name = f"1 g - {max_g} g"
+            else:
+                rec.name = f"{min_g + 1} g - {max_g} g"
+                
+    minimum_weight = fields.Float(
+        string="Minimum Weight (kg)",
+        digits=(16, 3),
+        required=True,
+    )
+    maximum_weight = fields.Float(
+        string="Maximum Weight (kg)",
+        digits=(16, 3),
+        required=True,
+    )
 
-5. 2 kg to 2.5 kg
-	- Same district: 70
-	- Outside district: 105
+    same_district_amount = fields.Monetary(
+        string="Same District",
+        required=True,
+    )
+    different_district_amount = fields.Monetary(
+        string="Different District",
+        required=True,
+    )
 
-6. 2.5 kg to 3 kg
-	- Same district: 80
-	- Outside district: 125
+    currency_id = fields.Many2one(
+        "res.currency",
+        required=True,
+        default=lambda self: self.env.company.currency_id.id,
+    )
 
-Additional: for each additional 500 g beyond 3 kg, add 25
-GST: add 18% extra
-"""
+    @api.constrains(
+        "minimum_weight",
+        "maximum_weight",
+        "same_district_amount",
+        "different_district_amount",
+    )
+    def _check_values(self):
+        for rec in self:
+            if rec.minimum_weight < 0:
+                raise ValidationError(_("Minimum weight cannot be negative."))
 
-def calculate_delivery_charges(weight: float, same_district: bool) -> float:
-    if weight <= 0:
-        return 0
+            if rec.maximum_weight <= rec.minimum_weight:
+                raise ValidationError(
+                    _("Maximum weight must be greater than minimum weight.")
+                )
 
-    charge = 0
-    # Check if weight less than max base weight
-    if weight <= 3:
-        # Define the base charges based on weight and district
-        if 0 < weight <= 0.5: # 1 g to 500 g
-            charge = 40 if same_district else 55
-        elif 0.5 < weight <= 1: # 500 g to 1 kg
-            charge = 50 if same_district else 70
-        elif 1 < weight <= 1.5: # 1 kg to 1.5 kg
-            charge = 55 if same_district else 85
-        elif 1.5 < weight <= 2: # 1.5 kg to 2 kg
-            charge = 65 if same_district else 110
-        elif 2 < weight <= 2.5: # 2 kg to 2.5 kg
-            charge = 80 if same_district else 125
-        elif 2.5 < weight <= 3: # 2.5 kg to 3 kg
-            charge = 90 if same_district else 140
-    else:
-        # For weights above 3 kg, calculate additional charges
-        base_charge = 90 if same_district else 140 # Max Base charge
-        additional_weight = weight - 3
+            if rec.same_district_amount < 0:
+                raise ValidationError(
+                    _("Same district amount cannot be negative.")
+                )
 
-        # Charge ₹25 for every started 500 g above 3 kg
-        additional_slabs = math.ceil((additional_weight) / 0.5)
+            if rec.different_district_amount < 0:
+                raise ValidationError(
+                    _("Different district amount cannot be negative.")
+                )
 
-        additional_charges = additional_slabs * 25 # Additional 25rs per for each 500gm
-        charge = base_charge + additional_charges
+    @api.constrains("minimum_weight", "maximum_weight")
+    def _check_overlapping_slabs(self):
+        for rec in self:
+            overlap = self.search([
+                ("id", "!=", rec.id),
+                ("minimum_weight", "<", rec.maximum_weight),
+                ("maximum_weight", ">", rec.minimum_weight),
+            ], limit=1)
 
-    return charge
+            if overlap:
+                raise ValidationError(
+                    _(
+                        "Weight slabs cannot overlap.\n\n"
+                        "%s - %s kg overlaps with %s - %s kg."
+                    )
+                    % (
+                        rec.minimum_weight,
+                        rec.maximum_weight,
+                        overlap.minimum_weight,
+                        overlap.maximum_weight,
+                    )
+                )
+
+    @api.model
+    def calculate_delivery_charge(
+        self,
+        weight,
+        same_district=False,
+        gst_percent=18.0,
+        additional_charge=25.0,
+        additional_slab=0.5,
+    ):
+        """
+        Calculate delivery charge.
+
+        Parameters
+        ----------
+        weight : float
+            Weight in kilograms.
+
+        same_district : bool
+            Whether source and destination districts are same.
+
+        gst_percent : float
+            GST percentage to apply.
+
+        additional_charge : float
+            Charge for each additional slab above the last slab.
+
+        additional_slab : float
+            Additional slab size in kg (default 500 g).
+        """
+
+        if weight <= 0:
+            return 0.0
+
+        slabs = self.search([], order="minimum_weight")
+
+        if not slabs:
+            raise ValidationError(_("No delivery charge slabs configured."))
+
+        # Find matching slab
+        for slab in slabs:
+            if slab.minimum_weight < weight <= slab.maximum_weight:
+                amount = (
+                    slab.same_district_amount
+                    if same_district
+                    else slab.different_district_amount
+                )
+
+                return round(amount, 2)
+
+        # Above highest slab
+        last_slab = slabs[-1]
+
+        base_amount = (
+            last_slab.same_district_amount
+            if same_district
+            else last_slab.different_district_amount
+        )
+
+        additional_weight = weight - last_slab.maximum_weight
+
+        additional_units = math.ceil(
+            additional_weight / additional_slab
+        )
+
+        amount = base_amount + (additional_units * additional_charge)
+
+        return round(amount, 2)

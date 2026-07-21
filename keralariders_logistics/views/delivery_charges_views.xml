@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <!-- List View -->
+    <record id="view_delivery_charges_list" model="ir.ui.view">
+        <field name="name">logistics.delivery.charges.list</field>
+        <field name="model">logistics.delivery.charges</field>
+        <field name="arch" type="xml">
+            <list string="Delivery Charge Slabs" create="0" delete="0" editable="bottom">
+                <field name="name" width="100"/>
+                <field name="minimum_weight" width="100"/>
+                <field name="maximum_weight" width="100"/>
+                <field name="same_district_amount" sum="Same District" width="100"/>
+                <field name="different_district_amount" sum="Different District" width="100"/>
+                <field name="currency_id" column_invisible="1" width="100"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- Form View -->
+    <record id="view_delivery_charges_form" model="ir.ui.view">
+        <field name="name">logistics.delivery.charges.form</field>
+        <field name="model">logistics.delivery.charges</field>
+        <field name="arch" type="xml">
+            <form string="Delivery Charge Slab">
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="name" readonly="1"/>
+                            <field name="minimum_weight"/>
+                            <field name="maximum_weight"/>
+                        </group>
+
+                        <group>
+                            <field name="same_district_amount"/>
+                            <field name="different_district_amount"/>
+                            <field name="currency_id" groups="base.group_multi_currency"/>
+                        </group>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- Search View -->
+    <record id="view_delivery_charges_search" model="ir.ui.view">
+        <field name="name">logistics.delivery.charges.search</field>
+        <field name="model">logistics.delivery.charges</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="name"/>
+            </search>
+        </field>
+    </record>
+
+    <!-- Window Action -->
+    <record id="action_delivery_charges" model="ir.actions.act_window">
+        <field name="name">Delivery Charges</field>
+        <field name="res_model">logistics.delivery.charges</field>
+        <field name="view_mode">list</field>
+        <field name="search_view_id" ref="view_delivery_charges_search"/>
+    </record>
+
+    <!-- Menu -->
+    <menuitem
+        id="menu_delivery_charges"
+        name="Delivery Charges"
+        parent="menu_logistics_root"
+        action="action_delivery_charges"
+        sequence="60"/>
+
+</odoo>

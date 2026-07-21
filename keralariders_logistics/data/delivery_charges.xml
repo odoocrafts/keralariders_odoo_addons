@@ -1,0 +1,45 @@
+<odoo noupdate="1">
+
+    <record id="delivery_charge_1" model="logistics.delivery.charges">
+        <field name="minimum_weight">0.000</field>
+        <field name="maximum_weight">0.500</field>
+        <field name="same_district_amount">40</field>
+        <field name="different_district_amount">55</field>
+    </record>
+
+    <record id="delivery_charge_2" model="logistics.delivery.charges">
+        <field name="minimum_weight">0.500</field>
+        <field name="maximum_weight">1.000</field>
+        <field name="same_district_amount">50</field>
+        <field name="different_district_amount">70</field>
+    </record>
+
+    <record id="delivery_charge_3" model="logistics.delivery.charges">
+        <field name="minimum_weight">1.000</field>
+        <field name="maximum_weight">1.500</field>
+        <field name="same_district_amount">55</field>
+        <field name="different_district_amount">85</field>
+    </record>
+
+    <record id="delivery_charge_4" model="logistics.delivery.charges">
+        <field name="minimum_weight">1.500</field>
+        <field name="maximum_weight">2.000</field>
+        <field name="same_district_amount">65</field>
+        <field name="different_district_amount">110</field>
+    </record>
+
+    <record id="delivery_charge_5" model="logistics.delivery.charges">
+        <field name="minimum_weight">2.000</field>
+        <field name="maximum_weight">2.500</field>
+        <field name="same_district_amount">80</field>
+        <field name="different_district_amount">125</field>
+    </record>
+
+    <record id="delivery_charge_6" model="logistics.delivery.charges">
+        <field name="minimum_weight">2.500</field>
+        <field name="maximum_weight">3.000</field>
+        <field name="same_district_amount">90</field>
+        <field name="different_district_amount">140</field>
+    </record>
+
+</odoo>

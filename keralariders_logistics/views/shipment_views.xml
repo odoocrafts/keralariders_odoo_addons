@@ -40,14 +40,13 @@
                     decoration-muted="state == 'in_transit'"
                     decoration-success="state == 'delivered'"
                     decoration-danger="state in ('cancelled', 'cancel')"
-                    decoration-secondary="state == 'return_requested'"
                     width="100"
                 />                
                 <field name="cod_amount" string="COD Amount" width="100" sum="COD Amount" invisible="order_payment_type != 'cod'"/>
                 <field name="estimated_delivery_date" string="Est. Del Date" width="100"/>
-                <field name="delivery_charges_total" string="Total Delivery Charge" width="100" sum="Delivery Charges"/>
+                <field name="delivery_charges_total" string="Delivery Charge" width="100" sum="Delivery Charges"/>
                 <field name="currency_id" column_invisible="1"/>
-                <button name="%(keralariders_logistics.action_report_shipment)d" class="oe_highlight" string="Print AWB" type="action" icon="fa-print"/>
+                <button name="%(keralariders_logistics.action_report_shipment)d" class="oe_highlight" string="Print AWB" type="action" icon="fa-print" width="100"/>
             </list>
         </field>
     </record>

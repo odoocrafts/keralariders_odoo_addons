@@ -1,6 +1,5 @@
 from odoo import models, fields, api, _
 import uuid
-from .delivery_charges import calculate_delivery_charges
 
 delivery_states = [
     ('order_added', 'Order Added'),
@@ -126,7 +125,7 @@ class Shipment(models.Model):
         for record in self:
             if record.total_weight:
                 same_district = (record.shipping_from_district_id == record.shipping_to_district_id)
-                record.delivery_charges_subtotal = calculate_delivery_charges(record.total_weight, same_district)
+                record.delivery_charges_subtotal = self.env['logistics.delivery.charges'].sudo().calculate_delivery_charge(record.total_weight, same_district)
             record.delivery_charges_total = record.delivery_charges_subtotal * (1 + record.tax_percentage) if record.tax_percentage else record.delivery_charges_subtotal
     delivery_charges_total = fields.Monetary(string='Delivery Charges (Incl. Tax)', currency_field='currency_id', compute='_compute_delivery_charges', store=True)
     tax_percentage = fields.Float(string='Tax Percentage', default=0)
