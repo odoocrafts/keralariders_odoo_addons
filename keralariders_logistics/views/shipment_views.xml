@@ -37,6 +37,7 @@
                 <field name="estimated_delivery_date" string="Est. Del Date" width="100"/>
                 <field name="delivery_charges_total" string="Total Delivery Charge" width="100" sum="Delivery Charges"/>
                 <field name="currency_id" column_invisible="1"/>
+                <button name="%(keralariders_logistics.action_report_shipment)d" string="Print AWB" type="action" icon="fa-print"/>
             </list>
         </field>
     </record>
@@ -48,7 +49,8 @@
         <field name="arch" type="xml">
             <form string="Shipment">
                 <header>
-                <field name="state" widget="statusbar" options="{'clickable':1}"/>
+                    <button name="%(keralariders_logistics.action_report_shipment)d" string="Print AWB" type="action" class="btn-primary"/>
+                    <field name="state" widget="statusbar" options="{'clickable':1}"/>
                 </header>
                 <sheet>
                     <div class="oe_title" >
