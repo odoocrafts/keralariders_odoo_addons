@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <template id="tracking_search_page" name="Shipment Tracking Search">
+        <t t-call="web.layout">
+            <t t-set="head">
+                <t t-call-assets="web.assets_frontend" t-js="false"/>
+                <t t-call-assets="web.assets_frontend" t-css="false"/>
+            </t>
+            <t t-set="title">Track Your Shipment</t>
+            <div class="container mt-5 mb-5">
+                <div class="row justify-content-center">
+                    <div class="col-md-6">
+                        <div class="card shadow-sm border-0 rounded">
+                            <div class="card-header bg-primary text-white text-center py-4">
+                                <h2 class="mb-0">Track Shipment</h2>
+                            </div>
+                            <div class="card-body p-5">
+                                <t t-if="error">
+                                    <div class="alert alert-danger" role="alert">
+                                        <t t-esc="error"/>
+                                    </div>
+                                </t>
+                                <form action="/track" method="post">
+                                    <div class="mb-4">
+                                        <label for="awb" class="form-label font-weight-bold">AWB Number</label>
+                                        <input type="text" class="form-control form-control-lg" id="awb" name="awb" placeholder="e.g. SHP00001" required="1"/>
+                                    </div>
+                                    <div class="mb-4">
+                                        <label for="phone" class="form-label font-weight-bold">Phone Number</label>
+                                        <input type="text" class="form-control form-control-lg" id="phone" name="phone" placeholder="Registered Mobile Number" required="1"/>
+                                        <small class="form-text text-muted">Please enter the exact phone number associated with the delivery.</small>
+                                    </div>
+                                    <button type="submit" class="btn btn-primary btn-lg btn-block w-100">Track Now</button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </t>
+    </template>
+
+    <template id="tracking_page" name="Shipment Tracking">
+        <t t-call="web.layout">
+            <t t-set="head">
+                <t t-call-assets="web.assets_frontend" t-js="false"/>
+                <t t-call-assets="web.assets_frontend" t-css="false"/>
+            </t>
+            <t t-set="title">Track Shipment <t t-esc="shipment.name"/></t>
+            <div class="container mt-5 mb-5">
+                <div class="card shadow-sm border-0 rounded">
+                    <div class="card-header bg-primary text-white text-center py-4">
+                        <h2 class="mb-0">Shipment Tracking</h2>
+                        <p class="mb-0 mt-2">AWB: <strong><t t-esc="shipment.name"/></strong></p>
+                    </div>
+                    <div class="card-body p-5">
+                        <div class="row mb-4">
+                            <div class="col-md-6">
+                                <h5>Status</h5>
+                                <h3 class="text-info"><t t-esc="shipment_state_str"/></h3>
+                            </div>
+                            <div class="col-md-6 text-md-end text-md-right">
+                                <h5>Estimated Delivery</h5>
+                                <h4 class="text-success">
+                                    <t t-if="shipment.estimated_delivery_date">
+                                        <t t-esc="shipment.estimated_delivery_date"/>
+                                    </t>
+                                    <t t-else="">
+                                        Pending
+                                    </t>
+                                </h4>
+                            </div>
+                        </div>
+                        <hr/>
+                        <div class="row mt-4">
+                            <div class="col-md-6 mb-3">
+                                <h6 class="text-muted text-uppercase font-weight-bold">Origin</h6>
+                                <p class="mb-0">
+                                    <t t-if="shipment.shipping_from_district_id"><t t-esc="shipment.shipping_from_district_id.name"/>, </t>
+                                    <t t-if="shipment.shipping_from_state_id"><t t-esc="shipment.shipping_from_state_id.name"/></t>
+                                </p>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <h6 class="text-muted text-uppercase font-weight-bold">Destination</h6>
+                                <p class="mb-0">
+                                    <t t-if="shipment.shipping_to_district_id"><t t-esc="shipment.shipping_to_district_id.name"/>, </t>
+                                    <t t-if="shipment.shipping_to_state_id"><t t-esc="shipment.shipping_to_state_id.name"/></t>
+                                </p>
+                            </div>
+                        </div>
+                        
+                        <t t-if="shipment.state == 'delivered'">
+                            <div class="alert alert-success mt-4 text-center">
+                                <i class="fa fa-check-circle fa-2x mb-2"></i>
+                                <h5>This shipment was successfully delivered.</h5>
+                            </div>
+                        </t>
+                    </div>
+                </div>
+            </div>
+        </t>
+    </template>
+</odoo>
