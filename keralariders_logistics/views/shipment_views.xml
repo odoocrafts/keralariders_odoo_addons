@@ -69,7 +69,7 @@
                             <field name="currency_id" invisible="1"/>
                             <field name="total_weight"/>
                             <field name="delivery_charges_subtotal"/>
-                            <field name="tax_percentage" widget="percentage" string="Tax (GST) %"/>
+                            <field name="tax_percentage" widget="percentage" string="Tax (GST) %" invisible="1"/>
                             <field name="delivery_charges_total" force_save="1"/>
                         </group>
                     </group>
