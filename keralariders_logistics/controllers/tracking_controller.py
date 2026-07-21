@@ -20,8 +20,11 @@ class TrackingController(http.Controller):
                     error = "No shipment found with the provided AWB and Phone Number."
             else:
                 error = "Please provide both AWB Number and Phone Number."
-        
-        return request.render('keralariders_logistics.tracking_search_page', {'error': error})
+        values = {
+            'error': error,
+            'languages': [],
+        }
+        return request.render('keralariders_logistics.tracking_search_page', values)
 
     @http.route(['/track/<string:token>'], type='http', auth="public", website=False)
     def track_shipment(self, token, **kw):
@@ -35,5 +38,6 @@ class TrackingController(http.Controller):
         values = {
             'shipment': shipment,
             'shipment_state_str': shipment_state_str,
+            'languages': [],
         }
         return request.render('keralariders_logistics.tracking_page', values)
