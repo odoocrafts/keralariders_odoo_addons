@@ -95,3 +95,20 @@ class Seller(models.Model):
             'domain': [('seller_id', '=', self.id)],
             'context': {'default_seller_id': self.id},
         }
+    
+    wallet_recharge_request_ids = fields.One2many('logistics.wallet.recharge.request', 'seller_id', string="Recharge Requests")
+    wallet_recharge_request_count = fields.Integer(compute="_compute_wallet_recharge_request_count")
+    def _compute_wallet_recharge_request_count(self):
+        for rec in self:
+            rec.wallet_recharge_request_count = len(rec.wallet_recharge_request_ids)
+            
+    def action_view_recharge_requests(self):
+        self.ensure_one()
+        return {
+            'name': 'Wallet Recharge Requests',
+            'type': 'ir.actions.act_window',
+            'res_model': 'logistics.wallet.recharge.request',
+            'view_mode': 'list,form',
+            'domain': [('seller_id', '=', self.id)],
+            'context': {'default_seller_id': self.id},
+        }

@@ -33,6 +33,15 @@
                                 <span class="o_stat_text">Transactions</span>
                             </div>
                         </button>
+                        <button name="action_view_recharge_requests" type="object"
+                                class="oe_stat_button" icon="fa-money">
+                            <div class="o_stat_info">
+                                Recharge Requests
+                                <span class="o_stat_value">
+                                    <field name="wallet_recharge_request_count"/>
+                                </span>
+                            </div>
+                        </button>
                     </div>
                     <group string="Wallet Information">
                         <field name="seller_id" options="{'no_create': True}"/>

@@ -44,6 +44,25 @@ class Wallet(models.Model):
         for wallet in self:
             total_debit = sum(transaction.amount for transaction in wallet.transaction_ids if transaction.transaction_type == 'debit')
             wallet.total_debit = total_debit
+
+        
+    wallet_recharge_request_ids = fields.One2many('logistics.wallet.recharge.request', 'wallet_id', string="Recharge Requests")
+    wallet_recharge_request_count = fields.Integer(compute="_compute_wallet_recharge_request_count")
+    def _compute_wallet_recharge_request_count(self):
+        for rec in self:
+            rec.wallet_recharge_request_count = len(rec.wallet_recharge_request_ids)
+        
+    def action_view_recharge_requests(self):
+        self.ensure_one()
+        return {
+            'name': 'Wallet Recharge Requests',
+            'type': 'ir.actions.act_window',
+            'res_model': 'logistics.wallet.recharge.request',
+            'view_mode': 'list,form',
+            'domain': [('seller_id', '=', self.seller_id.id), ('wallet_id', '=', self.id)],
+            'context': {'default_seller_id': self.seller_id.id, 'default_wallet_id': self.id},
+        }
+    
 class WalletTransaction(models.Model):
     _name = 'logistics.wallet.transaction'
     _description = 'Wallet Transaction'

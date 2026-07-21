@@ -15,6 +15,7 @@
                 <field name="approved_by" width="100"/>
                 <field name="currency_id" column_invisible="1"/>
                 <field name="company_id" column_invisible="1"/>
+                <field name="state" widget="badge" decoration-success="state=='approved'" decoration-warning="state=='pending_approval'" decoration-danger="state=='cancelled'" width="100" />
             </list>
         </field>
     </record>
