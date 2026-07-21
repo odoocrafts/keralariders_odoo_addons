@@ -95,7 +95,7 @@
         <field name="search_view_id" ref="view_logistics_seller_search"/>
     </record>
 
-    <menuitem id="menu_logistics_root" name="Logistics Management"/>
+    <menuitem id="menu_logistics_root" name="Logistics Management" web_icon="keralariders_logistics,static/description/icon.png"/>
 
     <menuitem id="menu_logistics_seller_root" parent="menu_logistics_root" name="Sellers" action="action_logistics_seller"/>
 </odoo>
