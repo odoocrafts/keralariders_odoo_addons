@@ -20,10 +20,8 @@
 
     <record id="action_logistics_config_settings" model="ir.actions.act_window">
         <field name="name">Settings</field>
-        <field name="type">ir.actions.act_window</field>
         <field name="res_model">res.config.settings</field>
         <field name="view_mode">form</field>
-        <field name="target">inline</field>
         <field name="context">{'module' : 'keralariders_logistics', 'bin_size': False}</field>
     </record>
 
