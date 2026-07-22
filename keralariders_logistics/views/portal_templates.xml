@@ -240,6 +240,13 @@
                                         <button type="submit" class="btn btn-sm btn-success">Request Pickup</button>
                                     </form>
                                 </t>
+                                <t t-if="shipment.state == 'delivered'">
+                                    <form action="/my/shipments/request_return" method="post" style="display:inline;">
+                                        <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                                        <input type="hidden" name="shipment_id" t-att-value="shipment.id"/>
+                                        <button type="submit" class="btn btn-sm btn-warning">Request Return</button>
+                                    </form>
+                                </t>
                             </td>
                         </tr>
                     </t>

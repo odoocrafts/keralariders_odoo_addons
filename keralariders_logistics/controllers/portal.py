@@ -371,6 +371,33 @@ class LogisticsPortal(CustomerPortal):
             
         return request.redirect('/my/shipments')
 
+    @http.route(['/my/shipments/request_return'], type='http', auth="user", website=True, methods=['POST'])
+    def portal_my_shipments_request_return(self, **post):
+        shipment_id = int(post.get('shipment_id', 0))
+        partner = request.env.user.partner_id
+        seller = request.env['logistics.seller'].search([('partner_id', '=', partner.id)], limit=1)
+        
+        shipment = request.env['logistics.shipment'].search([
+            ('id', '=', shipment_id), 
+            ('seller_id', '=', seller.id),
+            ('state', '=', 'delivered')
+        ], limit=1)
+        
+        if not shipment:
+            request.session['error'] = "Shipment not found or not in Delivered state."
+            return request.redirect('/my/shipments')
+            
+        try:
+            # Update state (Free of charge)
+            shipment.sudo().write({
+                'state': 'return_requested'
+            })
+            request.session['success'] = f"Return pickup requested successfully for {shipment.name}. This is free of charge."
+        except Exception as e:
+            request.session['error'] = str(e)
+            
+        return request.redirect('/my/shipments')
+
     @http.route(['/my/calculator'], type='http', auth="public", website=True)
     def portal_my_calculator(self, **kw):
         districts = request.env['logistics.district'].sudo().search([])
