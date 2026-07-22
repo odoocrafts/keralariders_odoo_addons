@@ -82,7 +82,7 @@ class LogisticsPortal(CustomerPortal):
             wallet = request.env['logistics.wallet'].search([('seller_id', '=', seller.id)], limit=1)
             amount = float(post.get('amount', 0))
             if amount > 0 and wallet:
-                upi_id = request.env.company.logistics_upi_id
+                upi_id = request.env['ir.config_parameter'].sudo().get_param('keralariders_logistics.logistics_upi_id')
                 if not upi_id:
                     request.session['error'] = "UPI recharge is not configured. Please contact the administrator."
                     return request.redirect('/my/wallet')
