@@ -67,7 +67,13 @@ class BankCashAccountTransfer(models.Model):
         for vals in vals_list:
             if vals.get('name', _('New')) == _('New'):
                 vals['name'] = self.env['ir.sequence'].next_by_code('logistics.account.transfer') or _('New')
-        return super(BankCashAccountTransfer, self).create(vals_list)
+        recs = super(BankCashAccountTransfer, self).create(vals_list)
+        # Update the cod_clearance_transfer_id field of all linked COD Payment transfers
+        for rec in recs:
+            if rec.transfer_type == 'cod_clearance' and rec.cod_clearance_payment_transfer_ids:
+                for transfer_id in rec.cod_clearance_payment_transfer_ids:
+                    transfer_id.cod_clearance_transfer_id = rec.id
+        return recs
 
     transfer_type = fields.Selection(selection=[('cod_payment', 'COD Payment'), ('cod_clearance', 'COD Clearance'), ('other', 'Other')], default='other', string="Transfer Type")
     from_account_id = fields.Many2one('logistics.account', string="From Account", required=True)
@@ -92,7 +98,7 @@ class BankCashAccountTransfer(models.Model):
     def _onchange_transfer_type(self):
         if self.transfer_type == 'cod_clearance':
             self.reference = 'COD Clearance'
-            
+
     currency_id = fields.Many2one('res.currency', string='Currency', default=lambda self: self.env.company.currency_id.id)
     shipment_id = fields.Many2one('logistics.shipment', string="Related Shipment", ondelete="cascade")
     transaction_ids = fields.One2many('logistics.account.transaction', 'transfer_id', string="Transactions", compute="_compute_transaction_ids", store=True)
@@ -137,7 +143,6 @@ class BankCashAccountTransfer(models.Model):
             else:
                 super(BankCashAccountTransfer, rec).write(vals)
         return True
-
 
 class BankCashAccountTransaction(models.Model):
     _name = "logistics.account.transaction"

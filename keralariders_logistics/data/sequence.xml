@@ -19,7 +19,7 @@
         <record id="seq_account_transfer" model="ir.sequence">
             <field name="name">Account Transfer Sequence</field>
             <field name="code">logistics.account.transfer</field>
-            <field name="prefix">TRANS%(y)s%(month)s</field>
+            <field name="prefix">TRANS/%(y)s%(month)s</field>
             <field name="padding">4</field>
             <field name="company_id" eval="False"/>
         </record>

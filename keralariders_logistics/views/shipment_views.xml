@@ -42,7 +42,8 @@
                     decoration-danger="state in ('cancelled', 'cancel')"
                     width="100"
                 />                
-                <field name="cod_amount" string="COD Amount" width="100" sum="COD Amount" invisible="order_payment_type != 'cod'"/>
+                <field name="cod_amount" string="COD Amount" width="100" sum="COD Amount" invisible="order_payment_type != 'cod'" options="{'fg_color': 'brown: cod_balance_amount > 0; green: cod_balance_amount &lt;=0 ;'}"/>
+                <field name="cod_balance_amount" string="COD Balance Amount" optional="hide" width="100" sum="COD Amount" invisible="order_payment_type != 'cod'"/>
                 <field name="estimated_delivery_date" string="Est. Del Date" width="100"/>
                 <field name="delivery_charges_total" string="Delivery Charge" width="100" sum="Delivery Charges" options="{'fg_color': 'brown: not wallet_transaction_id; green: wallet_transaction_id;'}"/>
                 <field name="currency_id" column_invisible="1"/>
