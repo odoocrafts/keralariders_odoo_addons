@@ -186,7 +186,7 @@ class LogisticsPortal(CustomerPortal):
             return request.redirect('/my')
             
         try:
-            total_weight = float(post.get('total_weight', 0))
+            total_weight = float(post.get('total_weight') or 0)
             if total_weight <= 0:
                 raise UserError("Weight must be greater than 0.")
                 
@@ -201,7 +201,7 @@ class LogisticsPortal(CustomerPortal):
                 'item_description': post.get('item_description'),
                 'total_weight': total_weight,
                 'order_payment_type': post.get('order_payment_type', 'prepaid'),
-                'total_order_value': float(post.get('total_order_value', 0)),
+                'total_order_value': float(post.get('total_order_value') or 0),
                 'billing_same_as_shipping': True,
                 'state': 'order_added',
             }
