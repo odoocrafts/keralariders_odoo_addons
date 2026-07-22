@@ -41,7 +41,7 @@ class Shipment(models.Model):
     def create(self, vals_list):
         for vals in vals_list:
             if vals.get('name', _('New')) == _('New'):
-                vals['name'] = self.env['ir.sequence'].next_by_code('logistics.shipment') or _('New')
+                vals['name'] = self.env['ir.sequence'].sudo().next_by_code('logistics.shipment') or _('New')
         return super(Shipment, self).create(vals_list)
 
     company_id = fields.Many2one('res.company', string='Company', required=True, default=lambda self: self.env.company)

@@ -91,7 +91,7 @@ class WalletRechargeRequest(models.Model):
     def create(self, vals_list):
         for vals in vals_list:
             if vals.get('name', _('New')) == _('New'):
-                vals['name'] = self.env['ir.sequence'].next_by_code('logistics.wallet.recharge.request') or _('New')
+                vals['name'] = self.env['ir.sequence'].sudo().next_by_code('logistics.wallet.recharge.request') or _('New')
         return super(WalletRechargeRequest, self).create(vals_list)
     
     request_date = fields.Datetime(string="Request Date", default=fields.Datetime.now)
