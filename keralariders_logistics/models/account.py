@@ -120,7 +120,7 @@ class BankCashAccountTransfer(models.Model):
 
     related_seller_id = fields.Many2one('logistics.seller', string="Related Seller")
 
-    cod_clearance_transfer_id = fields.Many2one('logistics.account.transfer', string="Clearance Transfer")
+    cod_clearance_transfer_id = fields.Many2one('logistics.account.transfer', string="Clearance Transfer", copy=False)
     cod_clearance_payment_transfer_ids = fields.Many2many(
         'logistics.account.transfer',
         'logistics_account_transfer_clearance_rel',  # relation table
