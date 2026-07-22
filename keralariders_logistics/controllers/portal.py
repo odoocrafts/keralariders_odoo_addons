@@ -19,8 +19,11 @@ class LogisticsPortal(CustomerPortal):
                 values['shipment_count'] = shipment_count
             if 'wallet_balance' in counters:
                 wallet = request.env['logistics.wallet'].search([('seller_id', '=', seller.id)], limit=1)
-                values['wallet_balance'] = wallet.balance if wallet else 0.0
-                values['wallet_currency'] = wallet.currency_id if wallet else request.env.company.currency_id
+                if wallet:
+                    symbol = wallet.currency_id.symbol or '₹'
+                    values['wallet_balance'] = f"{symbol} {wallet.balance:,.2f}"
+                else:
+                    values['wallet_balance'] = "0.00"
         
         return values
         
