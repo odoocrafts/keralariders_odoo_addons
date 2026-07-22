@@ -8,18 +8,21 @@
                 <t t-set="title">My Shipments</t>
                 <t t-set="url" t-value="'/my/shipments'"/>
                 <t t-set="placeholder_count" t-value="'shipment_count'"/>
-                <t t-set="image_url" t-value="'/keralariders_logistics/static/src/img/shipment.svg'"/>
+                <t t-set="icon" t-value="'/keralariders_logistics/static/src/img/shipment.svg'"/>
+                <t t-set="text">Manage your deliveries</t>
             </t>
             <t t-call="portal.portal_docs_entry">
                 <t t-set="title">My Wallet</t>
                 <t t-set="url" t-value="'/my/wallet'"/>
                 <t t-set="placeholder_count" t-value="'wallet_balance'"/>
-                <t t-set="image_url" t-value="'/keralariders_logistics/static/src/img/wallet.svg'"/>
+                <t t-set="icon" t-value="'/keralariders_logistics/static/src/img/wallet.svg'"/>
+                <t t-set="text">View balance and recharges</t>
             </t>
             <t t-call="portal.portal_docs_entry">
                 <t t-set="title">Charge Calculator</t>
                 <t t-set="url" t-value="'/my/calculator'"/>
-                <t t-set="image_url" t-value="'/keralariders_logistics/static/src/img/calculator.svg'"/>
+                <t t-set="icon" t-value="'/keralariders_logistics/static/src/img/calculator.svg'"/>
+                <t t-set="text">Estimate shipping costs</t>
             </t>
         </xpath>
     </template>
