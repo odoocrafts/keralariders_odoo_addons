@@ -373,4 +373,59 @@
         </t>
     </template>
 
+    <!-- Seller Signup Page -->
+    <template id="seller_signup_page" name="Seller Signup">
+        <t t-call="web.login_layout">
+            <div class="card shadow-sm p-4">
+                <div class="text-center mb-4">
+                    <h3>Register as a Seller</h3>
+                    <p class="text-muted">Start managing your logistics with us</p>
+                </div>
+                
+                <t t-if="error">
+                    <div class="alert alert-danger" role="alert"><t t-esc="error"/></div>
+                </t>
+                
+                <form action="/seller/signup/submit" method="post" class="oe_signup_form">
+                    <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                    
+                    <div class="mb-3">
+                        <label for="name" class="form-label">Full Name / Company Name</label>
+                        <input type="text" name="name" id="name" class="form-control" required="required"/>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="email" class="form-label">Email Address (Login)</label>
+                        <input type="email" name="email" id="email" class="form-control" required="required"/>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="phone" class="form-label">Phone Number</label>
+                        <input type="tel" name="phone" id="phone" class="form-control" required="required"/>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label for="password" class="form-label">Password</label>
+                        <input type="password" name="password" id="password" class="form-control" required="required"/>
+                    </div>
+                    
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-primary btn-lg">Sign Up</button>
+                        <a href="/web/login" class="btn btn-link text-center">Already have an account? Log in</a>
+                    </div>
+                </form>
+            </div>
+        </t>
+    </template>
+
+    <!-- Inherit Login Page to add Seller Signup Link -->
+    <template id="login_logistics_seller" inherit_id="web.login" name="Seller Signup Link">
+        <xpath expr="//div[hasclass('oe_login_buttons')]" position="after">
+            <div class="text-center mt-3 border-top pt-3">
+                <p class="mb-2 text-muted">Want to ship with us?</p>
+                <a href="/seller/signup" class="btn btn-outline-secondary w-100">Register as a Seller</a>
+            </div>
+        </xpath>
+    </template>
+
 </odoo>

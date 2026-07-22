@@ -41,20 +41,22 @@ class Seller(models.Model):
     def create(self, vals_list):
         recs = super(Seller, self).create(vals_list)
         for rec in recs:
-            # Create a new partner record for the seller
-            partner_vals = {
-                'name': rec.name,
-                'email': rec.email,
-                'phone': rec.phone,
-                'street': rec.street,
-                'street2': rec.street2,
-                'city': rec.city,
-                'state_id': rec.state_id.id,
-                'country_id': rec.country_id.id,
-                'zip': rec.zip,
-                'vat': rec.tax_id,
-            }
-            rec.partner_id = self.env['res.partner'].create(partner_vals).id
+            # Create a new partner record for the seller if not already provided
+            if not rec.partner_id:
+                partner_vals = {
+                    'name': rec.name,
+                    'email': rec.email,
+                    'phone': rec.phone,
+                    'street': rec.street,
+                    'street2': rec.street2,
+                    'city': rec.city,
+                    'state_id': rec.state_id.id if rec.state_id else False,
+                    'country_id': rec.country_id.id if rec.country_id else False,
+                    'zip': rec.zip,
+                    'vat': rec.tax_id,
+                }
+                rec.partner_id = self.env['res.partner'].create(partner_vals).id
+            
             # Create a new Wallet record for the seller
             wallet_vals = {
                 'name': f"{rec.name} - Wallet",
@@ -62,6 +64,23 @@ class Seller(models.Model):
             }
             self.env['logistics.wallet'].create(wallet_vals)
         return recs
+
+    def action_grant_portal_access(self):
+        self.ensure_one()
+        if not self.partner_id:
+            from odoo.exceptions import UserError
+            raise UserError("Seller must have a related partner to grant portal access.")
+        
+        return {
+            'name': 'Grant Portal Access',
+            'type': 'ir.actions.act_window',
+            'res_model': 'portal.wizard',
+            'view_mode': 'form',
+            'target': 'new',
+            'context': {
+                'default_partner_ids': [(4, self.partner_id.id)]
+            }
+        }
     
     wallet_ids = fields.One2many('logistics.wallet', 'seller_id', string='Wallets')
 

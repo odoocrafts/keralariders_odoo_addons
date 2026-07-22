@@ -23,6 +23,9 @@
         <field name="model">logistics.seller</field>
         <field name="arch" type="xml">
             <form string="Seller">
+                <header>
+                    <button name="action_grant_portal_access" type="object" string="Grant Portal Access" class="btn-primary" invisible="not partner_id"/>
+                </header>
                 <sheet>
                     <div class="oe_button_box" name="button_box">
                         <button name="action_view_wallets" type="object"
