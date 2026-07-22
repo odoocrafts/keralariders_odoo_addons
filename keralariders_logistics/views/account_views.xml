@@ -116,8 +116,8 @@
                         </page>
                     </notebook>
                 </sheet>
+                <chatter/>
             </form>
-            <chatter/>
         </field>
     </record>
 
