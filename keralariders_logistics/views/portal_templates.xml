@@ -4,26 +4,28 @@
     <!-- Portal Home Entry -->
     <template id="portal_my_home_logistics" name="Show Logistics Portal Entries" customize_show="True" inherit_id="portal.portal_my_home" priority="10">
         <xpath expr="//div[hasclass('o_portal_docs')]" position="inside">
-            <t t-call="portal.portal_docs_entry">
-                <t t-set="title">My Shipments</t>
-                <t t-set="url" t-value="'/my/shipments'"/>
-                <t t-set="count" t-value="shipment_count if shipment_count else '0'"/>
-                <t t-set="icon" t-value="'/keralariders_logistics/static/src/img/shipment.svg'"/>
-                <t t-set="text">Manage your deliveries</t>
-            </t>
-            <t t-call="portal.portal_docs_entry">
-                <t t-set="title">My Wallet</t>
-                <t t-set="url" t-value="'/my/wallet'"/>
-                <t t-set="count" t-value="wallet_balance if wallet_balance else '₹ 0.00'"/>
-                <t t-set="icon" t-value="'/keralariders_logistics/static/src/img/wallet.svg'"/>
-                <t t-set="text">View balance and recharges</t>
-            </t>
-            <t t-call="portal.portal_docs_entry">
-                <t t-set="title">Charge Calculator</t>
-                <t t-set="url" t-value="'/my/calculator'"/>
-                <t t-set="count" t-value="' '"/>
-                <t t-set="icon" t-value="'/keralariders_logistics/static/src/img/calculator.svg'"/>
-                <t t-set="text">Estimate shipping costs</t>
+            <t t-if="is_seller">
+                <t t-call="portal.portal_docs_entry">
+                    <t t-set="title">My Shipments</t>
+                    <t t-set="url" t-value="'/my/shipments'"/>
+                    <t t-set="placeholder_count" t-value="'shipment_count'"/>
+                    <t t-set="icon" t-value="'/keralariders_logistics/static/src/img/shipment.svg'"/>
+                    <t t-set="text">Manage your deliveries</t>
+                </t>
+                <t t-call="portal.portal_docs_entry">
+                    <t t-set="title">My Wallet</t>
+                    <t t-set="url" t-value="'/my/wallet'"/>
+                    <t t-set="placeholder_count" t-value="'wallet_balance'"/>
+                    <t t-set="icon" t-value="'/keralariders_logistics/static/src/img/wallet.svg'"/>
+                    <t t-set="text">View balance and recharges</t>
+                </t>
+                <t t-call="portal.portal_docs_entry">
+                    <t t-set="title">Charge Calculator</t>
+                    <t t-set="url" t-value="'/my/calculator'"/>
+                    <t t-set="placeholder_count" t-value="'charge_calculator'"/>
+                    <t t-set="icon" t-value="'/keralariders_logistics/static/src/img/calculator.svg'"/>
+                    <t t-set="text">Estimate shipping costs</t>
+                </t>
             </t>
         </xpath>
     </template>

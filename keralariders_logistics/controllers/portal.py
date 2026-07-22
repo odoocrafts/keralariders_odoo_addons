@@ -12,10 +12,11 @@ class LogisticsPortal(CustomerPortal):
 
         partner = request.env.user.partner_id
         seller = request.env['logistics.seller'].sudo().search([('partner_id', '=', partner.id)], limit=1)
+        values['is_seller'] = bool(seller)
         
         if seller:
             shipment_count = request.env['logistics.shipment'].search_count([('seller_id', '=', seller.id)])
-            values['shipment_count'] = shipment_count
+            values['shipment_count'] = str(shipment_count) if shipment_count > 0 else '0 '
             
             wallet = request.env['logistics.wallet'].search([('seller_id', '=', seller.id)], limit=1)
             if wallet:
@@ -23,6 +24,8 @@ class LogisticsPortal(CustomerPortal):
                 values['wallet_balance'] = f"{symbol} {wallet.balance:,.2f}"
             else:
                 values['wallet_balance'] = "0.00"
+                
+            values['charge_calculator'] = ' '
         
         return values
         
