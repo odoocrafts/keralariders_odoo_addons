@@ -7,7 +7,7 @@ class BankCashAccount(models.Model):
 
     name = fields.Char(string="Account Name", required=True)
     currency_id = fields.Many2one('res.currency', string='Currency', default=lambda self: self.env.company.currency_id.id)    
-    account_type = fields.Selection(selection=[('bank', 'Bank'), ('cash', 'Cash'), ('cod_customer', 'COD Customer Account'), ('seller', 'Seller Account')])
+    account_type = fields.Selection(selection=[('bank', 'Bank'), ('cash', 'Cash'), ('cod_customer', 'COD Customer Account'), ('seller', 'Seller Account')], required=True, string="Account Type", default="bank")
     reference = fields.Text(string="Account Reference")
     balance = fields.Monetary(string='Balance', compute="_compute_balance", currency_field='currency_id')
 

@@ -62,11 +62,14 @@
         <field name="model">logistics.account.transfer</field>
         <field name="arch" type="xml">
             <list string="Account Transfers">
-                <field name="transfer_date" width="100"/>
+                <field name="transfer_date" width="100" string="Date"/>
+                <field name="name" width="100"/>
+                <field name="related_seller_id" width="100"/>
+                <field name="shipment_id" width="100"/>
                 <field name="from_account_id" width="100"/>
                 <field name="to_account_id" width="100"/>
                 <field name="amount" width="100" string="Amount" sum="Amount"/>
-                <field name="reference" width="100"/>
+                <field name="reference" width="100" string="Transfer Ref"/>
                 <field name="currency_id" column_invisible="1"/>
 
             </list>
@@ -91,6 +94,8 @@
                             <field name="to_account_id"/>
                             <field name="amount" string="Amount" sum="Amount"/>
                             <field name="reference"/>
+                            <field name="related_seller_id"/>
+                            <field name="shipment_id"/>
                             <field name="currency_id" invisible="1"/>
                         </group>
                     </group>

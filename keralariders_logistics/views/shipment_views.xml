@@ -74,7 +74,32 @@
                             <field name="delivery_executive_id"/>
                             <field name="order_date"/>
                             <field name="order_payment_type"/>
-                            <field name="cod_amount" invisible="order_payment_type != 'cod'"/>
+                            <!-- <field name="cod_amount" invisible="order_payment_type != 'cod'"/> -->
+                            <label for="cod_amount"/>
+                            <div class="d-flex align-items-center">
+                                <field name="cod_amount"
+                                    class="oe_inline me-2"
+                                    force_save="1"/>
+
+                                <i class="fa fa-check-circle text-success me-2"
+                                invisible="cod_balance_amount > 0"/>
+
+                                <button name="action_add_cod_payment_transfer"
+                                        type="object"
+                                        class="btn btn-info btn-sm me-1"
+                                        icon="fa-credit-card"
+                                        string="Add Payment"
+                                        invisible="cod_balance_amount &lt;= 0"/>
+                                <button name="action_view_cod_payment_transfers"
+                                        type="object"
+                                        class="btn btn-primary btn-sm"
+                                        icon="fa-eye"
+                                        string="View Transfers"
+                                        invisible="not cod_payment_transfer_ids"/>
+                            </div>
+                            <field name="cod_paid_amount" invisible="order_payment_type != 'cod'" readonly="1" force_save="1"/>
+                            <field name="cod_balance_amount" invisible="order_payment_type != 'cod'" readonly="1" force_save="1"/>
+                            <field name="cod_payment_transfer_ids" widget="many2many_tags" invisible="1"/>
                             <field name="tracking_url" widget="url"/>
 
                         </group>
