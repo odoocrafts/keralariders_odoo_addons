@@ -219,6 +219,119 @@ class LogisticsPortal(CustomerPortal):
             request.session['error'] = str(e)
             return request.redirect('/my/shipments/new')
             
+    @http.route(['/my/shipments/bulk_upload/template'], type='http', auth="user", website=True)
+    def portal_my_shipments_bulk_upload_template(self, **kw):
+        import csv
+        import io
+        
+        output = io.StringIO()
+        writer = csv.writer(output)
+        headers = ['Customer Name', 'Phone Number', 'Address', 'Pincode', 'Weight (kg)', 'Item Description', 'Payment Type (prepaid/cod)', 'Total Order Value']
+        writer.writerow(headers)
+        
+        # Add sample rows to help the user
+        writer.writerow(['John Doe', '9876543210', '123 Main St, Apt 4B', '682001', '1.5', 'Electronics', 'prepaid', '0'])
+        writer.writerow(['Jane Smith', '9988776655', '456 Market Road', '695001', '2.0', 'Clothing', 'cod', '1500'])
+        
+        csv_content = output.getvalue()
+        
+        headers = [
+            ('Content-Type', 'text/csv'),
+            ('Content-Disposition', 'attachment; filename="Shipments_Bulk_Upload_Template.csv"'),
+        ]
+        return request.make_response(csv_content, headers=headers)
+
+    @http.route(['/my/shipments/bulk_upload'], type='http', auth="user", website=True, methods=['POST'])
+    def portal_my_shipments_bulk_upload(self, **post):
+        partner = request.env.user.partner_id
+        seller = request.env['logistics.seller'].search([('partner_id', '=', partner.id)], limit=1)
+        if not seller:
+            return request.redirect('/my')
+            
+        csv_file = post.get('csv_file')
+        if not csv_file:
+            request.session['error'] = "No file uploaded."
+            return request.redirect('/my/shipments')
+            
+        try:
+            import csv
+            import io
+            
+            file_content = csv_file.read().decode('utf-8')
+            csv_reader = csv.DictReader(io.StringIO(file_content))
+            
+            success_count = 0
+            failed_count = 0
+            
+            for row in csv_reader:
+                customer_name = row.get('Customer Name')
+                phone = row.get('Phone Number')
+                address = row.get('Address')
+                pincode = row.get('Pincode')
+                weight_str = row.get('Weight (kg)')
+                description = row.get('Item Description')
+                payment_type = row.get('Payment Type (prepaid/cod)', '').strip().lower()
+                order_value_str = row.get('Total Order Value', '0')
+                
+                if not all([customer_name, phone, address, pincode, weight_str, description]):
+                    failed_count += 1
+                    continue
+                    
+                try:
+                    weight = float(weight_str)
+                    order_value = float(order_value_str) if order_value_str else 0.0
+                except ValueError:
+                    failed_count += 1
+                    continue
+                    
+                # Lookup District from Pincode
+                district_id = False
+                state_id = False
+                pincode_info = request.env['logistics.district'].sudo().get_district_from_pincode(pincode)
+                if pincode_info and pincode_info.get('district_id'):
+                    district_id = pincode_info['district_id'].id
+                    state_id = pincode_info['district_id'].state_id.id
+                else:
+                    failed_count += 1
+                    continue
+                    
+                if payment_type not in ['prepaid', 'cod']:
+                    payment_type = 'prepaid'
+                    
+                shipment_vals = {
+                    'seller_id': seller.id,
+                    'shipping_to_name': customer_name,
+                    'shipping_to_address': address,
+                    'shipping_to_zip': pincode,
+                    'shipping_to_district_id': district_id,
+                    'shipping_to_state_id': state_id,
+                    'shipping_to_mobile': phone,
+                    'item_description': description,
+                    'total_weight': weight,
+                    'order_payment_type': payment_type,
+                    'total_order_value': order_value,
+                    'billing_same_as_shipping': True,
+                    'state': 'order_added',
+                }
+                
+                shipment = request.env['logistics.shipment'].create(shipment_vals)
+                if shipment.order_payment_type == 'cod':
+                    shipment.cod_amount = shipment.total_order_value
+                success_count += 1
+                
+            msg = f"Bulk upload complete: {success_count} shipments created successfully."
+            if failed_count > 0:
+                msg += f" {failed_count} rows failed validation and were skipped."
+                
+            request.session['success'] = msg
+            
+        except UnicodeDecodeError:
+            request.session['error'] = "Error reading file. Please ensure it is a valid CSV file saved with UTF-8 encoding."
+        except Exception as e:
+            request.session['error'] = f"Error processing file: {str(e)}"
+            
+        return request.redirect('/my/shipments')
+
     @http.route(['/my/shipments/request_pickup'], type='http', auth="user", website=True, methods=['POST'])
     def portal_my_shipments_request_pickup(self, **post):
         shipment_id = int(post.get('shipment_id', 0))
