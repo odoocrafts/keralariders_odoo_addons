@@ -207,7 +207,7 @@ class LogisticsPortal(CustomerPortal):
                 'billing_same_as_shipping': True,
                 'state': 'order_added',
             }
-            shipment = request.env['logistics.shipment'].create(shipment_vals)
+            shipment = request.env['logistics.shipment'].sudo().create(shipment_vals)
             
             if shipment.order_payment_type == 'cod':
                 shipment.cod_amount = shipment.total_order_value
@@ -314,7 +314,7 @@ class LogisticsPortal(CustomerPortal):
                     'state': 'order_added',
                 }
                 
-                shipment = request.env['logistics.shipment'].create(shipment_vals)
+                shipment = request.env['logistics.shipment'].sudo().create(shipment_vals)
                 if shipment.order_payment_type == 'cod':
                     shipment.cod_amount = shipment.total_order_value
                 success_count += 1
