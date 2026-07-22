@@ -1,28 +1,42 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
 
+    <!-- Custom Portal Card to bypass Odoo's strict portal_docs_entry logic -->
+    <template id="logistics_portal_card" name="Logistics Portal Card">
+        <a t-att-href="url" class="list-group-item list-group-item-action d-flex align-items-center justify-content-between p-3 mb-2 rounded border bg-white shadow-sm" style="text-decoration: none;">
+            <div class="d-flex align-items-center">
+                <img t-att-src="icon" style="width: 24px; margin-right: 15px;"/>
+                <div class="d-flex flex-column">
+                    <span class="fw-bold text-dark"><t t-esc="title"/></span>
+                    <span class="small text-muted"><t t-esc="text"/></span>
+                </div>
+            </div>
+            <span class="badge rounded-pill text-bg-secondary" t-esc="count_text"/>
+        </a>
+    </template>
+
     <!-- Portal Home Entry -->
     <template id="portal_my_home_logistics" name="Show Logistics Portal Entries" customize_show="True" inherit_id="portal.portal_my_home" priority="10">
         <xpath expr="//div[hasclass('o_portal_docs')]" position="inside">
             <t t-if="is_seller">
-                <t t-call="portal.portal_docs_entry">
+                <t t-call="keralariders_logistics.logistics_portal_card">
                     <t t-set="title">My Shipments</t>
                     <t t-set="url" t-value="'/my/shipments'"/>
-                    <t t-set="count" t-value="shipment_count if shipment_count else '0'"/>
+                    <t t-set="count_text" t-value="shipment_count if shipment_count else '0'"/>
                     <t t-set="icon" t-value="'/keralariders_logistics/static/src/img/shipment.svg'"/>
                     <t t-set="text">Manage your deliveries</t>
                 </t>
-                <t t-call="portal.portal_docs_entry">
+                <t t-call="keralariders_logistics.logistics_portal_card">
                     <t t-set="title">My Wallet</t>
                     <t t-set="url" t-value="'/my/wallet'"/>
-                    <t t-set="count" t-value="wallet_balance if wallet_balance else '₹ 0.00'"/>
+                    <t t-set="count_text" t-value="wallet_balance if wallet_balance else '₹ 0.00'"/>
                     <t t-set="icon" t-value="'/keralariders_logistics/static/src/img/wallet.svg'"/>
                     <t t-set="text">View balance and recharges</t>
                 </t>
-                <t t-call="portal.portal_docs_entry">
+                <t t-call="keralariders_logistics.logistics_portal_card">
                     <t t-set="title">Charge Calculator</t>
                     <t t-set="url" t-value="'/my/calculator'"/>
-                    <t t-set="count" t-value="' '"/>
+                    <t t-set="count_text" t-value="' '"/>
                     <t t-set="icon" t-value="'/keralariders_logistics/static/src/img/calculator.svg'"/>
                     <t t-set="text">Estimate shipping costs</t>
                 </t>
