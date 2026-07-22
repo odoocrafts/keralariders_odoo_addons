@@ -21,154 +21,114 @@
             <t t-foreach="docs" t-as="o">
                 <t t-set="company" t-value="o.company_id" />
                 <t t-call="web.basic_layout">
-                    <div class="page" style="font-family:Arial,sans-serif;font-size:12px;"> <!--
-                        HEADER -->
-                        <table
-                            style="width:100%;border-bottom:2px solid #222;margin-bottom:12px;padding-bottom:8px;">
+                    <div class="page" style="font-family: Arial, sans-serif; font-size: 12px; color: black;">
+                        
+                        <table style="width: 100%; border-collapse: collapse; border: 2px solid black;">
+                            <!-- HEADER -->
                             <tr>
-                                <td style="width:40%;text-align:left;">
-                                    <h3 style="margin:0;font-size:16px;">
-                                        <b>
-                                            <u>AWB / Shipping Note</u>
-                                        </b>
-                                    </h3>
-                                    <h4 style="margin:4px 0;font-size:14px;">
-                                        # <strong t-field="o.name" />
-                                    </h4>
+                                <td style="width: 50%; border: 2px solid black; padding: 15px; text-align: center; vertical-align: middle;">
+                                    <img t-if="company.logo" t-att-src="image_data_uri(company.logo)" style="max-height: 60px; max-width: 100%;" alt="Logo"/>
                                 </td>
-                                <td class="text-end">
-                                    <img
-                                        t-att-src="'/report/barcode/Code128/%s?humanreadable=1&amp;width=288&amp;height=65' % o.name" />
+                                <td style="width: 50%; border: 2px solid black; padding: 15px; text-align: center; vertical-align: middle;">
+                                    <h2 style="margin: 0; font-size: 26px; font-weight: 900; letter-spacing: 1px; text-transform: uppercase;">
+                                        <span t-field="company.name"/>
+                                    </h2>
                                 </td>
                             </tr>
-                        </table> <!--
-                        SHIPMENT INFO -->
-                        <table class="table table-sm table-bordered"
-                            style="width:100%;margin-bottom:10px;font-size:10px;">
-                            <tr style="background:#f2f2f2;">
-                                <th colspan="4" style="padding:6px;font-size:11px;">
-                                    <b>Shipment Information</b>
-                                </th>
-                            </tr>
+                            
+                            <!-- QR CODE AND AWB -->
                             <tr>
-                                <td style="padding:4px;">
-                                    <b>Tracking Reference</b>
-                                </td>
-                                <td style="padding:4px;">
-                                    <span t-field="o.name" />
-                                </td>
-                                <td style="padding:4px;">
-                                    <b>Est. Delivery</b>
-                                </td>
-                                <td style="padding:4px;">
-                                    <span t-field="o.estimated_delivery_date" />
+                                <td colspan="2" style="border: 2px solid black; padding: 20px; text-align: center;">
+                                    <div style="margin: 0 auto; display: inline-block;">
+                                        <img t-att-src="'/report/barcode/QR/%s?width=150&amp;height=150' % o.tracking_url" style="width: 150px; height: 150px;" alt="QR Code"/>
+                                    </div>
+                                    <h2 style="margin: 10px 0 0 0; font-size: 24px; font-weight: 900; letter-spacing: 2px;">
+                                        AWB: <span t-field="o.name"/>
+                                    </h2>
+                                    <div style="font-size: 16px; font-weight: bold; margin-top: 5px; text-transform: uppercase;">
+                                        <span t-field="o.shipping_to_district_id"/> <span t-if="o.shipping_to_state_id" t-esc="'/ ' + o.shipping_to_state_id.name"/>
+                                    </div>
                                 </td>
                             </tr>
+                            
+                            <!-- SHIP TO & PAYMENT TYPE -->
                             <tr>
-                                <td style="padding:4px;">
-                                    <b>Order Date</b>
+                                <td style="width: 70%; border: 2px solid black; padding: 15px; vertical-align: top;">
+                                    <div style="font-size: 14px; font-weight: bold; margin-bottom: 5px;">Ship To:</div>
+                                    <div style="font-size: 18px; font-weight: 900; text-transform: uppercase;" t-field="o.shipping_to_name"/>
+                                    <div style="font-size: 14px; margin-top: 3px;">
+                                        <span t-field="o.shipping_to_address"/>
+                                    </div>
+                                    <div style="font-size: 14px;">
+                                        <span t-field="o.shipping_to_district_id"/>, <span t-field="o.shipping_to_state_id"/>
+                                    </div>
+                                    <div style="font-size: 16px; font-weight: bold; margin-top: 8px;">
+                                        PIN: <span t-field="o.shipping_to_zip"/>
+                                    </div>
+                                    <div style="font-size: 14px; font-weight: bold; margin-top: 5px;">
+                                        Mobile: <span t-field="o.shipping_to_mobile"/>
+                                    </div>
                                 </td>
-                                <td style="padding:4px;">
-                                    <span t-field="o.order_date" />
-                                </td>
-                                <td style="padding:4px;">
-                                    <b>Payment Type</b>
-                                </td>
-                                <td style="padding:4px;">
-                                    <span t-field="o.order_payment_type" />
+                                <td style="width: 30%; border: 2px solid black; padding: 15px; text-align: center; vertical-align: middle;">
+                                    <t t-if="o.order_payment_type == 'cod'">
+                                        <div style="font-size: 32px; font-weight: 900; border: 4px solid black; padding: 10px; display: inline-block;">COD</div>
+                                        <div style="font-size: 20px; font-weight: bold; margin-top: 15px;">
+                                            <span t-field="o.cod_amount"/>
+                                        </div>
+                                    </t>
+                                    <t t-else="">
+                                        <div style="font-size: 28px; font-weight: 900; letter-spacing: 1px;">PRE-PAID</div>
+                                    </t>
                                 </td>
                             </tr>
+                            
+                            <!-- SELLER AND DATE -->
                             <tr>
-                                <td style="padding:4px;">
-                                    <b>Total Weight</b>
+                                <td style="width: 70%; border: 2px solid black; padding: 10px 15px; vertical-align: top;">
+                                    <div style="font-weight: bold; font-size: 14px; margin-bottom: 2px;">Seller: <span t-field="o.shipping_from_name"/></div>
+                                    <div style="font-size: 12px; margin-top: 2px;">
+                                        <span t-field="o.shipping_from_address"/>, 
+                                        <span t-field="o.shipping_from_district_id"/>, 
+                                        <span t-field="o.shipping_from_state_id"/> - <span t-field="o.shipping_from_zip"/>
+                                    </div>
                                 </td>
-                                <td style="padding:4px;"><span t-field="o.total_weight" /> Kg</td>
-                                <td style="padding:4px;">
-                                    <b>COD Amount</b>
-                                </td>
-                                <td style="padding:4px;">
-                                    <span t-field="o.cod_amount" />
+                                <td style="width: 30%; border: 2px solid black; padding: 10px 15px; vertical-align: top;">
+                                    <div style="font-weight: bold; font-size: 14px;">Date:</div>
+                                    <div style="font-size: 14px; margin-bottom: 10px;" t-field="o.order_date" t-options="{'widget': 'date'}"/>
+                                    
+                                    <div style="font-weight: bold; font-size: 14px;">Weight:</div>
+                                    <div style="font-size: 14px;"><span t-field="o.total_weight"/> Kg</div>
                                 </td>
                             </tr>
-                        </table> <!--
-                        ADDRESSES -->
-                        <table style="width:100%;margin-bottom:10px;">
+                            
+                            <!-- PRODUCT DETAILS -->
                             <tr>
-                                <td
-                                    style="width:49%;vertical-align:top;border:1px solid #bbb;padding:8px;font-size:10px;">
-                                    <div
-                                        style="font-weight:bold;background:#f2f2f2;padding:4px;margin:-8px -8px 6px -8px;font-size:11px;">SHIP
-                                    FROM</div> <b t-field="o.shipping_from_name" /><br /> <span
-                                        t-field="o.shipping_from_address" /><br /> <span
-                                        t-field="o.shipping_from_district_id" />, <span
-                                        t-field="o.shipping_from_state_id" /><br /> <b>PIN:</b> <span
-                                        t-field="o.shipping_from_zip" />
-                                </td>
-                                <td style="width:2%;"></td>
-                                <td
-                                    style="width:49%;vertical-align:top;border:1px solid #bbb;padding:8px;font-size:10px;">
-                                    <div
-                                        style="font-weight:bold;background:#f2f2f2;padding:4px;margin:-8px -8px 6px -8px;font-size:11px;">SHIP
-                                    TO</div> <b t-field="o.shipping_to_name" /><br /> <span
-                                        t-field="o.shipping_to_address" /><br /> <span
-                                        t-field="o.shipping_to_district_id" />, <span
-                                        t-field="o.shipping_to_state_id" /><br /> <b>PIN:</b> <span
-                                        t-field="o.shipping_to_zip" /><br /> <b>Mobile:</b> <span
-                                        t-field="o.shipping_to_mobile" /><br /> <b>Email:</b> <span
-                                        t-field="o.shipping_to_email" />
+                                <td colspan="2" style="border: 2px solid black; padding: 0;">
+                                    <table style="width: 100%; border-collapse: collapse;">
+                                        <tr>
+                                            <th style="border-right: 2px solid black; border-bottom: 2px solid black; padding: 10px 15px; text-align: left; font-size: 14px;">Product Description</th>
+                                            <th style="border-bottom: 2px solid black; padding: 10px 15px; text-align: right; width: 30%; font-size: 14px;">Value</th>
+                                        </tr>
+                                        <tr>
+                                            <td style="border-right: 2px solid black; padding: 15px; vertical-align: top; font-size: 14px;">
+                                                <span t-field="o.item_description"/>
+                                            </td>
+                                            <td style="padding: 15px; text-align: right; vertical-align: top; font-size: 14px; font-weight: bold;">
+                                                <span t-field="o.total_order_value"/>
+                                            </td>
+                                        </tr>
+                                    </table>
                                 </td>
                             </tr>
-                        </table> <!--
-                        BILLING -->
-                        <table class="table table-sm table-bordered"
-                            style="margin-bottom:8px;font-size:10px;">
-                            <tr style="background:#f2f2f2;">
-                                <th style="padding:6px;font-size:11px;">
-                                    <b>Billing Address</b>
-                                </th>
-                            </tr>
-                            <tr>
-                                <td style="padding:6px;">
-                                    <b t-field="o.billing_name" /><br /> <span
-                                        t-field="o.billing_address" /><br /> <span
-                                        t-field="o.billing_district_id" />, <span
-                                        t-field="o.billing_state_id" /><br /> <b>PIN:</b> <span
-                                        t-field="o.billing_zip" />
-                                </td>
-                            </tr>
-                        </table> <!--
-                        ITEM -->
-                        <table class="table table-sm table-bordered"
-                            style="margin-bottom:8px;font-size:10px;">
-                            <tr style="background:#f2f2f2;">
-                                <th colspan="2" style="padding:6px;font-size:11px;">
-                                    <b>Shipment Details</b>
-                                </th>
-                            </tr>
-                            <tr>
-                                <td style="padding:4px;">
-                                    <b>Item Description</b>
-                                </td>
-                                <td style="padding:4px;">
-                                    <b>Total Value</b>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td style="padding:4px;">
-                                    <span t-field="o.item_description" />
-                                </td>
-                                <td style="padding:4px;">
-                                    <span t-field="o.total_order_value" />
-                                </td>
-                            </tr>
+                            
                         </table>
-                        <div style="clear:both;"></div> <!-- NOTES -->
-                        <div
-                            style="border:1px solid #ccc;padding:8px;margin-top:8px;font-size:10px;">
-                            <b>Notes</b>
-                            <br />
-                            <span t-field="o.seller_notes" />
-                        </div>
+                        
+                        <t t-if="o.seller_notes">
+                            <div style="border: 2px solid black; border-top: none; padding: 10px 15px; font-size: 12px;">
+                                <b>Notes:</b> <span t-field="o.seller_notes"/>
+                            </div>
+                        </t>
+
                     </div>
                 </t>
             </t>
