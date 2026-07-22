@@ -38,7 +38,7 @@ class SellerSignup(http.Controller):
                 'name': name,
                 'login': email,
                 'password': password,
-                'groups_id': [(4, portal_group.id)]
+                'group_ids': [(4, portal_group.id)]
             })
             
             # Create seller linked to the user's partner

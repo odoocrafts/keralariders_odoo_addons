@@ -87,13 +87,13 @@ class Seller(models.Model):
                 'name': self.partner_id.name,
                 'login': self.partner_id.email,
                 'partner_id': self.partner_id.id,
-                'groups_id': [(4, portal_group.id)]
+                'group_ids': [(4, portal_group.id)]
             })
             user.action_reset_password()
             message = "Portal access granted and invitation email sent!"
         else:
-            if portal_group not in user.groups_id:
-                user.sudo().write({'groups_id': [(4, portal_group.id)]})
+            if portal_group not in user.group_ids:
+                user.sudo().write({'group_ids': [(4, portal_group.id)]})
                 message = "Portal access granted!"
             else:
                 message = "Seller already has portal access."
