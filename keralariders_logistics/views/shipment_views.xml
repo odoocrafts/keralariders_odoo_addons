@@ -44,8 +44,9 @@
                 />                
                 <field name="cod_amount" string="COD Amount" width="100" sum="COD Amount" invisible="order_payment_type != 'cod'"/>
                 <field name="estimated_delivery_date" string="Est. Del Date" width="100"/>
-                <field name="delivery_charges_total" string="Delivery Charge" width="100" sum="Delivery Charges"/>
+                <field name="delivery_charges_total" string="Delivery Charge" width="100" sum="Delivery Charges" options="{'fg_color': 'brown: not wallet_transaction_id; green: wallet_transaction_id;'}"/>
                 <field name="currency_id" column_invisible="1"/>
+                <field name="wallet_transaction_id" column_invisible="1"/>
                 <button name="%(keralariders_logistics.action_report_shipment)d" class="oe_highlight" string="Print AWB" type="action" icon="fa-print" width="100"/>
             </list>
         </field>

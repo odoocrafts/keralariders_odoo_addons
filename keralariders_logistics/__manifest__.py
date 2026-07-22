@@ -34,6 +34,7 @@ Features:
         "views/delivery_executive_views.xml",
         "views/shipment_views.xml",
         "views/delivery_charges_views.xml",
+        "views/account_views.xml",
         "views/tracking_template.xml",
         "report/shipment_layout.xml",
     ],

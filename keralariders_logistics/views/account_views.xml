@@ -1,0 +1,172 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <record id="view_logistics_account_tree" model="ir.ui.view">
+        <field name="name">logistics.account.list</field>
+        <field name="model">logistics.account</field>
+        <field name="arch" type="xml">
+            <list string="Bank/Cash Account">
+                <field name="name"/>
+                <field name="account_type"/>
+                <field name="reference"/>
+                <field name="balance" widget="monetary" options="{'currency_field': 'currency_id', 'fg_color': 'red: balance &lt; 0; green: balance >= 0'}"/>
+                <field name="currency_id" column_invisible="1"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_logistics_account_form" model="ir.ui.view">
+        <field name="name">logistics.account.form</field>
+        <field name="model">logistics.account</field>
+        <field name="arch" type="xml">
+            <form string="Bank/Cash Account">
+                <sheet>
+                    <div class="oe_button_box" name="button_box">
+                        <button name="action_view_transactions" type="object"
+                                class="oe_stat_button" icon="fa-money">
+                            <div class="o_stat_info">
+                                Transactions
+                                <span class="o_stat_value">
+                                    <field name="transaction_count"/>
+                                </span>
+                            </div>
+                        </button>
+                        <button name="action_view_transaction_lines" type="object"
+                                class="oe_stat_button" icon="fa-money">
+                            <div class="o_stat_info">
+                                <span>
+                                    <field name="currency_id" invisible="1"/>
+                                    <i class="fa fa-arrow-down" style="color:green;margin-right:4px;"/>
+                                    <field name="total_credit" class="o_stat_value" widget="monetary" options="{'currency_field': 'currency_id'}"/>
+                                    <i class="fa fa-arrow-up" style="color:red;margin:0 4px;"/>
+                                    <field name="total_debit" class="o_stat_value" widget="monetary" options="{'currency_field': 'currency_id'}"/>
+                                </span>
+                                <span class="o_stat_text">Transaction History</span>
+                            </div>
+                        </button>
+                    </div>
+                    <group string="Account Information">
+                        <field name="name"/>
+                        <field name="account_type"/>
+                        <field name="reference"/>
+                        <field name="balance" widget="monetary" decoration-success="balance > 0" decoration-danger="balance &lt; 0"/>
+                    </group>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <!-- Account Transaction Views and Actions -->
+    <record id="view_logistics_account_transaction_tree" model="ir.ui.view">
+        <field name="name">logistics.account.transaction.list</field>
+        <field name="model">logistics.account.transaction</field>
+        <field name="arch" type="xml">
+            <list string="Account Transactions">
+                <field name="transaction_date" width="100"/>
+                <field name="from_account_id" width="100"/>
+                <field name="to_account_id" width="100"/>
+                <field name="amount" width="100" string="Amount" sum="Amount"/>
+                <field name="reference" width="100"/>
+                <field name="currency_id" column_invisible="1"/>
+
+            </list>
+        </field>
+    </record>
+
+    <record id="view_logistics_account_transaction_form" model="ir.ui.view">
+        <field name="name">logistics.account.transaction.form</field>
+        <field name="model">logistics.account.transaction</field>
+        <field name="arch" type="xml">
+            <form string="Account Transaction">
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="transaction_date"/>
+                            <field name="from_account_id"/>
+                            <field name="to_account_id"/>
+                            <field name="amount" string="Amount" sum="Amount"/>
+                            <field name="reference"/>
+                            <field name="currency_id" invisible="1"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Transaction Lines">
+                            <field name="line_ids" force_save="1">
+                                <!-- <list>
+
+                                </list> -->
+                            </field>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_logistics_account_transaction_line_tree" model="ir.ui.view">
+        <field name="name">logistics.account.transaction.line.list</field>
+        <field name="model">logistics.account.transaction.line</field>
+        <field name="arch" type="xml">
+            <list string="Account Transaction Lines" delete="0" create="0" edit="0">
+                <field name="transaction_date" width="100"/>
+                <field name="account_id" width="100"/>
+                <field name="amount" width="100" string="Amount" sum="Amount" options='{"fg_color": "red: amount &lt; 0; green: amount >= 0"}'/>
+                <field name="transaction_type" width="100" />
+                <field name="reference" width="100"/>
+                <field name="currency_id" column_invisible="1"/>
+
+            </list>
+        </field>
+    </record>
+
+    <record id="action_logistics_account" model="ir.actions.act_window">
+        <field name="name">Bank/Cash Accounts</field>
+        <field name="res_model">logistics.account</field>
+        <field name="view_mode">list,form</field>
+        <field name="view_id" ref="view_logistics_account_tree"/>
+        <!-- <field name="search_view_id" ref="view_logistics_account_search"/> -->
+    </record>
+
+
+    <record id="action_logistics_account_transaction" model="ir.actions.act_window">
+        <field name="name">Account Transactions</field>
+        <field name="res_model">logistics.account.transaction</field>
+        <field name="view_mode">list,form</field>
+        <field name="view_id" ref="view_logistics_account_transaction_tree"/>
+        <!-- <field name="search_view_id" ref="view_logistics_account_transaction_search"/> -->
+    </record>
+
+
+    <record id="action_logistics_account_transaction_line" model="ir.actions.act_window">
+        <field name="name">Account Transactions Lines</field>
+        <field name="res_model">logistics.account.transaction.line</field>
+        <field name="view_mode">list,form</field>
+        <field name="view_id" ref="view_logistics_account_transaction_line_tree"/>
+        <!-- <field name="search_view_id" ref="view_logistics_account_transaction_search"/> -->
+    </record>
+
+    <menuitem id="menu_logistics_account"
+                name="Bank/Cash Accounts"
+                parent="menu_logistics_root"
+                sequence="70"
+    />
+    <menuitem id="menu_logistics_account_account"
+                name="Accounts"
+                parent="menu_logistics_account"
+                action="action_logistics_account"
+                sequence="10"
+    />
+    <menuitem id="menu_logistics_account_transaction"
+                name="Transactions"
+                parent="menu_logistics_account"
+                action="action_logistics_account_transaction"
+                sequence="20"
+    />
+    <menuitem id="menu_logistics_account_transaction_line"
+                name="Transaction Lines"
+                parent="menu_logistics_account"
+                action="action_logistics_account_transaction_line"
+                sequence="30"
+    />
+
+</odoo>

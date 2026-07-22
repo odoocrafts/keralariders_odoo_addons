@@ -18,7 +18,7 @@ class Wallet(models.Model):
 
     def _compute_balance(self):
         for wallet in self:
-            wallet.balance = sum(transaction.amount for transaction in wallet.transaction_ids if transaction.transaction_type == 'credit') - sum(transaction.amount for transaction in wallet.transaction_ids if transaction.transaction_type == 'debit')
+            wallet.balance = sum(wallet.transaction_ids.mapped('amount'))
 
     currency_id = fields.Many2one('res.currency', string='Currency', default=lambda self: self.env.company.currency_id.id)
 
