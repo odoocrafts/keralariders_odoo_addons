@@ -89,8 +89,9 @@ class LogisticsPortal(CustomerPortal):
                 
                 # Construct upiqr.com URL as requested by the user
                 import urllib.parse
+                api_key = request.env['ir.config_parameter'].sudo().get_param('keralariders_logistics.logistics_upiqr_api_key', 'apikey')
                 company_name = urllib.parse.quote_plus(request.env.company.name)
-                qr_url = f"https://www.upiqr.com/upiqrapi?apikey=apikey&paymode=vpa&vpa={upi_id}&payee={company_name}&amount={amount:.2f}&size=250"
+                qr_url = f"https://www.upiqr.com/upiqrapi?apikey={api_key}&paymode=vpa&vpa={upi_id}&payee={company_name}&amount={amount:.2f}&size=250"
                 
                 return request.render("keralariders_logistics.portal_my_wallet_recharge_pay", {
                     'amount': amount,

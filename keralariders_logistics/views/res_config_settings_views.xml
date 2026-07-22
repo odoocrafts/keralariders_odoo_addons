@@ -12,6 +12,9 @@
                         <setting id="logistics_upi" string="Logistics UPI ID" help="UPI ID for seller wallet recharges">
                             <field name="logistics_upi_id"/>
                         </setting>
+                        <setting id="logistics_upiqr_api_key" string="UPIQR API Key" help="API Key for upiqr.com">
+                            <field name="logistics_upiqr_api_key"/>
+                        </setting>
                     </block>
                 </app>
             </xpath>
