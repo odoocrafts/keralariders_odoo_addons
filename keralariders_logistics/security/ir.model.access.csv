@@ -9,3 +9,12 @@ access_pincode_all,access_pincode_all,model_logistics_pincode,base.group_user,1,
 access_district_all,access_district_all,model_logistics_district,base.group_user,1,1,1,0
 access_shipment_admin,access_shipment_admin,model_logistics_shipment,group_logistics_admin,1,1,1,1
 access_delivery_charges_admin,access_delivery_charges_admin,model_logistics_delivery_charges,group_logistics_admin,1,1,1,1
+
+access_seller_portal,access_seller_portal,model_logistics_seller,base.group_portal,1,0,0,0
+access_wallet_portal,access_wallet_portal,model_logistics_wallet,base.group_portal,1,0,0,0
+access_wallet_transaction_portal,access_wallet_transaction_portal,model_logistics_wallet_transaction,base.group_portal,1,0,0,0
+access_wallet_recharge_request_portal,access_wallet_recharge_request_portal,model_logistics_wallet_recharge_request,base.group_portal,1,1,1,0
+access_shipment_portal,access_shipment_portal,model_logistics_shipment,base.group_portal,1,1,1,0
+access_delivery_charges_portal,access_delivery_charges_portal,model_logistics_delivery_charges,base.group_portal,1,0,0,0
+access_pincode_portal,access_pincode_portal,model_logistics_pincode,base.group_portal,1,0,0,0
+access_district_portal,access_district_portal,model_logistics_district,base.group_portal,1,0,0,0

@@ -1,0 +1,376 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Portal Home Entry -->
+    <template id="portal_my_home_logistics" name="Show Logistics Portal Entries" customize_show="True" inherit_id="portal.portal_my_home" priority="10">
+        <xpath expr="//div[hasclass('o_portal_docs')]" position="inside">
+            <t t-call="portal.portal_docs_entry">
+                <t t-set="title">My Shipments</t>
+                <t t-set="url" t-value="'/my/shipments'"/>
+                <t t-set="placeholder_count" t-value="'shipment_count'"/>
+            </t>
+            <t t-call="portal.portal_docs_entry">
+                <t t-set="title">My Wallet</t>
+                <t t-set="url" t-value="'/my/wallet'"/>
+                <t t-set="placeholder_count" t-value="'wallet_balance'"/>
+            </t>
+            <t t-call="portal.portal_docs_entry">
+                <t t-set="title">Charge Calculator</t>
+                <t t-set="url" t-value="'/my/calculator'"/>
+            </t>
+        </xpath>
+    </template>
+
+    <!-- Breadcrumbs -->
+    <template id="portal_breadcrumbs_logistics" name="Portal Breadcrumbs" inherit_id="portal.portal_breadcrumbs" priority="10">
+        <xpath expr="//ol[hasclass('o_portal_submenu')]" position="inside">
+            <li t-if="page_name == 'wallet'" class="breadcrumb-item">
+                Wallet
+            </li>
+            <li t-if="page_name == 'shipment' or page_name == 'shipment_new'" t-attf-class="breadcrumb-item #{'active ' if not shipment else ''}">
+                <a t-if="page_name == 'shipment_new'" t-attf-href="/my/shipments?{{ keep_query() }}">Shipments</a>
+                <t t-else="">Shipments</t>
+            </li>
+            <li t-if="page_name == 'shipment_new'" class="breadcrumb-item">
+                New Shipment
+            </li>
+            <li t-if="page_name == 'calculator'" class="breadcrumb-item">
+                Charge Calculator
+            </li>
+        </xpath>
+    </template>
+
+    <!-- Wallet Dashboard -->
+    <template id="portal_my_wallet" name="My Wallet">
+        <t t-call="portal.portal_layout">
+            <t t-set="breadcrumbs_searchbar" t-value="True"/>
+            <t t-call="portal.portal_searchbar">
+                <t t-set="title">Wallet Transactions</t>
+            </t>
+            
+            <div class="row mt-4 mb-5">
+                <div class="col-md-4">
+                    <div class="card bg-primary text-white shadow-sm mb-4">
+                        <div class="card-body text-center">
+                            <h5>Available Balance</h5>
+                            <h2><span t-field="wallet.balance" t-options='{"widget": "monetary", "display_currency": wallet.currency_id}'/></h2>
+                            <button type="button" class="btn btn-light mt-3" data-bs-toggle="modal" data-bs-target="#rechargeModal">
+                                Request Recharge
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="card shadow-sm mb-4">
+                        <div class="card-header bg-white">
+                            <h5 class="mb-0">Recent Recharge Requests</h5>
+                        </div>
+                        <ul class="list-group list-group-flush">
+                            <t t-foreach="recharge_requests[:5]" t-as="req">
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <strong><span t-field="req.name"/></strong><br/>
+                                        <small class="text-muted"><span t-field="req.request_date" t-options='{"widget": "date"}'/></small>
+                                    </div>
+                                    <div class="text-end">
+                                        <span t-field="req.requested_amount" t-options='{"widget": "monetary", "display_currency": req.currency_id}'/><br/>
+                                        <span t-attf-class="badge #{'bg-success' if req.state == 'approved' else 'bg-warning' if req.state == 'pending_approval' else 'bg-danger'}">
+                                            <t t-esc="dict(req.fields_get(allfields=['state'])['state']['selection'])[req.state]"/>
+                                        </span>
+                                    </div>
+                                </li>
+                            </t>
+                            <li t-if="not recharge_requests" class="list-group-item text-muted">No recharge requests found.</li>
+                        </ul>
+                    </div>
+                </div>
+                
+                <div class="col-md-8">
+                    <t t-if="not transactions">
+                        <p class="alert alert-info">There are currently no transactions in your wallet.</p>
+                    </t>
+                    <t t-if="transactions" t-call="portal.portal_table">
+                        <thead>
+                            <tr class="active">
+                                <th>Date</th>
+                                <th>Description/Reference</th>
+                                <th>Type</th>
+                                <th class="text-end">Amount</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <t t-foreach="transactions" t-as="tx">
+                                <tr>
+                                    <td><span t-field="tx.transaction_date"/></td>
+                                    <td><span t-esc="tx.reference or tx.description or '-'"/></td>
+                                    <td>
+                                        <span t-attf-class="badge #{'bg-success' if tx.transaction_type == 'credit' else 'bg-danger'}">
+                                            <span t-esc="tx.transaction_type.capitalize()"/>
+                                        </span>
+                                    </td>
+                                    <td class="text-end">
+                                        <span t-attf-class="{'text-success' if tx.transaction_type == 'credit' else 'text-danger'}" t-field="tx.amount" t-options='{"widget": "monetary", "display_currency": tx.currency_id}'/>
+                                    </td>
+                                </tr>
+                            </t>
+                        </tbody>
+                    </t>
+                </div>
+            </div>
+
+            <!-- Recharge Modal -->
+            <div class="modal fade" id="rechargeModal" tabindex="-1" aria-labelledby="rechargeModalLabel" aria-hidden="true">
+                <div class="modal-dialog">
+                    <div class="modal-content">
+                        <form action="/my/wallet/recharge" method="post">
+                            <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                            <div class="modal-header">
+                                <h5 class="modal-title" id="rechargeModalLabel">Request Wallet Recharge</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                            </div>
+                            <div class="modal-body">
+                                <p>Please enter the amount you wish to recharge. Your request will be sent to the administrator for approval.</p>
+                                <div class="mb-3">
+                                    <label for="amount" class="form-label">Recharge Amount (INR)</label>
+                                    <input type="number" step="0.01" class="form-control" id="amount" name="amount" required="1" min="1"/>
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                <button type="submit" class="btn btn-primary">Submit Request</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </t>
+    </template>
+
+    <!-- Shipments List -->
+    <template id="portal_my_shipments" name="My Shipments">
+        <t t-call="portal.portal_layout">
+            <t t-set="breadcrumbs_searchbar" t-value="True"/>
+            <t t-call="portal.portal_searchbar">
+                <t t-set="title">Shipments</t>
+                <div class="form-inline ms-auto">
+                    <a href="/my/shipments/new" class="btn btn-primary">Create New Shipment</a>
+                </div>
+            </t>
+            
+            <t t-if="error">
+                <div class="alert alert-danger" role="alert"><t t-esc="error"/></div>
+            </t>
+            <t t-if="success">
+                <div class="alert alert-success" role="alert"><t t-esc="success"/></div>
+            </t>
+            
+            <t t-if="not shipments">
+                <p class="alert alert-info">You don't have any shipments yet.</p>
+            </t>
+            <t t-if="shipments" t-call="portal.portal_table">
+                <thead>
+                    <tr class="active">
+                        <th>AWB / Ref</th>
+                        <th>Date</th>
+                        <th>Shipping To</th>
+                        <th>Weight</th>
+                        <th>Payment Type</th>
+                        <th>Charges</th>
+                        <th>Status</th>
+                        <th class="text-end">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <t t-foreach="shipments" t-as="shipment">
+                        <tr>
+                            <td><a t-attf-href="/track/#{shipment.tracking_token}"><span t-field="shipment.name"/></a></td>
+                            <td><span t-field="shipment.order_date"/></td>
+                            <td><span t-field="shipment.shipping_to_name"/><br/><small class="text-muted"><span t-field="shipment.shipping_to_mobile"/></small></td>
+                            <td><span t-field="shipment.total_weight"/> kg</td>
+                            <td><span t-esc="dict(shipment.fields_get(allfields=['order_payment_type'])['order_payment_type']['selection'])[shipment.order_payment_type]"/></td>
+                            <td><span t-field="shipment.delivery_charges_total" t-options='{"widget": "monetary", "display_currency": shipment.currency_id}'/></td>
+                            <td>
+                                <span class="badge bg-secondary">
+                                    <t t-esc="dict(shipment.fields_get(allfields=['state'])['state']['selection'])[shipment.state]"/>
+                                </span>
+                            </td>
+                            <td class="text-end">
+                                <t t-if="shipment.state == 'order_added'">
+                                    <form action="/my/shipments/request_pickup" method="post" style="display:inline;">
+                                        <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                                        <input type="hidden" name="shipment_id" t-att-value="shipment.id"/>
+                                        <button type="submit" class="btn btn-sm btn-success">Request Pickup</button>
+                                    </form>
+                                </t>
+                            </td>
+                        </tr>
+                    </t>
+                </tbody>
+            </t>
+        </t>
+    </template>
+
+    <!-- New Shipment Form -->
+    <template id="portal_my_shipment_new" name="New Shipment">
+        <t t-call="portal.portal_layout">
+            <t t-if="error">
+                <div class="alert alert-danger" role="alert"><t t-esc="error"/></div>
+            </t>
+            
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-white py-3">
+                    <h4 class="mb-0">Create New Shipment</h4>
+                </div>
+                <div class="card-body">
+                    <form action="/my/shipments/create" method="post">
+                        <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                        
+                        <div class="row">
+                            <div class="col-md-6 mb-4">
+                                <h5 class="text-muted border-bottom pb-2">Shipping To (Destination)</h5>
+                                <div class="mb-3">
+                                    <label class="form-label">Customer Name</label>
+                                    <input type="text" name="shipping_to_name" class="form-control" required="1"/>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Phone Number</label>
+                                    <input type="text" name="shipping_to_mobile" class="form-control" required="1"/>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Address</label>
+                                    <textarea name="shipping_to_address" class="form-control" rows="3" required="1"></textarea>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label class="form-label">Pincode</label>
+                                        <input type="text" name="shipping_to_zip" class="form-control" required="1"/>
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label class="form-label">District</label>
+                                        <select name="shipping_to_district_id" class="form-select">
+                                            <option value="">Select District...</option>
+                                            <t t-foreach="districts" t-as="district">
+                                                <option t-att-value="district.id"><t t-esc="district.name"/></option>
+                                            </t>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">State</label>
+                                    <select name="shipping_to_state_id" class="form-select">
+                                        <t t-foreach="states" t-as="state">
+                                            <option t-att-value="state.id"><t t-esc="state.name"/></option>
+                                        </t>
+                                    </select>
+                                </div>
+                            </div>
+                            
+                            <div class="col-md-6 mb-4">
+                                <h5 class="text-muted border-bottom pb-2">Order Details</h5>
+                                <div class="mb-3">
+                                    <label class="form-label">Item Description</label>
+                                    <input type="text" name="item_description" class="form-control" required="1"/>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label class="form-label">Total Weight (Kg)</label>
+                                        <input type="number" step="0.001" name="total_weight" class="form-control" required="1"/>
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label class="form-label">Payment Type</label>
+                                        <select name="order_payment_type" class="form-select" id="order_payment_type">
+                                            <option value="prepaid">Prepaid</option>
+                                            <option value="cod">Cash on Delivery</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="mb-3" id="total_order_value_container" style="display:none;">
+                                    <label class="form-label">Total Order Value (COD Amount)</label>
+                                    <input type="number" step="0.01" name="total_order_value" class="form-control" id="total_order_value"/>
+                                    <small class="text-muted">Enter the amount to be collected from the customer.</small>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="text-end border-top pt-3">
+                            <a href="/my/shipments" class="btn btn-secondary me-2">Cancel</a>
+                            <button type="submit" class="btn btn-primary">Save as Draft (Order Added)</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+            
+            <script>
+                document.getElementById('order_payment_type').addEventListener('change', function() {
+                    var codContainer = document.getElementById('total_order_value_container');
+                    var codInput = document.getElementById('total_order_value');
+                    if (this.value === 'cod') {
+                        codContainer.style.display = 'block';
+                        codInput.required = true;
+                    } else {
+                        codContainer.style.display = 'none';
+                        codInput.required = false;
+                        codInput.value = '';
+                    }
+                });
+            </script>
+        </t>
+    </template>
+
+    <!-- Charge Calculator -->
+    <template id="portal_my_calculator" name="Charge Calculator">
+        <t t-call="portal.portal_layout">
+            <div class="container mt-4 mb-5">
+                <div class="row justify-content-center">
+                    <div class="col-md-8">
+                        <div class="card shadow-sm">
+                            <div class="card-header bg-primary text-white py-3">
+                                <h4 class="mb-0">Delivery Charge Calculator</h4>
+                            </div>
+                            <div class="card-body p-4">
+                                <t t-if="error">
+                                    <div class="alert alert-danger" role="alert"><t t-esc="error"/></div>
+                                </t>
+                                <t t-if="result">
+                                    <div class="alert alert-success text-center py-4" role="alert">
+                                        <h5 class="mb-2">Estimated Delivery Charge</h5>
+                                        <h1 class="mb-0 display-4">₹ <t t-esc="result"/></h1>
+                                    </div>
+                                </t>
+                                
+                                <form action="/my/calculator/calculate" method="post">
+                                    <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                                    <div class="row">
+                                        <div class="col-md-6 mb-3">
+                                            <label class="form-label">Origin District</label>
+                                            <select name="origin_district_id" class="form-select" required="1">
+                                                <option value="">Select Origin...</option>
+                                                <t t-foreach="districts" t-as="district">
+                                                    <option t-att-value="district.id"><t t-esc="district.name"/></option>
+                                                </t>
+                                            </select>
+                                        </div>
+                                        <div class="col-md-6 mb-3">
+                                            <label class="form-label">Destination District</label>
+                                            <select name="dest_district_id" class="form-select" required="1">
+                                                <option value="">Select Destination...</option>
+                                                <t t-foreach="districts" t-as="district">
+                                                    <option t-att-value="district.id"><t t-esc="district.name"/></option>
+                                                </t>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="mb-4">
+                                        <label class="form-label">Package Weight (Kg)</label>
+                                        <input type="number" step="0.001" name="weight" class="form-control form-control-lg" required="1"/>
+                                    </div>
+                                    <button type="submit" class="btn btn-primary btn-lg w-100">Calculate Charge</button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </t>
+    </template>
+
+</odoo>
