@@ -87,11 +87,14 @@ class LogisticsPortal(CustomerPortal):
                     request.session['error'] = "UPI recharge is not configured. Please contact the administrator."
                     return request.redirect('/my/wallet')
                 
-                # Construct upiqr.com URL as requested by the user
+                # Construct UPI URI
                 import urllib.parse
-                api_key = request.env['ir.config_parameter'].sudo().get_param('keralariders_logistics.logistics_upiqr_api_key', 'apikey')
                 company_name = urllib.parse.quote_plus(request.env.company.name)
-                qr_url = f"https://www.upiqr.com/upiqrapi?apikey={api_key}&paymode=vpa&vpa={upi_id}&payee={company_name}&amount={amount:.2f}&size=250"
+                upi_uri = f"upi://pay?pa={upi_id}&pn={company_name}&am={amount:.2f}&cu=INR"
+                encoded_uri = urllib.parse.quote_plus(upi_uri)
+                # Odoo's internal barcode generator might be restricted or missing python-qrcode, 
+                # so we use a reliable external QR generator for the standard UPI URI.
+                qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=250x250&data={encoded_uri}"
                 
                 return request.render("keralariders_logistics.portal_my_wallet_recharge_pay", {
                     'amount': amount,
