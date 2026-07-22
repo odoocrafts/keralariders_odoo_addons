@@ -78,7 +78,8 @@ class Seller(models.Model):
             'view_mode': 'form',
             'target': 'new',
             'context': {
-                'default_partner_ids': [(4, self.partner_id.id)]
+                'active_ids': [self.partner_id.id],
+                'active_model': 'res.partner',
             }
         }
     
