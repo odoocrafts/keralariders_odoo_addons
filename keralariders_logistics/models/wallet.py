@@ -85,7 +85,7 @@ class WalletRechargeRequest(models.Model):
     _name = "logistics.wallet.recharge.request"
     _description = "Wallet Recharge Request"
     _inherit = ['mail.thread', 'mail.activity.mixin']
-    name = fields.Char(string="Reference", readonly=1, store=True, default=lambda self: _('New'))
+    name = fields.Char(string="Reference", readonly=1, store=True, copy=False, default=lambda self: _('New'))
 
     @api.model_create_multi
     def create(self, vals_list):

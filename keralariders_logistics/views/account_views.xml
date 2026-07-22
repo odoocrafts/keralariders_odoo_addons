@@ -21,16 +21,16 @@
             <form string="Bank/Cash Account">
                 <sheet>
                     <div class="oe_button_box" name="button_box">
-                        <button name="action_view_transactions" type="object"
+                        <button name="action_view_transfers" type="object"
                                 class="oe_stat_button" icon="fa-money">
                             <div class="o_stat_info">
-                                Transactions
+                                Transfers
                                 <span class="o_stat_value">
-                                    <field name="transaction_count"/>
+                                    <field name="transfer_count"/>
                                 </span>
                             </div>
                         </button>
-                        <button name="action_view_transaction_lines" type="object"
+                        <button name="action_view_transactions" type="object"
                                 class="oe_stat_button" icon="fa-money">
                             <div class="o_stat_info">
                                 <span>
@@ -40,7 +40,7 @@
                                     <i class="fa fa-arrow-up" style="color:red;margin:0 4px;"/>
                                     <field name="total_debit" class="o_stat_value" widget="monetary" options="{'currency_field': 'currency_id'}"/>
                                 </span>
-                                <span class="o_stat_text">Transaction History</span>
+                                <span class="o_stat_text">Transactions</span>
                             </div>
                         </button>
                     </div>
@@ -57,12 +57,12 @@
     </record>
 
     <!-- Account Transaction Views and Actions -->
-    <record id="view_logistics_account_transaction_tree" model="ir.ui.view">
-        <field name="name">logistics.account.transaction.list</field>
-        <field name="model">logistics.account.transaction</field>
+    <record id="view_logistics_account_transfer_tree" model="ir.ui.view">
+        <field name="name">logistics.account.transfer.list</field>
+        <field name="model">logistics.account.transfer</field>
         <field name="arch" type="xml">
-            <list string="Account Transactions">
-                <field name="transaction_date" width="100"/>
+            <list string="Account Transfers">
+                <field name="transfer_date" width="100"/>
                 <field name="from_account_id" width="100"/>
                 <field name="to_account_id" width="100"/>
                 <field name="amount" width="100" string="Amount" sum="Amount"/>
@@ -73,15 +73,20 @@
         </field>
     </record>
 
-    <record id="view_logistics_account_transaction_form" model="ir.ui.view">
-        <field name="name">logistics.account.transaction.form</field>
-        <field name="model">logistics.account.transaction</field>
+    <record id="view_logistics_account_transfer_form" model="ir.ui.view">
+        <field name="name">logistics.account.transfer.form</field>
+        <field name="model">logistics.account.transfer</field>
         <field name="arch" type="xml">
-            <form string="Account Transaction">
+            <form string="Account Transfer">
                 <sheet>
+                    <div class="oe_title" >
+                        <h1 class="text-primary">
+                            <field name="name" force_save="1"/>
+                        </h1>
+                    </div>
                     <group>
                         <group>
-                            <field name="transaction_date"/>
+                            <field name="transfer_date"/>
                             <field name="from_account_id"/>
                             <field name="to_account_id"/>
                             <field name="amount" string="Amount" sum="Amount"/>
@@ -90,11 +95,8 @@
                         </group>
                     </group>
                     <notebook>
-                        <page string="Transaction Lines">
-                            <field name="line_ids" force_save="1">
-                                <!-- <list>
-
-                                </list> -->
+                        <page string="Transactions">
+                            <field name="transaction_ids" force_save="1">
                             </field>
                         </page>
                     </notebook>
@@ -103,11 +105,11 @@
         </field>
     </record>
 
-    <record id="view_logistics_account_transaction_line_tree" model="ir.ui.view">
-        <field name="name">logistics.account.transaction.line.list</field>
-        <field name="model">logistics.account.transaction.line</field>
+    <record id="view_logistics_account_transaction_tree" model="ir.ui.view">
+        <field name="name">logistics.account.transaction.list</field>
+        <field name="model">logistics.account.transaction</field>
         <field name="arch" type="xml">
-            <list string="Account Transaction Lines" delete="0" create="0" edit="0">
+            <list string="Account Transactions" delete="0" create="0" edit="0">
                 <field name="transaction_date" width="100"/>
                 <field name="account_id" width="100"/>
                 <field name="amount" width="100" string="Amount" sum="Amount" options='{"fg_color": "red: amount &lt; 0; green: amount >= 0"}'/>
@@ -128,20 +130,20 @@
     </record>
 
 
-    <record id="action_logistics_account_transaction" model="ir.actions.act_window">
-        <field name="name">Account Transactions</field>
-        <field name="res_model">logistics.account.transaction</field>
+    <record id="action_logistics_account_transfer" model="ir.actions.act_window">
+        <field name="name">Account Transfers</field>
+        <field name="res_model">logistics.account.transfer</field>
         <field name="view_mode">list,form</field>
-        <field name="view_id" ref="view_logistics_account_transaction_tree"/>
+        <field name="view_id" ref="view_logistics_account_transfer_tree"/>
         <!-- <field name="search_view_id" ref="view_logistics_account_transaction_search"/> -->
     </record>
 
 
-    <record id="action_logistics_account_transaction_line" model="ir.actions.act_window">
-        <field name="name">Account Transactions Lines</field>
-        <field name="res_model">logistics.account.transaction.line</field>
-        <field name="view_mode">list,form</field>
-        <field name="view_id" ref="view_logistics_account_transaction_line_tree"/>
+    <record id="action_logistics_account_transaction" model="ir.actions.act_window">
+        <field name="name">Account Transactions</field>
+        <field name="res_model">logistics.account.transaction</field>
+        <field name="view_mode">list</field>
+        <field name="view_id" ref="view_logistics_account_transaction_tree"/>
         <!-- <field name="search_view_id" ref="view_logistics_account_transaction_search"/> -->
     </record>
 
@@ -156,16 +158,16 @@
                 action="action_logistics_account"
                 sequence="10"
     />
+    <menuitem id="menu_logistics_account_transfer"
+                name="Transfers"
+                parent="menu_logistics_account"
+                action="action_logistics_account_transfer"
+                sequence="20"
+    />
     <menuitem id="menu_logistics_account_transaction"
                 name="Transactions"
                 parent="menu_logistics_account"
                 action="action_logistics_account_transaction"
-                sequence="20"
-    />
-    <menuitem id="menu_logistics_account_transaction_line"
-                name="Transaction Lines"
-                parent="menu_logistics_account"
-                action="action_logistics_account_transaction_line"
                 sequence="30"
     />
 

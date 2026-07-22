@@ -1,4 +1,4 @@
-from odoo import models, fields, api
+from odoo import models, fields, api, _
 
 class BankCashAccount(models.Model):
     _name = "logistics.account"
@@ -13,18 +13,29 @@ class BankCashAccount(models.Model):
 
     def _compute_balance(self):
         for account in self:
-            account.balance = sum(account.transaction_line_ids.mapped('amount'))
+            account.balance = sum(account.transaction_ids.mapped('amount'))
 
     total_credit = fields.Float(string='Total Credit', compute='_compute_total_credit')
     total_debit = fields.Float(string='Total Debit', compute='_compute_total_debit')
     def _compute_total_credit(self):
         for account in self:
-            total_credit = sum(line.amount for line in account.transaction_line_ids if line.transaction_type == 'credit')
+            total_credit = sum(line.amount for line in account.transaction_ids if line.transaction_type == 'credit')
             account.total_credit = total_credit
     def _compute_total_debit(self):
         for account in self:
-            total_debit = sum(line.amount for line in account.transaction_line_ids if line.transaction_type == 'debit')
+            total_debit = sum(line.amount for line in account.transaction_ids if line.transaction_type == 'debit')
             account.total_debit = total_debit
+
+    def action_view_transfers(self):
+        self.ensure_one()
+        return {
+            'name': 'Account Transfer',
+            'type': 'ir.actions.act_window',
+            'res_model': 'logistics.account.transfer',
+            'view_mode': 'list,form',
+            'domain': ['|', ('from_account_id', '=', self.id), ('to_account_id', '=', self.id)],
+            'context': {'default_from_account_id': self.id, 'default_to_account_id': self.id},
+        }
 
     def action_view_transactions(self):
         self.ensure_one()
@@ -33,32 +44,30 @@ class BankCashAccount(models.Model):
             'type': 'ir.actions.act_window',
             'res_model': 'logistics.account.transaction',
             'view_mode': 'list,form',
-            'domain': ['|', ('from_account_id', '=', self.id), ('to_account_id', '=', self.id)],
-            'context': {'default_from_account_id': self.id, 'default_to_account_id': self.id},
-        }
-
-    def action_view_transaction_lines(self):
-        self.ensure_one()
-        return {
-            'name': 'Account Transaction Lines',
-            'type': 'ir.actions.act_window',
-            'res_model': 'logistics.account.transaction.line',
-            'view_mode': 'list,form',
             'domain': [('account_id', '=', self.id)],
             'context': {'default_account_id': self.id,},
         }
 
-    transaction_line_ids = fields.One2many('logistics.account.transaction.line', 'account_id', string="Transaction Lines")
+    transaction_ids = fields.One2many('logistics.account.transaction', 'account_id', string="Transactions")
 
-    transaction_count = fields.Integer(compute="_compute_transaction_count")
-    def _compute_transaction_count(self):
+    transfer_count = fields.Integer(compute="_compute_transfer_count")
+    def _compute_transfer_count(self):
         for rec in self:
-            rec.transaction_count = self.env['logistics.account.transaction'].search_count(['|', ('from_account_id', '=', self.id), ('to_account_id', '=', self.id)])
+            rec.transfer_count = self.env['logistics.account.transfer'].search_count(['|', ('from_account_id', '=', self.id), ('to_account_id', '=', self.id)])
 
-class BankCashAccountTransaction(models.Model):
-    _name = "logistics.account.transaction"
-    _description = 'Bank/Cash Account Transaction'
+class BankCashAccountTransfer(models.Model):
+    _name = "logistics.account.transfer"
+    _description = 'Bank/Cash Account Transfer'
     _inherit = ['mail.thread', 'mail.activity.mixin']
+
+    name = fields.Char(string="Reference", copy=False,  default=lambda self: _('New'), readonly="1" )
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        for vals in vals_list:
+            if vals.get('name', _('New')) == _('New'):
+                vals['name'] = self.env['ir.sequence'].next_by_code('logistics.account.transfer') or _('New')
+        return super(BankCashAccountTransfer, self).create(vals_list)
 
     from_account_id = fields.Many2one('logistics.account', string="From Account", required=True)
     to_account_id = fields.Many2one('logistics.account', string="To Account", required=True)
@@ -69,18 +78,18 @@ class BankCashAccountTransaction(models.Model):
         if self.amount < 0:
             # Make sure amount is always positive
             self.amount = -self.amount
-    transaction_date = fields.Date(string='Transaction Date', default=fields.Date.context_today, required=True)
+    transfer_date = fields.Date(string='Transfer Date', default=fields.Date.context_today, required=True)
     description = fields.Text(string='Description')
-    reference = fields.Text(string='Reference')
+    reference = fields.Text(string='Transfer Reference')
     currency_id = fields.Many2one('res.currency', string='Currency', default=lambda self: self.env.company.currency_id.id)
     shipment_id = fields.Many2one('logistics.shipment', string="Related Shipment", ondelete="cascade")
-    line_ids = fields.One2many('logistics.account.transaction.line', 'transaction_id', string="Transaction Lines", compute="_compute_line_ids", store=True)
+    transaction_ids = fields.One2many('logistics.account.transaction', 'transfer_id', string="Transactions", compute="_compute_transaction_ids", store=True)
 
     @api.depends('from_account_id', 'to_account_id', 'amount')
-    def _compute_line_ids(self):
+    def _compute_transaction_ids(self):
         for rec in self:
             if rec.from_account_id and rec.to_account_id:
-                rec.line_ids = [(2, id ) for id in rec.line_ids.ids]
+                rec.transaction_ids = [(2, id ) for id in rec.transaction_ids.ids]
                 debit_values = {
                     'account_id': rec.from_account_id.id,
                     'amount': -rec.amount,
@@ -89,13 +98,13 @@ class BankCashAccountTransaction(models.Model):
                     'account_id': rec.to_account_id.id,
                     'amount': rec.amount,
                 }
-                rec.line_ids = [(0, 0, debit_values), (0, 0, credit_values)]
+                rec.transaction_ids = [(0, 0, debit_values), (0, 0, credit_values)]
 
     related_seller_id = fields.Many2one('logistics.seller', string="Related Seller")
 
-class BankCashAccountTransactionLine(models.Model):
-    _name = "logistics.account.transaction.line"
-    _description = 'Bank/Cash Account Transaction Line'
+class BankCashAccountTransaction(models.Model):
+    _name = "logistics.account.transaction"
+    _description = 'Bank/Cash Account Transaction'
 
     account_id = fields.Many2one('logistics.account', string="Account", required=True)
     transaction_type = fields.Selection([('credit', 'Credit'), ('debit', 'Debit')], string='Transaction Type', default='credit', compute="_compute_transaction_type", store=True)
@@ -104,8 +113,8 @@ class BankCashAccountTransactionLine(models.Model):
         for transaction in self:
             transaction.transaction_type = 'credit' if transaction.amount >= 0 else 'debit'
     amount = fields.Monetary(string='Amount', required=True, currency_field='currency_id')
-    transaction_date = fields.Date(string='Transaction Date', related="transaction_id.transaction_date", store=True)
-    description = fields.Text(string='Description', related="transaction_id.description", store=True)
-    reference = fields.Text(string='Reference', related="transaction_id.reference", store=True)
+    transaction_date = fields.Date(string='Transaction Date', related="transfer_id.transfer_date", store=True)
+    description = fields.Text(string='Description', related="transfer_id.description", store=True)
+    reference = fields.Text(string='Reference', related="transfer_id.reference", store=True)
     currency_id = fields.Many2one('res.currency', string='Currency', default=lambda self: self.env.company.currency_id.id)
-    transaction_id = fields.Many2one('logistics.account.transaction', string="Related Transaction", ondelete="cascade")
+    transfer_id = fields.Many2one('logistics.account.transfer', string="Related Transfer", ondelete="cascade")
