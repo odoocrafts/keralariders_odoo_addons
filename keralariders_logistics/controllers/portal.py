@@ -358,10 +358,12 @@ class LogisticsPortal(CustomerPortal):
                 raise UserError(f"Insufficient wallet balance. Charge is {shipment.delivery_charges_total}, your balance is {wallet.balance}. Please recharge.")
                 
             # Create transaction and deduct
-            shipment.action_add_wallet_transaction()
+            shipment.sudo().action_add_wallet_transaction()
             # Update state
-            shipment.state = 'pickup_requested'
-            shipment.pickup_requested_on = fields.Datetime.now()
+            shipment.sudo().write({
+                'state': 'pickup_requested',
+                'pickup_requested_on': fields.Datetime.now()
+            })
             
             request.session['success'] = f"Pickup requested successfully for {shipment.name}. {shipment.delivery_charges_total} deducted from wallet."
         except Exception as e:

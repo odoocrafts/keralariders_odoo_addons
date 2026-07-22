@@ -169,7 +169,7 @@ class Shipment(models.Model):
             if wallet.balance < self.delivery_charges_total:
                 raise UserError(f'Insufficient balance available in your Wallet. Please recharge before proceeding')
             
-            self.wallet_transaction_id = self.env['logistics.wallet.transaction'].create({
+            self.wallet_transaction_id = self.env['logistics.wallet.transaction'].sudo().create({
                 'wallet_id': wallet.id,
                 'amount': -self.delivery_charges_total,
                 'transaction_date': fields.Date.context_today(self),
