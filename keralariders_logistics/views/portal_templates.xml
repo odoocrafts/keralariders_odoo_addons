@@ -448,44 +448,54 @@
     <!-- Seller Signup Page -->
     <template id="seller_signup_page" name="Seller Signup">
         <t t-call="web.login_layout">
-            <div class="card shadow-sm p-4">
-                <div class="text-center mb-4">
-                    <h3>Register as a Seller</h3>
-                    <p class="text-muted">Start managing your logistics with us</p>
+            <div class="card shadow-lg border-0 rounded-4 overflow-hidden mt-3">
+                <div class="bg-primary text-white text-center p-4">
+                    <i class="fa fa-truck fa-3x mb-3"/>
+                    <h3 class="fw-bold mb-0">Register as a Seller</h3>
+                    <p class="text-white-50 mb-0">Join our logistics network</p>
                 </div>
                 
-                <t t-if="error">
-                    <div class="alert alert-danger" role="alert"><t t-esc="error"/></div>
-                </t>
-                
-                <form action="/seller/signup/submit" method="post" class="oe_signup_form">
-                    <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                <div class="p-4 p-md-5">
+                    <t t-if="error">
+                        <div class="alert alert-danger d-flex align-items-center mb-4" role="alert">
+                            <i class="fa fa-exclamation-triangle me-2"/>
+                            <div><t t-esc="error"/></div>
+                        </div>
+                    </t>
                     
-                    <div class="mb-3">
-                        <label for="name" class="form-label">Full Name / Company Name</label>
-                        <input type="text" name="name" id="name" class="form-control" required="required"/>
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label for="email" class="form-label">Email Address (Login)</label>
-                        <input type="email" name="email" id="email" class="form-control" required="required"/>
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label for="phone" class="form-label">Phone Number</label>
-                        <input type="tel" name="phone" id="phone" class="form-control" required="required"/>
-                    </div>
-                    
-                    <div class="mb-4">
-                        <label for="password" class="form-label">Password</label>
-                        <input type="password" name="password" id="password" class="form-control" required="required"/>
-                    </div>
-                    
-                    <div class="d-grid gap-2">
-                        <button type="submit" class="btn btn-primary btn-lg">Sign Up</button>
-                        <a href="/web/login" class="btn btn-link text-center">Already have an account? Log in</a>
-                    </div>
-                </form>
+                    <form action="/seller/signup/submit" method="post" class="oe_signup_form">
+                        <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                        
+                        <div class="form-floating mb-3">
+                            <input type="text" name="name" id="name" class="form-control" placeholder="Company Name" required="required"/>
+                            <label for="name" class="text-muted"><i class="fa fa-building me-1"/> Full Name / Company Name</label>
+                        </div>
+                        
+                        <div class="form-floating mb-3">
+                            <input type="email" name="email" id="email" class="form-control" placeholder="Email Address" required="required"/>
+                            <label for="email" class="text-muted"><i class="fa fa-envelope me-1"/> Email Address</label>
+                        </div>
+                        
+                        <div class="form-floating mb-3">
+                            <input type="tel" name="phone" id="phone" class="form-control" placeholder="Phone Number" required="required"/>
+                            <label for="phone" class="text-muted"><i class="fa fa-phone me-1"/> Phone Number</label>
+                        </div>
+                        
+                        <div class="form-floating mb-4">
+                            <input type="password" name="password" id="password" class="form-control" placeholder="Password" required="required"/>
+                            <label for="password" class="text-muted"><i class="fa fa-lock me-1"/> Password</label>
+                        </div>
+                        
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-primary btn-lg rounded-pill fw-bold shadow-sm">
+                                Create Account
+                            </button>
+                            <a href="/web/login" class="btn btn-link text-decoration-none mt-2 text-muted">
+                                Already have an account? <span class="fw-bold text-primary">Log in here</span>
+                            </a>
+                        </div>
+                    </form>
+                </div>
             </div>
         </t>
     </template>

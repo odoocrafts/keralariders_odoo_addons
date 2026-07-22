@@ -50,7 +50,7 @@ class SellerSignup(http.Controller):
             })
             
             # Authenticate user manually
-            request.session.authenticate(request.session.db, email, password)
+            request.session.authenticate(email, password)
             
             return request.redirect('/my/home')
             
