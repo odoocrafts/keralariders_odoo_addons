@@ -14,16 +14,15 @@ class LogisticsPortal(CustomerPortal):
         seller = request.env['logistics.seller'].sudo().search([('partner_id', '=', partner.id)], limit=1)
         
         if seller:
-            if 'shipment_count' in counters:
-                shipment_count = request.env['logistics.shipment'].search_count([('seller_id', '=', seller.id)])
-                values['shipment_count'] = shipment_count
-            if 'wallet_balance' in counters:
-                wallet = request.env['logistics.wallet'].search([('seller_id', '=', seller.id)], limit=1)
-                if wallet:
-                    symbol = wallet.currency_id.symbol or '₹'
-                    values['wallet_balance'] = f"{symbol} {wallet.balance:,.2f}"
-                else:
-                    values['wallet_balance'] = "0.00"
+            shipment_count = request.env['logistics.shipment'].search_count([('seller_id', '=', seller.id)])
+            values['shipment_count'] = shipment_count
+            
+            wallet = request.env['logistics.wallet'].search([('seller_id', '=', seller.id)], limit=1)
+            if wallet:
+                symbol = wallet.currency_id.symbol or '₹'
+                values['wallet_balance'] = f"{symbol} {wallet.balance:,.2f}"
+            else:
+                values['wallet_balance'] = "0.00"
         
         return values
         
