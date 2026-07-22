@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="res_config_settings_view_form" model="ir.ui.view">
+        <field name="name">res.config.settings.view.form.inherit.keralariders_logistics</field>
+        <field name="model">res.config.settings</field>
+        <field name="priority" eval="100"/>
+        <field name="inherit_id" ref="base.res_config_settings_view_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//form" position="inside">
+                <app data-string="Logistics" string="Logistics" name="keralariders_logistics" groups="base.group_user">
+                    <block title="Payment Settings" name="payment_settings_setting_container">
+                        <setting id="logistics_upi" string="Logistics UPI ID" help="UPI ID for seller wallet recharges">
+                            <field name="logistics_upi_id"/>
+                        </setting>
+                    </block>
+                </app>
+            </xpath>
+        </field>
+    </record>
+
+    <record id="action_logistics_config_settings" model="ir.actions.act_window">
+        <field name="name">Settings</field>
+        <field name="type">ir.actions.act_window</field>
+        <field name="res_model">res.config.settings</field>
+        <field name="view_mode">form</field>
+        <field name="target">inline</field>
+        <field name="context">{'module' : 'keralariders_logistics', 'bin_size': False}</field>
+    </record>
+
+    <menuitem id="menu_logistics_config_settings" name="Settings" parent="keralariders_logistics.menu_logistics_root"
+        sequence="100" action="action_logistics_config_settings" groups="base.group_system"/>
+</odoo>

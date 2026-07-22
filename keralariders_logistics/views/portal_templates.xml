@@ -151,6 +151,35 @@
         </t>
     </template>
 
+    <!-- Recharge QR Payment Page -->
+    <template id="portal_my_wallet_recharge_pay" name="Recharge Payment">
+        <t t-call="portal.portal_layout">
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-white py-3">
+                    <h4 class="mb-0">Scan and Pay</h4>
+                </div>
+                <div class="card-body text-center p-5">
+                    <h5 class="mb-4">Scan the QR code below using any UPI app to pay ₹<span t-esc="amount"/></h5>
+                    
+                    <div class="mb-4">
+                        <img t-att-src="qr_url" alt="UPI QR Code" style="max-width: 250px; border: 1px solid #ddd; border-radius: 10px; padding: 10px;"/>
+                    </div>
+                    
+                    <p class="text-muted mb-4">
+                        Once you have successfully completed the payment on your UPI app, click the button below to confirm.
+                    </p>
+                    
+                    <form action="/my/wallet/recharge/confirm" method="post" class="d-inline-block">
+                        <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                        <input type="hidden" name="amount" t-att-value="amount"/>
+                        <a href="/my/wallet" class="btn btn-outline-secondary me-2">Cancel</a>
+                        <button type="submit" class="btn btn-primary">I Have Paid</button>
+                    </form>
+                </div>
+            </div>
+        </t>
+    </template>
+
     <!-- Shipments List -->
     <template id="portal_my_shipments" name="My Shipments">
         <t t-call="portal.portal_layout">

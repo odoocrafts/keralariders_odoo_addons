@@ -82,11 +82,40 @@ class LogisticsPortal(CustomerPortal):
             wallet = request.env['logistics.wallet'].search([('seller_id', '=', seller.id)], limit=1)
             amount = float(post.get('amount', 0))
             if amount > 0 and wallet:
+                upi_id = request.env.company.logistics_upi_id
+                if not upi_id:
+                    request.session['error'] = "UPI recharge is not configured. Please contact the administrator."
+                    return request.redirect('/my/wallet')
+                
+                # Construct UPI URI
+                import urllib.parse
+                company_name = urllib.parse.quote_plus(request.env.company.name)
+                upi_uri = f"upi://pay?pa={upi_id}&pn={company_name}&am={amount:.2f}&cu=INR"
+                encoded_uri = urllib.parse.quote_plus(upi_uri)
+                qr_url = f"/report/barcode/?type=QR&value={encoded_uri}&width=250&height=250"
+                
+                return request.render("keralariders_logistics.portal_my_wallet_recharge_pay", {
+                    'amount': amount,
+                    'qr_url': qr_url,
+                    'wallet': wallet,
+                    'page_name': 'wallet',
+                })
+        return request.redirect('/my/wallet')
+
+    @http.route(['/my/wallet/recharge/confirm'], type='http', auth="user", website=True, methods=['POST'])
+    def portal_my_wallet_recharge_confirm(self, **post):
+        partner = request.env.user.partner_id
+        seller = request.env['logistics.seller'].search([('partner_id', '=', partner.id)], limit=1)
+        if seller:
+            wallet = request.env['logistics.wallet'].search([('seller_id', '=', seller.id)], limit=1)
+            amount = float(post.get('amount', 0))
+            if amount > 0 and wallet:
                 request.env['logistics.wallet.recharge.request'].create({
                     'seller_id': seller.id,
                     'wallet_id': wallet.id,
                     'requested_amount': amount,
                 })
+                request.session['success'] = "Your transaction will be manually verified from the backend. Please wait for verification."
         return request.redirect('/my/wallet')
 
     @http.route(['/my/shipments', '/my/shipments/page/<int:page>'], type='http', auth="user", website=True)
