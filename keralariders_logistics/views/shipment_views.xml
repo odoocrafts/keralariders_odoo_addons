@@ -75,8 +75,8 @@
                             <field name="order_date"/>
                             <field name="order_payment_type"/>
                             <!-- <field name="cod_amount" invisible="order_payment_type != 'cod'"/> -->
-                            <label for="cod_amount"/>
-                            <div class="d-flex align-items-center">
+                            <label for="cod_amount" invisible="order_payment_type != 'cod'"/>
+                            <div class="d-flex align-items-center" invisible="order_payment_type != 'cod'">
                                 <field name="cod_amount"
                                     class="oe_inline me-2"
                                     force_save="1"/>

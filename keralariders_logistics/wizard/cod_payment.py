@@ -24,7 +24,8 @@ class CODPaymentWizard(models.TransientModel):
             'amount': self.amount,
             'reference': self.reference,
             'related_seller_id': self.seller_id.id,
-            'shipment_id': self.shipment_id.id
+            'shipment_id': self.shipment_id.id,
+            'transfer_type': 'cod_payment',
         })
         self.shipment_id.cod_payment_transfer_ids = [(4, transfer.id)]
 

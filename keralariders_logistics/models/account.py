@@ -69,9 +69,16 @@ class BankCashAccountTransfer(models.Model):
                 vals['name'] = self.env['ir.sequence'].next_by_code('logistics.account.transfer') or _('New')
         return super(BankCashAccountTransfer, self).create(vals_list)
 
+    transfer_type = fields.Selection(selection=[('cod_payment', 'COD Payment'), ('cod_clearance', 'COD Clearance'), ('other', 'Other')], default='other', string="Transfer Type")
     from_account_id = fields.Many2one('logistics.account', string="From Account", required=True)
     to_account_id = fields.Many2one('logistics.account', string="To Account", required=True)
-    amount = fields.Monetary(string='Amount', required=True, currency_field='currency_id')
+    amount = fields.Monetary(string='Amount', required=True, currency_field='currency_id',)
+
+    # Compute amount when adding payment transfers to clear (Applicable when transfer_type = 'cod_clearance')
+    @api.onchange('cod_clearance_payment_transfer_ids')
+    def _onchange_cod_clearance_payment_transfer_ids(self):
+        if self.transfer_type == 'cod_clearance':
+            self.amount = sum(self.cod_clearance_payment_transfer_ids.mapped('amount'))
 
     @api.onchange('amount')
     def _onchange_amount(self):
@@ -81,6 +88,11 @@ class BankCashAccountTransfer(models.Model):
     transfer_date = fields.Date(string='Transfer Date', default=fields.Date.context_today, required=True)
     description = fields.Text(string='Description')
     reference = fields.Text(string='Transfer Reference')
+    @api.onchange('transfer_type')
+    def _onchange_transfer_type(self):
+        if self.transfer_type == 'cod_clearance':
+            self.reference = 'COD Clearance'
+            
     currency_id = fields.Many2one('res.currency', string='Currency', default=lambda self: self.env.company.currency_id.id)
     shipment_id = fields.Many2one('logistics.shipment', string="Related Shipment", ondelete="cascade")
     transaction_ids = fields.One2many('logistics.account.transaction', 'transfer_id', string="Transactions", compute="_compute_transaction_ids", store=True)
@@ -101,6 +113,31 @@ class BankCashAccountTransfer(models.Model):
                 rec.transaction_ids = [(0, 0, debit_values), (0, 0, credit_values)]
 
     related_seller_id = fields.Many2one('logistics.seller', string="Related Seller")
+
+    cod_clearance_transfer_id = fields.Many2one('logistics.account.transfer', string="Clearance Transfer")
+    cod_clearance_payment_transfer_ids = fields.Many2many(
+        'logistics.account.transfer',
+        'logistics_account_transfer_clearance_rel',  # relation table
+        'clearance_id',                              # current model FK
+        'payment_transfer_id',                       # related model FK
+        string="Cleared COD Payments",
+    )
+
+    def write(self, vals):
+        for rec in self:
+            if rec.transfer_type == 'cod_clearance' and 'cod_clearance_payment_transfer_ids' in vals:
+                old_cod_clearance_payment_transfer_ids = rec.cod_clearance_payment_transfer_ids
+                super(BankCashAccountTransfer, rec).write(vals)
+                new_cod_clearance_payment_transfer_ids = rec.cod_clearance_payment_transfer_ids
+                if old_cod_clearance_payment_transfer_ids.ids != new_cod_clearance_payment_transfer_ids.ids:
+                    for transfer_id in old_cod_clearance_payment_transfer_ids:
+                        transfer_id.cod_clearance_transfer_id = False
+                    for transfer_id in new_cod_clearance_payment_transfer_ids:
+                        transfer_id.cod_clearance_transfer_id = rec.id
+            else:
+                super(BankCashAccountTransfer, rec).write(vals)
+        return True
+
 
 class BankCashAccountTransaction(models.Model):
     _name = "logistics.account.transaction"

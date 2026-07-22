@@ -89,13 +89,17 @@
                     </div>
                     <group>
                         <group>
+
+                            <field name="id" invisible="1"/>
                             <field name="transfer_date"/>
+                            <field name="transfer_type" readonly="1" force_save="1"/>
                             <field name="from_account_id"/>
                             <field name="to_account_id"/>
                             <field name="amount" string="Amount" sum="Amount"/>
                             <field name="reference"/>
                             <field name="related_seller_id"/>
                             <field name="shipment_id"/>
+                            <field name="cod_clearance_transfer_id" invisible="not cod_clearance_transfer_id" readonly="1" force_save="1"/>
                             <field name="currency_id" invisible="1"/>
                         </group>
                     </group>
@@ -103,6 +107,9 @@
                         <page string="Transactions">
                             <field name="transaction_ids" force_save="1">
                             </field>
+                        </page>
+                        <page string="Cleared COD Transfers" invisible='transfer_type != "cod_clearance"'>
+                            <field name="cod_clearance_payment_transfer_ids" force_save="1" domain="[('cod_clearance_transfer_id', '=', False), ('id', '!=', id), ('transfer_type', '=', 'cod_payment'), ('to_account_id', '=', from_account_id)]"></field>
                         </page>
                     </notebook>
                 </sheet>
@@ -135,11 +142,33 @@
     </record>
 
 
-    <record id="action_logistics_account_transfer" model="ir.actions.act_window">
-        <field name="name">Account Transfers</field>
+    <record id="action_logistics_account_transfer_cod_payment" model="ir.actions.act_window">
+        <field name="name">COD Payment Transfers</field>
         <field name="res_model">logistics.account.transfer</field>
         <field name="view_mode">list,form</field>
         <field name="view_id" ref="view_logistics_account_transfer_tree"/>
+        <field name="domain">[('transfer_type', '=', 'cod_payment')]</field>
+        <field name="context">{'default_transfer_type': 'cod_payment'}</field>
+        <!-- <field name="search_view_id" ref="view_logistics_account_transaction_search"/> -->
+    </record>
+
+    <record id="action_logistics_account_transfer_cod_clearance" model="ir.actions.act_window">
+        <field name="name">COD Clearance Transfers</field>
+        <field name="res_model">logistics.account.transfer</field>
+        <field name="view_mode">list,form</field>
+        <field name="view_id" ref="view_logistics_account_transfer_tree"/>
+        <field name="domain">[('transfer_type', '=', 'cod_clearance')]</field>
+        <field name="context">{'default_transfer_type': 'cod_clearance'}</field>
+        <!-- <field name="search_view_id" ref="view_logistics_account_transaction_search"/> -->
+    </record>
+
+    <record id="action_logistics_account_transfer_other" model="ir.actions.act_window">
+        <field name="name">Other Transfers</field>
+        <field name="res_model">logistics.account.transfer</field>
+        <field name="view_mode">list,form</field>
+        <field name="view_id" ref="view_logistics_account_transfer_tree"/>
+        <field name="domain">[('transfer_type', '=', 'other')]</field>
+        <field name="context">{'default_transfer_type': 'other'}</field>
         <!-- <field name="search_view_id" ref="view_logistics_account_transaction_search"/> -->
     </record>
 
@@ -163,14 +192,31 @@
                 action="action_logistics_account"
                 sequence="10"
     />
-    <menuitem id="menu_logistics_account_transfer"
+    <menuitem id="menu_logistics_account_transfers"
                 name="Transfers"
-                parent="menu_logistics_account"
-                action="action_logistics_account_transfer"
+                parent="menu_logistics_root"
+                sequence="60"
+    />
+    <menuitem id="menu_logistics_account_transfer_cod_payment"
+                name="COD Payment Transfers"
+                parent="menu_logistics_account_transfers"
+                sequence="10"
+                action="action_logistics_account_transfer_cod_payment"
+    />
+    <menuitem id="menu_logistics_account_transfer_cod_clearance"
+                name="COD Clearance Transfers"
+                parent="menu_logistics_account_transfers"
                 sequence="20"
+                action="action_logistics_account_transfer_cod_clearance"
+    />
+    <menuitem id="menu_logistics_account_transfer_other"
+                name="Other Transfers"
+                parent="menu_logistics_account_transfers"
+                sequence="30"
+                action="action_logistics_account_transfer_other"
     />
     <menuitem id="menu_logistics_account_transaction"
-                name="Transactions"
+                name="All Transactions"
                 parent="menu_logistics_account"
                 action="action_logistics_account_transaction"
                 sequence="30"
