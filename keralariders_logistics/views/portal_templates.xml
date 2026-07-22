@@ -448,7 +448,7 @@
     <!-- Seller Signup Page -->
     <!-- Seller Signup Page -->
     <template id="seller_signup_page" name="Seller Signup">
-        <t t-call="website.layout">
+        <t t-call="portal.frontend_layout">
             <div id="wrap" class="oe_structure oe_empty">
                 <section class="s_cover pt96 pb96" data-snippet="s_cover" data-name="Cover" style="background-color: #f8f9fa;">
                     <div class="container">
