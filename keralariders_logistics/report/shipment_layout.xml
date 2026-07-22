@@ -40,7 +40,7 @@
                             <tr>
                                 <td colspan="2" style="border: 2px solid black; padding: 20px; text-align: center;">
                                     <div style="margin: 0 auto; display: inline-block;">
-                                        <img t-att-src="'/report/barcode/QR/?value=%s&amp;width=150&amp;height=150' % o.tracking_url" style="width: 150px; height: 150px;" alt="QR Code"/>
+                                        <span t-field="o.tracking_url" t-options="{'widget': 'barcode', 'symbology': 'QR', 'width': 150, 'height': 150, 'img_style': 'width: 150px; height: 150px; margin: 0 auto; display: block;'}"/>
                                     </div>
                                     <h2 style="margin: 10px 0 0 0; font-size: 24px; font-weight: 900; letter-spacing: 2px;">
                                         AWB: <span t-field="o.name"/>
