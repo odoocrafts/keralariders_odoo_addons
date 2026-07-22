@@ -87,12 +87,10 @@ class LogisticsPortal(CustomerPortal):
                     request.session['error'] = "UPI recharge is not configured. Please contact the administrator."
                     return request.redirect('/my/wallet')
                 
-                # Construct UPI URI
+                # Construct upiqr.com URL as requested by the user
                 import urllib.parse
                 company_name = urllib.parse.quote_plus(request.env.company.name)
-                upi_uri = f"upi://pay?pa={upi_id}&pn={company_name}&am={amount:.2f}&cu=INR"
-                encoded_uri = urllib.parse.quote_plus(upi_uri)
-                qr_url = f"/report/barcode/?type=QR&value={encoded_uri}&width=250&height=250"
+                qr_url = f"https://www.upiqr.com/upiqrapi?apikey=apikey&paymode=vpa&vpa={upi_id}&payee={company_name}&amount={amount:.2f}&size=250"
                 
                 return request.render("keralariders_logistics.portal_my_wallet_recharge_pay", {
                     'amount': amount,
