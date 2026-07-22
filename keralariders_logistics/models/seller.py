@@ -67,19 +67,45 @@ class Seller(models.Model):
 
     def action_grant_portal_access(self):
         self.ensure_one()
-        if not self.partner_id:
-            from odoo.exceptions import UserError
-            raise UserError("Seller must have a related partner to grant portal access.")
+        from odoo.exceptions import UserError
         
+        if not self.partner_id:
+            raise UserError("Seller must have a related partner to grant portal access.")
+            
+        if not self.partner_id.email:
+            raise UserError("Seller must have an email address to grant portal access.")
+            
+        portal_group = self.env.ref('base.group_portal')
+        user = self.env['res.users'].sudo().search([('partner_id', '=', self.partner_id.id)], limit=1)
+        
+        if not user:
+            # Check if login already exists
+            if self.env['res.users'].sudo().search([('login', '=', self.partner_id.email)]):
+                raise UserError("A user with this email already exists.")
+                
+            user = self.env['res.users'].sudo().create({
+                'name': self.partner_id.name,
+                'login': self.partner_id.email,
+                'partner_id': self.partner_id.id,
+                'groups_id': [(4, portal_group.id)]
+            })
+            user.action_reset_password()
+            message = "Portal access granted and invitation email sent!"
+        else:
+            if portal_group not in user.groups_id:
+                user.sudo().write({'groups_id': [(4, portal_group.id)]})
+                message = "Portal access granted!"
+            else:
+                message = "Seller already has portal access."
+                
         return {
-            'name': 'Grant Portal Access',
-            'type': 'ir.actions.act_window',
-            'res_model': 'portal.wizard',
-            'view_mode': 'form',
-            'target': 'new',
-            'context': {
-                'active_ids': [self.partner_id.id],
-                'active_model': 'res.partner',
+            'type': 'ir.actions.client',
+            'tag': 'display_notification',
+            'params': {
+                'title': 'Portal Access',
+                'message': message,
+                'type': 'success',
+                'sticky': False,
             }
         }
     
