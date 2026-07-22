@@ -35,6 +35,8 @@ Features:
         'views/delivery_executive_views.xml',
         'views/shipment_views.xml',
         'views/delivery_charges_views.xml',
+        "views/account_views.xml",
+        "wizard/cod_payment_views.xml",
         'views/res_config_settings_views.xml',
         'views/tracking_template.xml',
         'views/portal_templates.xml',

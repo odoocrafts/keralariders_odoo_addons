@@ -143,6 +143,8 @@ class Shipment(models.Model):
     @api.onchange('order_payment_type')
     def _onchange_order_payment_type(self):
         if self.order_payment_type == 'prepaid':
+            if self.cod_payment_transfer_ids:
+                raise UserError("Payment method cannot be changed for orders with existing COD Payment Transfers. Please delete all the related Transfers before changing payment type.")
             self.cod_amount = 0.0
         elif self.order_payment_type == 'cod':
             self.cod_amount = self.total_order_value
@@ -191,4 +193,53 @@ class Shipment(models.Model):
                 'view_mode': 'list',
                 'domain': [('id', '=', self.wallet_transaction_id.id)],
                 'context': {'default_wallet_id': self.wallet_transaction_id.wallet_id.id},
+            }
+
+    cod_payment_transfer_ids = fields.Many2many("logistics.account.transfer", string="COD Payment Transfers")
+    cod_paid_amount = fields.Monetary(string="COD Paid Amount", compute="_compute_cod_paid_balance_amount", store=True)
+    cod_balance_amount = fields.Monetary(string="COD Balance Amount", compute="_compute_cod_paid_balance_amount", store=True)
+
+    @api.depends('cod_payment_transfer_ids', 'cod_payment_transfer_ids.amount', 'cod_amount')
+    def _compute_cod_paid_balance_amount(self):
+        for rec in self:
+            rec.cod_paid_amount = sum(rec.cod_payment_transfer_ids.mapped('amount'))
+            rec.cod_balance_amount = rec.cod_amount - rec.cod_paid_amount
+
+    def action_add_cod_payment_transfer(self):
+        self.ensure_one()
+        from_account = self.env['logistics.account'].search([('account_type', 'in', ('cod_customer'))], limit=1)
+        if not from_account:
+            raise UserError(f'No COD Customer Account found! Please create atleast on account of type COD Customer Account before proceeding.')
+        to_account = self.env['logistics.account'].search([('account_type', 'in', ('bank', 'cash'))], limit=1)
+        if not to_account:
+            raise UserError(f'No Bank or Cash account found! Please create atleast one Bank or Cash account before proceeding.')
+        from_account = from_account[0]
+        to_account = to_account[0]
+        return {
+            'name': 'COD Payment Wizard',
+            'type': 'ir.actions.act_window',
+            'res_model': 'logistics.cod.payment.wizard',
+            'view_mode': 'form',
+            'context': {
+                'default_shipment_id': self.id,
+                'default_amount': self.cod_balance_amount,
+                'default_from_account_id': from_account.id,
+                'default_to_account_id': to_account.id,
+                'default_reference':  f'COD Payment for {self.name}',
+                'default_seller_id': self.seller_id.id,
+
+            },
+            'target': 'new',
+        }
+
+    def action_view_cod_payment_transfers(self):
+        self.ensure_one()
+        if self.cod_payment_transfer_ids:
+            return {
+                'name': 'COD Account Transfers',
+                'type': 'ir.actions.act_window',
+                'res_model': 'logistics.account.transfer',
+                'view_mode': 'list,form',
+                'domain': [('id', 'in', self.cod_payment_transfer_ids.ids)],
+                'context': {"create": 0, "no_create": 1},
             }

@@ -42,10 +42,12 @@
                     decoration-danger="state in ('cancelled', 'cancel')"
                     width="100"
                 />                
-                <field name="cod_amount" string="COD Amount" width="100" sum="COD Amount" invisible="order_payment_type != 'cod'"/>
+                <field name="cod_amount" string="COD Amount" width="100" sum="COD Amount" invisible="order_payment_type != 'cod'" options="{'fg_color': 'brown: cod_balance_amount > 0; green: cod_balance_amount &lt;=0 ;'}"/>
+                <field name="cod_balance_amount" string="COD Balance Amount" optional="hide" width="100" sum="COD Amount" invisible="order_payment_type != 'cod'"/>
                 <field name="estimated_delivery_date" string="Est. Del Date" width="100"/>
-                <field name="delivery_charges_total" string="Delivery Charge" width="100" sum="Delivery Charges"/>
+                <field name="delivery_charges_total" string="Delivery Charge" width="100" sum="Delivery Charges" options="{'fg_color': 'brown: not wallet_transaction_id; green: wallet_transaction_id;'}"/>
                 <field name="currency_id" column_invisible="1"/>
+                <field name="wallet_transaction_id" column_invisible="1"/>
                 <button name="%(keralariders_logistics.action_report_shipment)d" class="oe_highlight" string="Print AWB" type="action" icon="fa-print" width="100"/>
             </list>
         </field>
@@ -73,7 +75,32 @@
                             <field name="delivery_executive_id"/>
                             <field name="order_date"/>
                             <field name="order_payment_type"/>
-                            <field name="cod_amount" invisible="order_payment_type != 'cod'"/>
+                            <!-- <field name="cod_amount" invisible="order_payment_type != 'cod'"/> -->
+                            <label for="cod_amount" invisible="order_payment_type != 'cod'"/>
+                            <div class="d-flex align-items-center" invisible="order_payment_type != 'cod'">
+                                <field name="cod_amount"
+                                    class="oe_inline me-2"
+                                    force_save="1"/>
+
+                                <i class="fa fa-check-circle text-success me-2"
+                                invisible="cod_balance_amount > 0"/>
+
+                                <button name="action_add_cod_payment_transfer"
+                                        type="object"
+                                        class="btn btn-info btn-sm me-1"
+                                        icon="fa-credit-card"
+                                        string="Add Payment"
+                                        invisible="cod_balance_amount &lt;= 0"/>
+                                <button name="action_view_cod_payment_transfers"
+                                        type="object"
+                                        class="btn btn-primary btn-sm"
+                                        icon="fa-eye"
+                                        string="View Transfers"
+                                        invisible="not cod_payment_transfer_ids"/>
+                            </div>
+                            <field name="cod_paid_amount" invisible="order_payment_type != 'cod'" readonly="1" force_save="1"/>
+                            <field name="cod_balance_amount" invisible="order_payment_type != 'cod'" readonly="1" force_save="1"/>
+                            <field name="cod_payment_transfer_ids" widget="many2many_tags" invisible="1"/>
                             <field name="tracking_url" widget="url"/>
 
                         </group>
