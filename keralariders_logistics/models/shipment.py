@@ -122,7 +122,7 @@ class Shipment(models.Model):
     estimated_delivery_date = fields.Date(string='Estimated Delivery Date')
     actual_delivery_date = fields.Date(string='Actual Delivery Date')
 
-    order_payment_type = fields.Selection([('prepaid', 'Prepaid'), ('cod', 'Cash on Delivery'), ('na', 'Not Applicable')], string='Order Payment Type', required=True, default='prepaid')
+    order_payment_type = fields.Selection([('prepaid', 'Prepaid'), ('cod', 'COD'), ('na', 'Not Applicable')], string='Order Payment Type', required=True, default='prepaid')
 
     delivery_charges_subtotal = fields.Monetary(string='Delivery Charges (Subtotal)', currency_field='currency_id', compute='_compute_delivery_charges', store=True, readonly=False)
     @api.depends('total_weight', 'shipping_from_district_id', 'shipping_to_district_id', 'tax_percentage')
