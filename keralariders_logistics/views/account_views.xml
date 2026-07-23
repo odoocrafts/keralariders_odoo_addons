@@ -14,6 +14,60 @@
         </field>
     </record>
 
+    <record id="view_logistics_account_search" model="ir.ui.view">
+        <field name="name">logistics.account.search</field>
+        <field name="model">logistics.account</field>
+        <field name="arch" type="xml">
+            <search string="Search Accounts">
+
+                <!-- Global Search -->
+                <field name="name"
+                    string="Account"
+                    filter_domain="[
+                        '|',
+                        ('name', 'ilike', self),
+                        ('reference', 'ilike', self)
+                    ]"/>
+
+                <separator/>
+
+                <!-- Account Type -->
+                <filter name="bank"
+                        string="Bank Accounts"
+                        domain="[('account_type', '=', 'bank')]"/>
+
+                <filter name="cash"
+                        string="Cash Accounts"
+                        domain="[('account_type', '=', 'cash')]"/>
+
+                <filter name="cod_customer"
+                        string="COD Customer Accounts"
+                        domain="[('account_type', '=', 'cod_customer')]"/>
+
+                <filter name="seller"
+                        string="Seller Accounts"
+                        domain="[('account_type', '=', 'seller')]"/>
+
+                <separator/>
+
+                <!-- Related Records -->
+                <filter name="has_transactions"
+                        string="Has Transactions"
+                        domain="[('transaction_ids', '!=', False)]"/>
+
+                <!-- Group By -->
+                <group>
+
+                    <filter string="Account Type"
+                            name="group_account_type"
+                            context="{'group_by': 'account_type'}"/>
+
+                </group>
+
+            </search>
+        </field>
+    </record>
+
     <record id="view_logistics_account_form" model="ir.ui.view">
         <field name="name">logistics.account.form</field>
         <field name="model">logistics.account</field>
@@ -121,6 +175,155 @@
         </field>
     </record>
 
+    <record id="view_logistics_account_transfer_search" model="ir.ui.view">
+        <field name="name">logistics.account.transfer.search</field>
+        <field name="model">logistics.account.transfer</field>
+        <field name="arch" type="xml">
+            <search string="Search Account Transfers">
+
+                <!-- Global Search -->
+                <field name="name"
+                    string="Search"
+                    filter_domain="[
+                        '|','|','|','|','|',
+                        ('name', 'ilike', self),
+                        ('reference', 'ilike', self),
+                        ('description', 'ilike', self),
+                        ('from_account_id.name', 'ilike', self),
+                        ('to_account_id.name', 'ilike', self),
+                        ('related_seller_id.name', 'ilike', self)
+                    ]"/>
+
+                <field name="from_account_id"/>
+                <field name="to_account_id"/>
+                <field name="related_seller_id"/>
+                <field name="shipment_id"/>
+                <field name="transfer_date"/>
+
+                <separator/>
+
+                <!-- Related Records -->
+
+                <separator/>
+
+                <!-- Date -->
+                <filter name="today"
+                        string="Today"
+                        domain="[('transfer_date', '=', context_today())]"/>
+
+                <filter name="month"
+                        string="Month"
+                        date="transfer_date"/>
+
+                <separator/>
+
+                <!-- Group By -->
+                <group>
+
+                    <filter string="Transfer Type"
+                            name="group_transfer_type"
+                            context="{'group_by': 'transfer_type'}"/>
+
+                    <filter string="From Account"
+                            name="group_from_account"
+                            context="{'group_by': 'from_account_id'}"/>
+
+                    <filter string="To Account"
+                            name="group_to_account"
+                            context="{'group_by': 'to_account_id'}"/>
+
+                    <filter string="Related Seller"
+                            name="group_seller"
+                            context="{'group_by': 'related_seller_id'}"/>
+
+                    <filter string="Transfer Date"
+                            name="group_transfer_date"
+                            context="{'group_by': 'transfer_date'}"/>
+
+                </group>
+
+            </search>
+        </field>
+    </record>
+
+    <!-- Search View for COD Payment Transfers Only -->
+    <record id="view_logistics_account_transfer_cod_payment_search" model="ir.ui.view">
+        <field name="name">logistics.account.transfer.cod.payment.search</field>
+        <field name="model">logistics.account.transfer</field>
+        <field name="arch" type="xml">
+            <search string="Search COD Payment Transfers">
+
+                <!-- Global Search -->
+                <field name="name"
+                    string="Search"
+                    filter_domain="[
+                        '|','|','|','|','|',
+                        ('name', 'ilike', self),
+                        ('reference', 'ilike', self),
+                        ('description', 'ilike', self),
+                        ('from_account_id.name', 'ilike', self),
+                        ('to_account_id.name', 'ilike', self),
+                        ('related_seller_id.name', 'ilike', self)
+                    ]"/>
+
+                <field name="from_account_id"/>
+                <field name="to_account_id"/>
+                <field name="related_seller_id"/>
+                <field name="shipment_id"/>
+
+                <separator/>
+
+                <!-- Related Records -->
+
+                <filter name="cleared"
+                        string="Cleared"
+                        domain="[('cod_clearance_transfer_id', '!=', False)]"/>
+
+                <filter name="not_cleared"
+                        string="Not Cleared"
+                        domain="[('cod_clearance_transfer_id', '=', False)]"/>
+
+                <separator/>
+
+                <!-- Date -->
+                <filter name="today"
+                        string="Today"
+                        domain="[('transfer_date', '=', context_today())]"/>
+
+                <filter name="month"
+                        string="Month"
+                        date="transfer_date"/>
+
+                <separator/>
+
+                <!-- Group By -->
+                <group>
+
+                    <filter string="From Account"
+                            name="group_from_account"
+                            context="{'group_by': 'from_account_id'}"/>
+
+                    <filter string="To Account"
+                            name="group_to_account"
+                            context="{'group_by': 'to_account_id'}"/>
+
+                    <filter string="Related Seller"
+                            name="group_seller"
+                            context="{'group_by': 'related_seller_id'}"/>
+
+                    <filter string="Related Shipment"
+                            name="group_shipment"
+                            context="{'group_by': 'shipment_id'}"/>
+
+                    <filter string="Transfer Date"
+                            name="group_transfer_date"
+                            context="{'group_by': 'transfer_date'}"/>
+                </group>
+
+            </search>
+        </field>
+    </record>
+
     <record id="view_logistics_account_transaction_tree" model="ir.ui.view">
         <field name="name">logistics.account.transaction.list</field>
         <field name="model">logistics.account.transaction</field>
@@ -134,6 +337,88 @@
                 <field name="currency_id" column_invisible="1"/>
 
             </list>
+        </field>
+    </record>
+
+    <record id="view_logistics_account_transaction_search" model="ir.ui.view">
+        <field name="name">logistics.account.transaction.search</field>
+        <field name="model">logistics.account.transaction</field>
+        <field name="arch" type="xml">
+            <search string="Search Account Transactions">
+
+                <!-- Global Search -->
+                <field name="account_id"
+                    string="Transaction"
+                    filter_domain="[
+                        '|','|','|','|',
+                        ('account_id.name', 'ilike', self),
+                        ('reference', 'ilike', self),
+                        ('description', 'ilike', self),
+                        ('transfer_id.name', 'ilike', self),
+                        ('transfer_id.related_seller_id.name', 'ilike', self)
+                    ]"/>
+
+                <field name="account_id"/>
+                <field name="transfer_id"/>
+                <field name="transaction_date"/>
+
+                <separator/>
+
+                <!-- Transaction Type -->
+                <filter name="credit"
+                        string="Credits"
+                        domain="[('transaction_type', '=', 'credit')]"/>
+
+                <filter name="debit"
+                        string="Debits"
+                        domain="[('transaction_type', '=', 'debit')]"/>
+
+                <separator/>
+
+                <!-- Related Transfer -->
+                <filter name="cod_payment"
+                        string="COD Payments"
+                        domain="[('transfer_id.transfer_type', '=', 'cod_payment')]"/>
+
+                <filter name="cod_clearance"
+                        string="COD Clearances"
+                        domain="[('transfer_id.transfer_type', '=', 'cod_clearance')]"/>
+
+                <filter name="other_transfer"
+                        string="Other Transfers"
+                        domain="[('transfer_id.transfer_type', '=', 'other')]"/>
+
+                <separator/>
+
+                <!-- Date -->
+                <filter name="today"
+                        string="Today"
+                        domain="[('transaction_date', '=', context_today())]"/>
+
+                <filter name="month"
+                        string="Month"
+                        date="transaction_date"/>
+
+                <separator/>
+
+                <!-- Group By -->
+                <group>
+
+                    <filter string="Account"
+                            name="group_account"
+                            context="{'group_by': 'account_id'}"/>
+
+                    <filter string="Transaction Type"
+                            name="group_transaction_type"
+                            context="{'group_by': 'transaction_type'}"/>
+
+                    <filter string="Transaction Date"
+                            name="group_transaction_date"
+                            context="{'group_by': 'transaction_date'}"/>
+
+                </group>
+
+            </search>
         </field>
     </record>
 
@@ -153,7 +438,7 @@
         <field name="view_id" ref="view_logistics_account_transfer_tree"/>
         <field name="domain">[('transfer_type', '=', 'cod_payment')]</field>
         <field name="context">{'default_transfer_type': 'cod_payment'}</field>
-        <!-- <field name="search_view_id" ref="view_logistics_account_transaction_search"/> -->
+        <field name="search_view_id" ref="view_logistics_account_transfer_cod_payment_search"/>
     </record>
 
     <record id="action_logistics_account_transfer_cod_clearance" model="ir.actions.act_window">
@@ -163,7 +448,7 @@
         <field name="view_id" ref="view_logistics_account_transfer_tree"/>
         <field name="domain">[('transfer_type', '=', 'cod_clearance')]</field>
         <field name="context">{'default_transfer_type': 'cod_clearance'}</field>
-        <!-- <field name="search_view_id" ref="view_logistics_account_transaction_search"/> -->
+        <field name="search_view_id" ref="view_logistics_account_transfer_search"/>
     </record>
 
     <record id="action_logistics_account_transfer_other" model="ir.actions.act_window">
@@ -173,7 +458,7 @@
         <field name="view_id" ref="view_logistics_account_transfer_tree"/>
         <field name="domain">[('transfer_type', '=', 'other')]</field>
         <field name="context">{'default_transfer_type': 'other'}</field>
-        <!-- <field name="search_view_id" ref="view_logistics_account_transaction_search"/> -->
+        <field name="search_view_id" ref="view_logistics_account_transfer_search"/>
     </record>
 
 

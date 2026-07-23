@@ -58,10 +58,38 @@
         <field name="name">logistics.wallet.search</field>
         <field name="model">logistics.wallet</field>
         <field name="arch" type="xml">
-            <search string="Wallets">
-                <field name="name"/>
+            <search string="Search Wallets">
+
+                <!-- Global Search -->
+                <field name="name"
+                    string="Wallet"
+                    filter_domain="[
+                        '|',
+                        ('name', 'ilike', self),
+                        ('seller_id.name', 'ilike', self)
+                    ]"/>
+
                 <field name="seller_id"/>
-                <filter name="filter_seller" string="By Seller" domain="[]"/>
+
+                <separator/>
+
+                <!-- Quick Filters -->
+
+                <filter name="has_transactions"
+                        string="Has Transactions"
+                        domain="[('transaction_ids', '!=', False)]"/>
+
+                <separator/>
+
+                <!-- Group By -->
+                <group>
+
+                    <filter string="Seller"
+                            name="group_seller"
+                            context="{'group_by': 'seller_id'}"/>
+
+                </group>
+
             </search>
         </field>
     </record>
@@ -114,12 +142,80 @@
         <field name="name">logistics.wallet.transaction.search</field>
         <field name="model">logistics.wallet.transaction</field>
         <field name="arch" type="xml">
-            <search string="Wallet Transactions">
+            <search string="Search Wallet Transactions">
+
+                <!-- Global Search -->
+                <field name="wallet_id"
+                    string="Search"
+                    filter_domain="[
+                        '|','|','|',
+                        ('wallet_id.name', 'ilike', self),
+                        ('wallet_id.seller_id.name', 'ilike', self),
+                        ('reference', 'ilike', self),
+                        ('description', 'ilike', self)
+                    ]"/>
+
                 <field name="wallet_id"/>
+                <field name="shipment_id"/>
+                <field name="recharge_request_id"/>
                 <field name="transaction_date"/>
-                <field name="transaction_type"/>
-                <filter name="filter_type_credit" string="Credit" domain="[('transaction_type', '=', 'credit')]"/>
-                <filter name="filter_type_debit" string="Debit" domain="[('transaction_type', '=', 'debit')]"/>
+
+                <separator/>
+
+                <!-- Transaction Type -->
+                <filter name="credit"
+                        string="Credits"
+                        domain="[('transaction_type', '=', 'credit')]"/>
+
+                <filter name="debit"
+                        string="Debits"
+                        domain="[('transaction_type', '=', 'debit')]"/>
+
+                <separator/>
+
+                <!-- Related Records -->
+                <filter name="shipment_transactions"
+                        string="Shipment Transactions"
+                        domain="[('shipment_id', '!=', False)]"/>
+
+                <filter name="recharge_transactions"
+                        string="Recharge Transactions"
+                        domain="[('recharge_request_id', '!=', False)]"/>
+
+                <separator/>
+
+                <!-- Date -->
+                <filter name="today"
+                        string="Today"
+                        domain="[('transaction_date', '=', context_today())]"/>
+
+                <filter name="month"
+                        string="Month"
+                        date="transaction_date"/>
+
+                <separator/>
+
+                <!-- Group By -->
+                <group>
+
+                    <filter string="Wallet"
+                            name="group_wallet"
+                            context="{'group_by': 'wallet_id'}"/>
+<!-- 
+                    <filter string="Seller"
+                            name="group_seller"
+                            context="{'group_by': 'wallet_id.seller_id'}"/> -->
+
+                    <filter string="Transaction Type"
+                            name="group_type"
+                            context="{'group_by': 'transaction_type'}"/>
+
+                    <filter string="Transaction Date"
+                            name="group_date"
+                            context="{'group_by': 'transaction_date'}"/>
+
+                </group>
+
             </search>
         </field>
     </record>

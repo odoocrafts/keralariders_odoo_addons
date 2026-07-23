@@ -82,18 +82,82 @@
         <field name="name">logistics.wallet.recharge.request.search</field>
         <field name="model">logistics.wallet.recharge.request</field>
         <field name="arch" type="xml">
-            <search string="Wallet Recharge Requests">
+            <search string="Search Recharge Requests">
+
+                <!-- Global Search -->
+                <field name="name"
+                    string="Search"
+                    filter_domain="[
+                        '|','|','|','|',
+                        ('name', 'ilike', self),
+                        ('seller_id.name', 'ilike', self),
+                        ('wallet_id.name', 'ilike', self),
+                        ('remarks', 'ilike', self),
+                        ('approved_by.name', 'ilike', self)
+                    ]"/>
+
                 <field name="seller_id"/>
                 <field name="wallet_id"/>
                 <field name="approved_by"/>
                 <field name="request_date"/>
-                <filter name="filter_pending" string="Pending Approval" domain="[('approved_date', '=', False)]"/>
-                <filter name="filter_approved" string="Approved" domain="[('approved_date', '!=', False)]"/>
+
+                <separator/>
+
+                <!-- Status -->
+                <filter name="pending"
+                        string="Pending Approval"
+                        domain="[('state', '=', 'pending_approval')]"/>
+
+                <filter name="approved"
+                        string="Approved"
+                        domain="[('state', '=', 'approved')]"/>
+
+                <filter name="cancelled"
+                        string="Cancelled"
+                        domain="[('state', '=', 'cancelled')]"/>
+
+                <separator/>
+
+                <!-- Date Filters -->
+                <filter name="today"
+                        string="Today"
+                        domain="[('request_date', '=', context_today())]"/>
+
+                <filter name="month"
+                        string="Month"
+                        date="request_date"/>
+
+                <separator/>
+
+                <!-- Group By -->
                 <group>
-                    <filter string="Seller" name="group_by_seller" context="{'group_by':'seller_id'}"/>
-                    <filter string="Wallet" name="group_by_wallet" context="{'group_by':'wallet_id'}"/>
-                    <filter string="Request Date" name="group_by_request_date" context="{'group_by':'request_date'}"/>
+
+                    <filter string="Status"
+                            name="group_state"
+                            context="{'group_by': 'state'}"/>
+
+                    <filter string="Seller"
+                            name="group_seller"
+                            context="{'group_by': 'seller_id'}"/>
+
+                    <filter string="Wallet"
+                            name="group_wallet"
+                            context="{'group_by': 'wallet_id'}"/>
+
+                    <filter string="Approved By"
+                            name="group_approved_by"
+                            context="{'group_by': 'approved_by'}"/>
+
+                    <filter string="Request Date"
+                            name="group_request_date"
+                            context="{'group_by': 'request_date'}"/>
+
+                    <filter string="Approved Date"
+                            name="group_approved_date"
+                            context="{'group_by': 'approved_date'}"/>
+
                 </group>
+
             </search>
         </field>
     </record>

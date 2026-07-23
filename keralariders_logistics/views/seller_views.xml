@@ -85,16 +85,45 @@
         <field name="name">logistics.seller.search</field>
         <field name="model">logistics.seller</field>
         <field name="arch" type="xml">
-            <search string="Seller Search">
-                <field name="name"/>
-                <field name="email"/>
-                <field name="phone"/>
-                <field name="city"/>
+            <search string="Search Sellers">
+
+                <!-- Global Search -->
+                <field name="name"
+                    string="Seller"
+                    filter_domain="[
+                        '|','|','|','|','|',
+                        ('name', 'ilike', self),
+                        ('email', 'ilike', self),
+                        ('phone', 'ilike', self),
+                        ('zip', 'ilike', self),
+                        ('tax_id', 'ilike', self),
+                        ('city', 'ilike', self)
+                    ]"/>
+
+                <field name="district_id"/>
                 <field name="state_id"/>
                 <field name="country_id"/>
-                <field name="tax_id"/>
-                <field name="district_id"/>
-                <filter string="With GSTIN" name="with_gstin" domain="[['tax_id','!=',False]]"/>
+
+
+                <separator/>
+
+                <!-- Group By -->
+                <group>
+
+                    <filter string="District"
+                            name="group_district"
+                            context="{'group_by': 'district_id'}"/>
+
+                    <filter string="State"
+                            name="group_state"
+                            context="{'group_by': 'state_id'}"/>
+
+                    <filter string="Country"
+                            name="group_country"
+                            context="{'group_by': 'country_id'}"/>
+
+                </group>
+
             </search>
         </field>
     </record>
