@@ -19,7 +19,7 @@ class Shipment(models.Model):
     _name = 'logistics.shipment'
     _description = 'Shipment'
     _inherit = ['mail.thread', 'mail.activity.mixin']
-    # _order = 'create_date desc'
+    _order = 'create_date desc'
 
     def _compute_display_name(self):
         for rec in self:

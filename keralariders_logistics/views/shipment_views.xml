@@ -1,21 +1,128 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <odoo>
     <!-- Shipment Search View -->
-    <record id="view_shipment_search" model="ir.ui.view">
-        <field name="name">Shipment Search</field>
+    <record id="view_logistics_shipment_search" model="ir.ui.view">
+        <field name="name">logistics.shipment.search</field>
         <field name="model">logistics.shipment</field>
         <field name="arch" type="xml">
-            <search string="Shipment">
-                <field name="name" string="AWB / Reference"/>
+            <search string="Search Shipments">
+
+                <!-- Search -->
+                <field name="name"/>
                 <field name="seller_id"/>
+                <field name="shipping_to_name"/>
+                <field name="shipping_to_mobile"/>
+                <field name="shipping_to_email"/>
                 <field name="delivery_executive_id"/>
-                <field name="order_date"/>
-                <field name="shipping_from_state_id"/>
-                <field name="shipping_to_state_id"/>
-                <field name="order_payment_type"/>
+
                 <separator/>
-                <filter name="prepaid" string="Prepaid" domain="[('order_payment_type', '=', 'prepaid')]"/>
-                <filter name="cod" string="COD" domain="[('order_payment_type', '=', 'cod')]"/>
+
+                <!-- Quick Filters -->
+                <filter name="my_shipments"
+                        string="My Shipments"
+                        domain="[('create_uid', '=', uid)]"/>
+
+                <filter name="wallet_added"
+                        string="Wallet Deducted"
+                        domain="[('wallet_transaction_id', '!=', False)]"/>
+
+                <filter name="cod_orders"
+                        string="COD Orders"
+                        domain="[('order_payment_type', '=', 'cod')]"/>
+
+                <filter name="prepaid_orders"
+                        string="Prepaid Orders"
+                        domain="[('order_payment_type', '=', 'prepaid')]"/>
+
+                <separator/>
+
+                <!-- Delivery Status -->
+                <filter name="order_added"
+                        string="Order Added"
+                        domain="[('state', '=', 'order_added')]"/>
+
+                <filter name="pickup_requested"
+                        string="Pickup Requested"
+                        domain="[('state', '=', 'pickup_requested')]"/>
+
+                <filter name="picked"
+                        string="Picked"
+                        domain="[('state', '=', 'picked')]"/>
+
+                <filter name="in_transit"
+                        string="In Transit"
+                        domain="[('state', '=', 'in_transit')]"/>
+
+                <filter name="delivered"
+                        string="Delivered"
+                        domain="[('state', '=', 'delivered')]"/>
+
+                <filter name="return_requested"
+                        string="Return Requested"
+                        domain="[('state', '=', 'return_requested')]"/>
+
+                <filter name="return_picked"
+                        string="Return Picked"
+                        domain="[('state', '=', 'return_picked')]"/>
+
+                <filter name="returned"
+                        string="Returned"
+                        domain="[('state', '=', 'returned')]"/>
+
+                <filter name="cancelled"
+                        string="Cancelled"
+                        domain="[('state', 'in', ('cancelled', 'cancel'))]"/>
+
+                <separator/>
+
+                <!-- Date Filters -->
+                <filter name="today"
+                        string="Today"
+                        domain="[('order_date', '=', context_today())]"/>
+
+                <filter name="this_week"
+                        string="This Week"
+                        domain="[('order_date', '&gt;=', (context_today() - relativedelta(days=context_today().weekday())).strftime('%%Y-%%m-%%d'))]"/>
+
+                <filter name="this_month"
+                        string="This Month"
+                        date="order_date"/>
+
+                <separator/>
+
+                <!-- Group By -->
+                <group>
+
+                    <filter string="Seller"
+                            name="group_seller"
+                            context="{'group_by':'seller_id'}"/>
+
+                    <filter string="Delivery Executive"
+                            name="group_delivery_executive"
+                            context="{'group_by':'delivery_executive_id'}"/>
+
+                    <filter string="Status"
+                            name="group_state"
+                            context="{'group_by':'state'}"/>
+
+                    <filter string="Payment Type"
+                            name="group_payment"
+                            context="{'group_by':'order_payment_type'}"/>
+
+                    <filter string="Order Date"
+                            name="group_order_date"
+                            context="{'group_by':'order_date'}"/>
+
+                    <filter string="From District"
+                            name="group_from_district"
+                            context="{'group_by':'shipping_from_district_id'}"/>
+
+                    <filter string="To District"
+                            name="group_to_district"
+                            context="{'group_by':'shipping_to_district_id'}"/>
+
+                </group>
+
             </search>
         </field>
     </record>
@@ -195,7 +302,7 @@
         <field name="name">Shipments</field>
         <field name="res_model">logistics.shipment</field>
         <field name="view_mode">list,form</field>
-        <field name="search_view_id" ref="view_shipment_search"/>
+        <field name="search_view_id" ref="view_logistics_shipment_search"/>
         <field name="help" type="html">
             <p class="o_view_nocontent_smiling_face">
                 Create a new shipment
