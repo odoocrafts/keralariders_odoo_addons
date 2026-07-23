@@ -439,6 +439,7 @@
         <field name="domain">[('transfer_type', '=', 'cod_payment')]</field>
         <field name="context">{'default_transfer_type': 'cod_payment'}</field>
         <field name="search_view_id" ref="view_logistics_account_transfer_cod_payment_search"/>
+        <field name="context">{'search_default_not_cleared': 1}</field>
     </record>
 
     <record id="action_logistics_account_transfer_cod_clearance" model="ir.actions.act_window">

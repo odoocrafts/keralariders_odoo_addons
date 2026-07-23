@@ -107,7 +107,7 @@
         <field name="name">logistics.wallet.transaction.list</field>
         <field name="model">logistics.wallet.transaction</field>
         <field name="arch" type="xml">
-            <list string="Wallet Transactions" editable="bottom" delete="1">
+            <list string="Wallet Transactions" editable="bottom" delete="1" expand="1">
                 <field name="transaction_date" width="100"/>
                 <field name="wallet_id" width="100"/>
                 <field name="amount" width="100" string="Amount" sum="Amount" options='{"fg_color": "red: amount &lt; 0; green: amount >= 0"}'/>
@@ -226,6 +226,7 @@
         <field name="view_mode">list,form</field>
         <field name="view_id" ref="view_logistics_wallet_transaction_tree"/>
         <field name="search_view_id" ref="view_logistics_wallet_transaction_search"/>
+        <field name="context">{'search_default_group_wallet': 0}</field>
     </record>
 
     <menuitem id="menu_logistics_wallet"
