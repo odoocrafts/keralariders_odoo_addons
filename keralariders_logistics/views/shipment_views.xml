@@ -34,6 +34,11 @@
                         string="Prepaid Orders"
                         domain="[('order_payment_type', '=', 'prepaid')]"/>
 
+                <filter name="cod_orders_paid"
+                        string="COD Fully Paid"
+                        domain="[('cod_balance_amount', '&lt;=', 0)]"/>
+
+
                 <separator/>
 
                 <!-- Delivery Status -->
@@ -252,10 +257,16 @@
                             </div>
                         </group>
                     </group>
-                    <group string="Products &amp; Item Details">
-                        <field name="item_description"/>
-                        <field name="total_order_value"/>
-                        <field name="seller_notes"/>
+                    <group>
+                        <group string="Products &amp; Item Details">
+                            <field name="item_description"/>
+                            <field name="total_order_value"/>
+                            <field name="seller_notes"/>
+                        </group>
+                        <group string="Delivery">
+                            <field name="estimated_delivery_date"/>
+                            <field name="actual_delivery_date"/>
+                        </group>
                     </group>
 
                     <group>
@@ -278,7 +289,7 @@
                             <field name="shipping_to_email" string="Email"/>
                         </group>
                     </group>
-                    <group string="Billing Address">
+                    <group string="Billing Address" invisible="1">
                         <group>
                             <field name="billing_name" string="Name"/>
                             <field name="billing_address" string="Address"/>
@@ -287,10 +298,6 @@
                             <field name="billing_state_id" string="State"/>
                             <field name="billing_country_id" string="Country"/>
                         </group>
-                    </group>
-                    <group string="Delivery">
-                        <field name="estimated_delivery_date"/>
-                        <field name="actual_delivery_date"/>
                     </group>
                 </sheet>
                 <chatter/>
