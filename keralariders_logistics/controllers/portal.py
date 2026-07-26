@@ -399,7 +399,7 @@ class LogisticsPortal(CustomerPortal):
                     'order_payment_type': payment_type,
                     'total_order_value': order_value,
                     'billing_same_as_shipping': True,
-                    'state': 'draft',
+                    'state': 'order_added',
                 }
                 
                 shipment = request.env['logistics.shipment'].sudo().create(shipment_vals)
