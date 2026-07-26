@@ -161,6 +161,41 @@ class Shipment(models.Model):
 
     wallet_transaction_id = fields.Many2one("logistics.wallet.transaction", string="Wallet Transaction (Legacy)")
 
+    def action_add_wallet_transaction(self):
+        if not self.seller_id:
+            raise UserError(f'Seller must be set before adding Wallet Transaction!')
+        if not self.seller_id.wallet_ids:
+            raise UserError(f'No Wallets found for this Seller!')
+        if not self.wallet_transaction_id:
+            wallet = self.seller_id.wallet_ids[0]
+            # Check wallet balance
+            if wallet.balance < self.delivery_charges_total:
+                raise UserError(f'Insufficient balance available in your Wallet. Current balance is {wallet.currency_id.format(wallet.balance)}. Please recharge before proceeding')
+            
+            self.wallet_transaction_id = self.env['logistics.wallet.transaction'].sudo().create({
+                'wallet_id': wallet.id,
+                'amount': -self.delivery_charges_total,
+                'transaction_date': fields.Date.context_today(self),
+                'shipment_id': self.id,
+                'reference': self.display_name,
+            }).id
+
+    def delete_wallet_transaction(self):
+        if not self.wallet_transaction_id:
+            raise UserError(f'No transaction linked to this Shipment')
+        self.wallet_transaction_id.unlink()
+
+    def action_view_wallet_transaction(self):
+        if self.wallet_transaction_id:
+            return {
+                'name': 'Wallet Transaction',
+                'type': 'ir.actions.act_window',
+                'res_model': 'logistics.wallet.transaction',
+                'view_mode': 'list',
+                'domain': [('id', '=', self.wallet_transaction_id.id)],
+                'context': {'default_wallet_id': self.wallet_transaction_id.wallet_id.id},
+            }
+
     cod_payment_transfer_ids = fields.Many2many("logistics.account.transfer", string="COD Payment Transfers")
     cod_paid_amount = fields.Monetary(string="COD Paid Amount", compute="_compute_cod_paid_balance_amount", store=True)
     cod_balance_amount = fields.Monetary(string="COD Balance Amount", compute="_compute_cod_paid_balance_amount", store=True)

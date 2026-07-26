@@ -69,24 +69,36 @@ class Order(models.Model):
             if order.state != 'draft':
                 raise UserError("Only draft orders can request pickup.")
                 
-            wallet = order.seller_id.wallet_ids[0] if order.seller_id.wallet_ids else False
-            if not wallet:
-                raise UserError("No wallet found for this seller.")
-                
-            if wallet.balance < order.total_charges:
-                raise UserError(f"Insufficient wallet balance. Charge is {order.total_charges}, balance is {wallet.balance}.")
-                
-            # Create a single wallet transaction for the order
-            self.env['logistics.wallet.transaction'].sudo().create({
-                'wallet_id': wallet.id,
-                'amount': -order.total_charges,
-                'transaction_date': fields.Date.context_today(self),
-                'order_id': order.id,
-                'reference': f"Charge for Order {order.name}",
-            })
+            for shipment in order.shipment_ids:
+                shipment.action_add_wallet_transaction()
             
             # Update all shipments
             order.shipment_ids.write({
                 'state': 'pickup_requested',
                 'pickup_requested_on': fields.Datetime.now()
             })
+
+    def action_mark_picked_up(self):
+        for order in self:
+            if order.state != 'pickup_requested':
+                raise UserError("Only order requested for Pickup can be marked as Picked Up.")
+            order.shipment_ids.write({
+                'state': 'picked',
+            })
+            order.state = 'picked'
+
+    def action_reset_draft(self):
+        for order in self:
+            order.shipment_ids.write({
+                'state': 'order_added',
+            })
+            order.state = 'draft'
+
+    def action_cancel_order(self):
+        for order in self:
+            for shipment in order.shipment_ids:
+                shipment.delete_wallet_transaction()
+            order.shipment_ids.write({
+                'state': 'cancelled'
+            })
+            order.state = 'cancelled'
