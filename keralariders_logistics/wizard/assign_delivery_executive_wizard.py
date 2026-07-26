@@ -6,7 +6,7 @@ class AssignDeliveryExecutiveWizard(models.TransientModel):
     _description = 'Assign Delivery Executive Wizard'
 
     delivery_executive_id = fields.Many2one('logistics.delivery.executive', string='Delivery Executive', required=True)
-    shipment_ids = fields.Many2many('logistics.shipment', string='Shipments')
+    shipment_ids = fields.Many2many('logistics.shipment', relation='logistics_assign_exec_shipment_rel', string='Shipments')
 
     @api.model
     def default_get(self, fields_list):
