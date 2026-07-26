@@ -63,3 +63,6 @@ class DeliveryExecutive(models.Model):
                 'sticky': False,
             }
         }
+
+    default_upi_account_id = fields.Many2one('logistics.account', string="Default UPI Account")
+    default_cash_account_id = fields.Many2one('logistics.account', string="Default Cash Account")

@@ -9,8 +9,9 @@
                 <field name="seller_id"/>
                 <field name="order_date"/>
                 <field name="pickup_date"/>
-                <field name="shipment_count"/>
+                <field name="shipment_count" string="Total Shipments"/>
                 <field name="total_charges" sum="Total Charges"/>
+                <field name="currency_id" column_invisible="1"/>
                 <field name="state" widget="badge" decoration-info="state == 'draft'" decoration-warning="state == 'pickup_requested'" decoration-primary="state == 'picked'" decoration-success="state == 'delivered'" decoration-danger="state == 'cancelled'"/>
             </list>
         </field>
@@ -23,6 +24,11 @@
             <form string="Order">
                 <header>
                     <button name="action_request_pickup" string="Request Pickup" type="object" class="oe_highlight" invisible="state != 'draft'"/>
+                    <button name="action_mark_picked_up" string="Mark as Picked" type="object" class="oe_highlight" invisible="state != 'pickup_requested'"/>
+                    <button name="action_reset_draft" string="Reset to Draft" type="object" class="btn-secondary" invisible="state not in ('cancelled')"/>
+                    <button name="action_cancel_order" string="Cancel" type="object" class="btn-secondary" invisible="state in ('cancelled', 'draft')" 
+                        confirm="This will mark all Shipments under this order as cancelled. Are you sure you want to cancel this order?"/>
+
                     <field name="state" widget="statusbar" statusbar_visible="draft,pickup_requested,picked,delivered"/>
                 </header>
                 <sheet>
@@ -46,17 +52,17 @@
                     </group>
                     <notebook>
                         <page string="Shipments (AWBs)">
-                            <field name="shipment_ids" readonly="state != 'draft'">
-                                <list>
+                            <field name="shipment_ids" readonly="state != 'draft'" context="{'default_seller_id': seller_id, 'default_order_date': order_date}">
+                                <!-- <list>
                                     <field name="name"/>
                                     <field name="shipping_to_name"/>
                                     <field name="shipping_to_district_id"/>
-                                    <field name="total_weight"/>
+                                    <field name="total_weight" force_save="1"/>
                                     <field name="order_payment_type"/>
                                     <field name="total_order_value"/>
-                                    <field name="delivery_charges_total"/>
+                                    <field name="delivery_charges_total" force_save="1"/>
                                     <field name="state" widget="badge" decoration-info="state == 'order_added'" decoration-success="state == 'delivered'"/>
-                                </list>
+                                </list> -->
                             </field>
                         </page>
                     </notebook>

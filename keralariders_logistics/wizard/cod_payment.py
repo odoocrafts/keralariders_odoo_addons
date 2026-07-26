@@ -12,8 +12,27 @@ class CODPaymentWizard(models.TransientModel):
         if self.amount < 0:
             self.amount = -self.amount
 
-    from_account_id = fields.Many2one('logistics.account', string="From Account", required=True)
+    from_account_id = fields.Many2one('logistics.account', string="From Account", required=True,)
     to_account_id = fields.Many2one('logistics.account', string="To Account", required=True)
+
+    @api.onchange('shipment_id',)
+    def _compute_from_account(self):
+        for record in self:
+            if record.shipment_id and record.shipment_id.delivery_executive_id:
+                customer_upi_account_id = self.env['logistics.account'].search([('account_type', '=', 'cod_customer'), ('name', 'ilike', 'upi')], limit=1)
+                record.from_account_id = customer_upi_account_id.id
+
+    @api.onchange('from_account_id')
+    def _compute_to_account(self):
+        if self.from_account_id:
+            account_name = self.from_account_id.name
+            if 'upi' in account_name.lower():
+                account = self.shipment_id.delivery_executive_id.default_upi_account_id or self.env['logistics.account'].search([('account_type', '=', 'bank'), ('name', 'ilike', 'upi')], limit=1)
+            elif 'cash' in account_name.lower():
+                account = self.shipment_id.delivery_executive_id.default_cash_account_id or self.env['logistics.account'].search([('account_type', '=', 'cash'), ('name', 'ilike', 'cash')], limit=1)
+            self.to_account_id = account.id
+
+
     date = fields.Date(string="Date", required=True, default=fields.Date.context_today)
     reference = fields.Text(string="Reference")
     def action_create_transfer(self):
