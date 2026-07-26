@@ -7,12 +7,4 @@
         </xpath>
     </template>
 
-    <!-- Replace "Powered by Odoo" in the Portal Footer -->
-    <template id="portal_footer_odoocrafts" inherit_id="portal.frontend_layout" priority="99">
-        <xpath expr="//div[hasclass('o_footer_copyright_name')]/../div[last()]" position="replace">
-            <div class="col-sm-6 text-sm-end">
-                Powered by <a target="_blank" href="https://odoocrafts.com">Odoocrafts</a>
-            </div>
-        </xpath>
-    </template>
 </odoo>
