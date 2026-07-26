@@ -510,11 +510,11 @@ class LogisticsPortal(CustomerPortal):
 
     @http.route(['/my/deliveries', '/my/deliveries/page/<int:page>'], type='http', auth="user", website=True)
     def portal_my_deliveries(self, page=1, date_begin=None, date_end=None, sortby=None, **kw):
-        delivery_executive = request.env['logistics.delivery.executive'].search([('user_id', '=', request.env.user.id)], limit=1)
+        delivery_executive = request.env['logistics.delivery.executive'].sudo().search([('user_id', '=', request.env.user.id)], limit=1)
         if not delivery_executive:
             return request.redirect('/my')
             
-        Shipment = request.env['logistics.shipment']
+        Shipment = request.env['logistics.shipment'].sudo()
         domain = [('delivery_executive_id', '=', delivery_executive.id), ('state', '!=', 'delivered')]
         
         searchbar_sortings = {
@@ -550,11 +550,11 @@ class LogisticsPortal(CustomerPortal):
 
     @http.route(['/my/delivery/<int:shipment_id>'], type='http', auth="user", website=True)
     def portal_my_delivery_detail(self, shipment_id=None, **kw):
-        delivery_executive = request.env['logistics.delivery.executive'].search([('user_id', '=', request.env.user.id)], limit=1)
+        delivery_executive = request.env['logistics.delivery.executive'].sudo().search([('user_id', '=', request.env.user.id)], limit=1)
         if not delivery_executive:
             return request.redirect('/my')
             
-        shipment = request.env['logistics.shipment'].search([('id', '=', shipment_id), ('delivery_executive_id', '=', delivery_executive.id)], limit=1)
+        shipment = request.env['logistics.shipment'].sudo().search([('id', '=', shipment_id), ('delivery_executive_id', '=', delivery_executive.id)], limit=1)
         if not shipment:
             return request.redirect('/my/deliveries')
             
@@ -579,11 +579,11 @@ class LogisticsPortal(CustomerPortal):
 
     @http.route(['/my/delivery/<int:shipment_id>/mark_delivered'], type='http', auth="user", website=True, methods=['POST'])
     def portal_my_delivery_mark_delivered(self, shipment_id=None, **post):
-        delivery_executive = request.env['logistics.delivery.executive'].search([('user_id', '=', request.env.user.id)], limit=1)
+        delivery_executive = request.env['logistics.delivery.executive'].sudo().search([('user_id', '=', request.env.user.id)], limit=1)
         if not delivery_executive:
             return request.redirect('/my')
             
-        shipment = request.env['logistics.shipment'].search([('id', '=', shipment_id), ('delivery_executive_id', '=', delivery_executive.id)], limit=1)
+        shipment = request.env['logistics.shipment'].sudo().search([('id', '=', shipment_id), ('delivery_executive_id', '=', delivery_executive.id)], limit=1)
         if not shipment:
             request.session['error'] = "Shipment not found."
             return request.redirect('/my/deliveries')
