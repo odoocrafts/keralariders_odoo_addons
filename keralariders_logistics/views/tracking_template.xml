@@ -5,32 +5,83 @@
             <t t-set="head">
                 <t t-call-assets="web.assets_frontend" t-js="false"/>
                 <t t-call-assets="web.assets_frontend" t-css="false"/>
+                <style>
+                    body {
+                        background-color: #f8f9fa;
+                    }
+                    .tracking-card {
+                        border-radius: 1rem;
+                        box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+                        overflow: hidden;
+                        border: none;
+                    }
+                    .tracking-header {
+                        background: linear-gradient(135deg, #1f2937, #374151);
+                        padding: 2.5rem 1.5rem;
+                        border-bottom: none;
+                    }
+                    .company-logo {
+                        max-height: 80px;
+                        max-width: 100%;
+                        margin-bottom: 1.5rem;
+                        background: rgba(255,255,255,0.95);
+                        padding: 10px 15px;
+                        border-radius: 8px;
+                        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+                    }
+                    .btn-track {
+                        background-color: #1f2937;
+                        border-color: #1f2937;
+                        padding: 0.75rem;
+                        font-weight: 600;
+                        letter-spacing: 0.5px;
+                        transition: all 0.3s ease;
+                    }
+                    .btn-track:hover {
+                        background-color: #374151;
+                        border-color: #374151;
+                        transform: translateY(-2px);
+                        box-shadow: 0 4px 12px rgba(55, 65, 81, 0.3);
+                    }
+                    .form-control-lg {
+                        border-radius: 0.5rem;
+                        padding: 1rem 1.25rem;
+                        font-size: 1.1rem;
+                        border: 2px solid #e5e7eb;
+                    }
+                    .form-control-lg:focus {
+                        border-color: #374151;
+                        box-shadow: 0 0 0 0.25rem rgba(31, 41, 55, 0.15);
+                    }
+                </style>
             </t>
             <t t-set="title">Track Your Shipment</t>
             <div class="container mt-5 mb-5">
-                <div class="row justify-content-center">
-                    <div class="col-md-6">
-                        <div class="card shadow-sm border-0 rounded">
-                            <div class="card-header bg-primary text-white text-center py-4">
-                                <h2 class="mb-0">Track Shipment</h2>
+                <div class="row justify-content-center align-items-center" style="min-height: 75vh;">
+                    <div class="col-md-8 col-lg-5">
+                        <div class="card tracking-card">
+                            <div class="card-header tracking-header text-white text-center">
+                                <t t-if="company and company.logo">
+                                    <img t-attf-src="/web/image/res.company/#{company.id}/logo" alt="Company Logo" class="company-logo"/>
+                                </t>
+                                <h2 class="mb-0 fw-bold">Track Shipment</h2>
+                                <p class="text-light mt-2 mb-0" style="opacity: 0.85;">Enter your AWB number below</p>
                             </div>
                             <div class="card-body p-5">
                                 <t t-if="error">
-                                    <div class="alert alert-danger" role="alert">
+                                    <div class="alert alert-danger shadow-sm border-0" role="alert">
+                                        <i class="fa fa-exclamation-triangle me-2"></i>
                                         <t t-esc="error"/>
                                     </div>
                                 </t>
                                 <form action="/track" method="post">
                                     <div class="mb-4">
-                                        <label for="awb" class="form-label font-weight-bold">AWB Number</label>
-                                        <input type="text" class="form-control form-control-lg" id="awb" name="awb" placeholder="e.g. SHP00001" required="1"/>
+                                        <label for="awb" class="form-label fw-bold text-muted text-uppercase" style="font-size: 0.85rem; letter-spacing: 0.5px;">AWB Number</label>
+                                        <input type="text" class="form-control form-control-lg bg-light" id="awb" name="awb" placeholder="e.g. SHP00001" required="1" autofocus="autofocus"/>
                                     </div>
-                                    <div class="mb-4">
-                                        <label for="phone" class="form-label font-weight-bold">Phone Number</label>
-                                        <input type="text" class="form-control form-control-lg" id="phone" name="phone" placeholder="Registered Mobile Number" required="1"/>
-                                        <small class="form-text text-muted">Please enter the exact phone number associated with the delivery.</small>
-                                    </div>
-                                    <button type="submit" class="btn btn-primary btn-lg btn-block w-100">Track Now</button>
+                                    <button type="submit" class="btn btn-track btn-primary btn-lg w-100 text-white rounded-3 shadow-sm">
+                                        <i class="fa fa-search me-2"></i> Track Now
+                                    </button>
                                 </form>
                             </div>
                         </div>

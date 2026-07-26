@@ -8,21 +8,19 @@ class TrackingController(http.Controller):
         error = None
         if request.httprequest.method == 'POST':
             awb = post.get('awb', '').strip()
-            phone = post.get('phone', '').strip()
-            if awb and phone:
+            if awb:
                 shipment = request.env['logistics.shipment'].sudo().search([
-                    ('name', '=', awb),
-                    ('shipping_to_mobile', '=', phone)
+                    ('name', '=', awb)
                 ], limit=1)
                 if shipment:
                     return request.redirect(f'/track/{shipment.tracking_token}')
                 else:
-                    error = "No shipment found with the provided AWB and Phone Number."
+                    error = "No shipment found with the provided AWB Number."
             else:
-                error = "Please provide both AWB Number and Phone Number."
+                error = "Please provide an AWB Number."
         values = {
             'error': error,
-            'languages': [],
+            'company': request.env.company,
         }
         return request.render('keralariders_logistics.tracking_search_page', values)
 
