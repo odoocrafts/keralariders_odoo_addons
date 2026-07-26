@@ -558,20 +558,9 @@ class LogisticsPortal(CustomerPortal):
         if not shipment:
             return request.redirect('/my/deliveries')
             
-        # Get UPI Config
-        upi_id = request.env['ir.config_parameter'].sudo().get_param('keralariders_logistics.logistics_upi_id')
-        qr_url = False
-        if upi_id and shipment.order_payment_type == 'cod' and shipment.cod_amount > 0:
-            import urllib.parse
-            company_name = urllib.parse.quote_plus(request.env.company.name)
-            upi_uri = f"upi://pay?pa={upi_id}&pn={company_name}&am={shipment.cod_amount:.2f}&cu=INR"
-            encoded_uri = urllib.parse.quote_plus(upi_uri)
-            qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=250x250&data={encoded_uri}"
-
         values = {
             'shipment': shipment,
             'page_name': 'deliveries',
-            'qr_url': qr_url,
             'error': request.session.pop('error', None),
             'success': request.session.pop('success', None),
         }

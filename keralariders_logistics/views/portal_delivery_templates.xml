@@ -146,18 +146,6 @@
                                         </label>
                                     </div>
 
-                                    <!-- QR Code Section (Hidden by default, shown when UPI is selected) -->
-                                    <t t-if="qr_url">
-                                        <div id="upiQRCodeContainer" class="text-center mt-3 p-3 bg-white border rounded" style="display: none;">
-                                            <p class="mb-2 text-muted">Ask the customer to scan this QR Code to pay ₹ <span t-esc="shipment.cod_amount"/></p>
-                                            <img t-att-src="qr_url" alt="UPI QR Code" style="max-width: 200px; border: 1px solid #ddd; border-radius: 10px; padding: 10px;"/>
-                                        </div>
-                                    </t>
-                                    <t t-else="">
-                                        <div id="upiQRCodeContainer" class="text-center mt-3 p-3 bg-white border rounded" style="display: none;">
-                                            <p class="text-danger mb-0"><i class="fa fa-warning"/> UPI ID is not configured. Please collect Cash.</p>
-                                        </div>
-                                    </t>
                                 </div>
                             </t>
 
@@ -165,27 +153,6 @@
                                 <i class="fa fa-check-circle"/> MARK AS DELIVERED
                             </button>
                         </form>
-
-                        <script>
-                            document.addEventListener("DOMContentLoaded", function() {
-                                var radioCash = document.getElementById('codCash');
-                                var radioUPI = document.getElementById('codUPI');
-                                var qrContainer = document.getElementById('upiQRCodeContainer');
-                                
-                                function toggleQR() {
-                                    if(radioUPI &amp;&amp; radioUPI.checked) {
-                                        qrContainer.style.display = 'block';
-                                    } else if(qrContainer) {
-                                        qrContainer.style.display = 'none';
-                                    }
-                                }
-
-                                if (radioCash &amp;&amp; radioUPI) {
-                                    radioCash.addEventListener('change', toggleQR);
-                                    radioUPI.addEventListener('change', toggleQR);
-                                }
-                            });
-                        </script>
                     </t>
                 </div>
             </div>
