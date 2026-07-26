@@ -34,7 +34,7 @@ class LogisticsPortal(CustomerPortal):
         values['is_delivery_executive'] = bool(delivery_executive)
         
         if delivery_executive:
-            assigned_shipment_count = request.env['logistics.shipment'].search_count([('delivery_executive_id', '=', delivery_executive.id), ('state', '!=', 'delivered')])
+            assigned_shipment_count = request.env['logistics.shipment'].sudo().search_count([('delivery_executive_id', '=', delivery_executive.id), ('state', '!=', 'delivered')])
             values['assigned_shipment_count'] = str(assigned_shipment_count) if assigned_shipment_count > 0 else '0 '
         
         return values
