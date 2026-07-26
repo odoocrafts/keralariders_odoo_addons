@@ -3,7 +3,7 @@
 <templates xml:space="preserve">
 
     <t t-name="no_pdf_preview_print.PreviewDialog">
-        <Dialog title="dialogTitle" size="'xl'" close="props.close">
+        <Dialog title="dialogTitle" size="'xl'" >
             <div class="o_pdf_preview_container d-flex flex-column position-relative"
                  style="height: 80vh;">
 
@@ -47,7 +47,7 @@
                         <button class="btn btn-secondary" t-on-click="onDownload">
                             <i class="fa fa-download me-1"/>Download
                         </button>
-                        <button class="btn btn-light" t-on-click="props.close">
+                        <button class="btn btn-light" t-on-click="onClose">
                             Close
                         </button>
                     </div>

@@ -81,4 +81,8 @@ export class PreviewDialog extends Component {
         this.props.onDownload();
         this.props.close();
     }
+
+    onClose() {
+        this.props.close();
+    }
 }

@@ -104,3 +104,6 @@ class Order(models.Model):
                 'state': 'cancelled'
             })
             order.state = 'cancelled'
+
+    def action_print_awb_delivery_slips(self):
+        return self.env.ref('keralariders_logistics.action_report_shipment').report_action(self.shipment_ids)

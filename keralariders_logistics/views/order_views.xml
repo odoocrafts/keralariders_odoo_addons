@@ -23,6 +23,7 @@
         <field name="arch" type="xml">
             <form string="Order">
                 <header>
+                    <button name="action_print_awb_delivery_slips" class="oe_highlight" string="Print AWB/ Delivery Slips" type="object" icon="fa-print" invisible="state == 'cancelled'"/>
                     <button name="action_request_pickup" string="Request Pickup" type="object" class="oe_highlight" invisible="state != 'draft'"/>
                     <button name="action_mark_picked_up" string="Mark as Picked" type="object" class="oe_highlight" invisible="state != 'pickup_requested'"/>
                     <button name="action_reset_draft" string="Reset to Draft" type="object" class="btn-secondary" invisible="state not in ('cancelled')"/>
