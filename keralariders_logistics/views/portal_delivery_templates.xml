@@ -36,7 +36,7 @@
             <t t-call="portal.portal_searchbar">
                 <t t-set="title">Assigned Deliveries</t>
                 <div class="form-inline ms-auto">
-                    <button class="btn btn-primary" id="btn-scan-qr">
+                    <button type="button" class="btn btn-primary" id="btn-scan-qr">
                         <i class="fa fa-camera"/> Scan AWB
                     </button>
                 </div>
