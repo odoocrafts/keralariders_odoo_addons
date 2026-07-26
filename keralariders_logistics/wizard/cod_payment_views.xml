@@ -13,7 +13,7 @@
                             <field name="currency_id" invisible="1"/>
                         </group>
                         <group>
-                            <field name="from_account_id" domain="[('account_type', 'in', ('cod_customer', 'seller'))]" options="{'no_create': True}"/>
+                            <field name="from_account_id" domain="[('account_type', 'in', ('cod_customer'))]" options="{'no_create': True}"/>
                             <field name="to_account_id" domain="[('account_type', 'in', ('cash', 'bank'))]" options="{'no_create': True}"/>
                             <field name="date"/>
                             <field name="reference"/>

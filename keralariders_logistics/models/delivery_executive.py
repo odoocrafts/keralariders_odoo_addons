@@ -23,3 +23,6 @@ class DeliveryExecutive(models.Model):
     assigned_region = fields.Char(string='Assigned Region')
     active = fields.Boolean(default=True)
     user_id = fields.Many2one('res.users', string='Related User')
+
+    default_upi_account_id = fields.Many2one('logistics.account', string="Default UPI Account")
+    default_cash_account_id = fields.Many2one('logistics.account', string="Default Cash Account")
