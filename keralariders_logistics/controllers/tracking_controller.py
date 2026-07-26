@@ -4,20 +4,25 @@ from odoo.http import request
 class TrackingController(http.Controller):
 
     @http.route(['/track'], type='http', auth="public", website=False, methods=['GET', 'POST'], csrf=False)
-    def track_search(self, **post):
+    def track_search(self, **kwargs):
         error = None
+        awb = None
+        
         if request.httprequest.method == 'POST':
-            awb = post.get('awb', '').strip()
-            if awb:
-                shipment = request.env['logistics.shipment'].sudo().search([
-                    ('name', '=', awb)
-                ], limit=1)
-                if shipment:
-                    return request.redirect(f'/track/{shipment.tracking_token}')
-                else:
-                    error = "No shipment found with the provided AWB Number."
+            awb = kwargs.get('awb', '').strip()
+        elif request.httprequest.method == 'GET' and kwargs.get('id'):
+            awb = kwargs.get('id', '').strip()
+            
+        if awb:
+            shipment = request.env['logistics.shipment'].sudo().search([
+                ('name', '=', awb)
+            ], limit=1)
+            if shipment:
+                return request.redirect(f'/track/{shipment.tracking_token}')
             else:
-                error = "Please provide an AWB Number."
+                error = "No shipment found with the provided AWB Number."
+        elif request.httprequest.method == 'POST':
+            error = "Please provide an AWB Number."
         values = {
             'error': error,
             'company': request.env.company,
