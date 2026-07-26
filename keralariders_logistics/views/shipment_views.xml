@@ -188,7 +188,6 @@
                         <group string="Order Info">
                             <field name="seller_id" required="1"/>
                             <field name="order_id"/>
-                            <field name="delivery_executive_id"/>
                             <field name="order_date"/>
                             <field name="order_payment_type"/>
                             <!-- <field name="cod_amount" invisible="order_payment_type != 'cod'"/> -->
@@ -242,6 +241,7 @@
                             <field name="seller_notes"/>
                         </group>
                         <group string="Delivery">
+                            <field name="delivery_executive_id"/>
                             <field name="estimated_delivery_date"/>
                             <field name="actual_delivery_date"/>
                         </group>
