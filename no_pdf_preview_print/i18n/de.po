@@ -1,0 +1,89 @@
+# Translation of Odoo Server.
+# This file contains the translation of the following modules:
+# 	* no_pdf_preview_print
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: Odoo Server 19.0\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-05-12 00:00+0000\n"
+"PO-Revision-Date: 2026-05-12 00:00+0000\n"
+"Last-Translator: \n"
+"Language-Team: German\n"
+"Language: de\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: \n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+#. module: no_pdf_preview_print
+#. odoo-javascript
+#: code:addons/no_pdf_preview_print/static/src/xml/preview_dialog.xml:0
+msgid "Close"
+msgstr "Schließen"
+
+#. module: no_pdf_preview_print
+#. odoo-javascript
+#: code:addons/no_pdf_preview_print/static/src/xml/preview_dialog.xml:0
+msgid "Download"
+msgstr "Herunterladen"
+
+#. module: no_pdf_preview_print
+#. odoo-javascript
+#: code:addons/no_pdf_preview_print/static/src/xml/preview_dialog.xml:0
+msgid "Download instead"
+msgstr "Stattdessen herunterladen"
+
+#. module: no_pdf_preview_print
+#. odoo-javascript
+#: code:addons/no_pdf_preview_print/static/src/xml/preview_dialog.xml:0
+msgid "Loading preview…"
+msgstr "Vorschau wird geladen…"
+
+#. module: no_pdf_preview_print
+#. odoo-javascript
+#: code:addons/no_pdf_preview_print/static/src/js/preview_dialog.js:0
+msgid "PDF Preview"
+msgstr "PDF-Vorschau"
+
+#. module: no_pdf_preview_print
+#: model:ir.module.module,shortdesc:no_pdf_preview_print.module_meta_information
+msgid "PDF Preview Before Print"
+msgstr "PDF-Vorschau vor dem Drucken"
+
+#. module: no_pdf_preview_print
+#: model:ir.module.module,description:no_pdf_preview_print.module_meta_information
+msgid ""
+"PDF Preview Before Print intercepts the print/download action and shows a "
+"clean full-screen preview before the document is printed or downloaded. "
+"Keyboard shortcuts (P/D/Esc), single and batch reports, zero configuration."
+msgstr ""
+"PDF-Vorschau vor dem Drucken fängt die Druck-/Download-Aktion ab und zeigt "
+"eine aufgeräumte Vollbildvorschau, bevor das Dokument gedruckt oder "
+"heruntergeladen wird. Tastenkürzel (P/D/Esc), einzelne und Stapel-Berichte, "
+"keine Konfiguration erforderlich."
+
+#. module: no_pdf_preview_print
+#. odoo-javascript
+#: code:addons/no_pdf_preview_print/static/src/xml/preview_dialog.xml:0
+msgid "Print"
+msgstr "Drucken"
+
+#. module: no_pdf_preview_print
+#: model:ir.module.module,summary:no_pdf_preview_print.module_meta_information
+msgid "Preview PDF reports in a dialog before printing or downloading"
+msgstr ""
+"PDF-Berichte vor dem Drucken oder Herunterladen in einem Dialog anzeigen"
+
+#. module: no_pdf_preview_print
+#. odoo-javascript
+#: code:addons/no_pdf_preview_print/static/src/xml/preview_dialog.xml:0
+msgid "Unable to load preview"
+msgstr "Vorschau kann nicht geladen werden"
+
+#. module: no_pdf_preview_print
+#. odoo-javascript
+#: code:addons/no_pdf_preview_print/static/src/js/preview_dialog.js:0
+msgid "<kbd>P</kbd> Print · <kbd>D</kbd> Download · <kbd>Esc</kbd> Close"
+msgstr "<kbd>P</kbd> Drucken · <kbd>D</kbd> Herunterladen · <kbd>Esc</kbd> Schließen"
+

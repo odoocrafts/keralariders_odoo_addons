@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright 2026 Naim OUDAYET — License LGPL-3 -->
+<templates xml:space="preserve">
+
+    <t t-name="no_pdf_preview_print.PreviewDialog">
+        <Dialog title="dialogTitle" size="'xl'" close="props.close">
+            <div class="o_pdf_preview_container d-flex flex-column position-relative"
+                 style="height: 80vh;">
+
+                <!-- Loading spinner -->
+                <div t-if="state.loading"
+                     class="o_pdf_preview_loading d-flex align-items-center justify-content-center position-absolute w-100 h-100 bg-white"
+                     style="z-index: 1;">
+                    <div class="text-center text-muted">
+                        <i class="fa fa-spinner fa-spin fa-2x mb-2 d-block"/>
+                        <span>Loading preview…</span>
+                    </div>
+                </div>
+
+                <!-- Error fallback -->
+                <div t-if="state.error"
+                     class="d-flex align-items-center justify-content-center flex-grow-1">
+                    <div class="text-center text-muted">
+                        <i class="fa fa-exclamation-triangle fa-2x mb-2 d-block text-warning"/>
+                        <p>Unable to load preview</p>
+                        <button class="btn btn-primary btn-sm" t-on-click="onDownload">
+                            <i class="fa fa-download me-1"/>Download instead
+                        </button>
+                    </div>
+                </div>
+
+                <!-- PDF iframe -->
+                <iframe t-ref="previewIframe"
+                        t-att-src="props.reportUrl"
+                        t-att-class="'o_pdf_preview_iframe flex-grow-1 border-0 w-100' + (state.error ? ' d-none' : '')"
+                        t-on-load="onIframeLoad"
+                        t-on-error="onIframeError"/>
+            </div>
+
+            <t t-set-slot="footer">
+                <div class="d-flex w-100 justify-content-between align-items-center">
+                    <span class="text-muted small d-none d-md-inline" t-out="hotkeyHintMarkup"/>
+                    <div class="d-flex gap-2 ms-auto">
+                        <button class="btn btn-primary" t-on-click="onPrint">
+                            <i class="fa fa-print me-1"/>Print
+                        </button>
+                        <button class="btn btn-secondary" t-on-click="onDownload">
+                            <i class="fa fa-download me-1"/>Download
+                        </button>
+                        <button class="btn btn-light" t-on-click="props.close">
+                            Close
+                        </button>
+                    </div>
+                </div>
+            </t>
+        </Dialog>
+    </t>
+
+</templates>

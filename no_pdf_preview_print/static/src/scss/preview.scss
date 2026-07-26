@@ -1,0 +1,32 @@
+// Copyright 2026 Naim OUDAYET
+// License OPL-1
+
+// ---------------------------------------------------------------------------
+// Backend — OWL Preview Dialog
+// ---------------------------------------------------------------------------
+
+.o_pdf_preview_container {
+    min-height: 0; // allow flex shrink inside dialog
+
+    .o_pdf_preview_iframe {
+        background: #f5f5f5;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Portal — Bootstrap Preview Modal
+// ---------------------------------------------------------------------------
+
+.o_portal_pdf_preview {
+    white-space: nowrap;
+}
+
+#pdfPreviewPortalModal {
+    .modal-body {
+        overflow: hidden;
+    }
+
+    iframe {
+        background: #f5f5f5;
+    }
+}
