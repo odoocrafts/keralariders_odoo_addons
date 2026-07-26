@@ -41,14 +41,14 @@ class DeliveryExecutive(models.Model):
                 'name': self.name,
                 'login': self.email,
                 'email': self.email,
-                'groups_id': [(4, portal_group.id)]
+                'group_ids': [(4, portal_group.id)]
             })
             self.user_id = user.id
             user.action_reset_password()
             message = "Portal access granted and invitation email sent!"
         else:
-            if portal_group not in self.user_id.groups_id:
-                self.user_id.sudo().write({'groups_id': [(4, portal_group.id)]})
+            if portal_group not in self.user_id.group_ids:
+                self.user_id.sudo().write({'group_ids': [(4, portal_group.id)]})
                 message = "Portal access granted!"
             else:
                 message = "Executive already has portal access."
