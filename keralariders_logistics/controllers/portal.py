@@ -582,7 +582,7 @@ class LogisticsPortal(CustomerPortal):
             return request.redirect(f'/my/delivery/{shipment.id}')
 
         try:
-            vals = {'state': 'delivered'}
+            vals = {'state': 'delivered', 'actual_delivery_date': fields.Datetime.now()}
             if shipment.order_payment_type == 'cod':
                 payment_method = post.get('cod_payment_method')
                 if payment_method in ['cash', 'upi']:

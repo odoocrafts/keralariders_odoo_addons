@@ -121,7 +121,7 @@ class Shipment(models.Model):
             self.billing_country_id = self.shipping_to_country_id
 
     estimated_delivery_date = fields.Date(string='Estimated Delivery Date')
-    actual_delivery_date = fields.Date(string='Actual Delivery Date')
+    actual_delivery_date = fields.Datetime(string='Actual Delivery Date')
 
     order_payment_type = fields.Selection([('prepaid', 'Prepaid'), ('cod', 'COD'), ('na', 'Not Applicable')], string='Order Payment Type', required=True, default='prepaid')
     cod_payment_method = fields.Selection([('cash', 'Cash'), ('upi', 'UPI')], string='COD Payment Method')
