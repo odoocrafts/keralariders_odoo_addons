@@ -72,5 +72,5 @@
         <field name="view_mode">list,form</field>
     </record>
 
-    <menuitem id="menu_logistics_order" name="Orders" parent="menu_logistics_root" action="action_logistics_order" sequence="5"/>
+    <menuitem id="menu_logistics_order" name="Orders" parent="menu_logistics_root" action="action_logistics_order" sequence="1"/>
 </odoo>
