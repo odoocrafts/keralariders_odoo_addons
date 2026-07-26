@@ -44,6 +44,7 @@ Features:
         'views/portal_templates.xml',
         'views/wizard_assign_delivery_executive.xml',
         'views/portal_delivery_templates.xml',
+        'views/brand_overrides.xml',
         'report/shipment_layout.xml',
     ],
     'images': ['static/description/icon.png'],
