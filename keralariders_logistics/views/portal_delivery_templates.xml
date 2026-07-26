@@ -50,13 +50,15 @@
             document.addEventListener("DOMContentLoaded", function() {
                 var btnScanList = document.querySelectorAll('.btn-scan-qr');
                 if(btnScanList.length > 0) {
-                    let html5QrcodeScanner = null;
+                    let html5QrCode = null;
                     
                     function onScanSuccess(decodedText, decodedResult) {
-                        if (html5QrcodeScanner) {
-                            html5QrcodeScanner.clear();
+                        if (html5QrCode) {
+                            html5QrCode.stop().then(() => html5QrCode.clear()).catch(e => console.error(e));
                         }
                         if(decodedText.includes('/my/delivery/')) {
+                            window.location.href = decodedText;
+                        } else if (decodedText.startsWith('http')) {
                             window.location.href = decodedText;
                         } else {
                             window.location.href = '/track?id=' + encodeURIComponent(decodedText);
@@ -75,10 +77,20 @@
                             }
                             
                             setTimeout(function() {
-                                if (!html5QrcodeScanner) {
-                                    html5QrcodeScanner = new Html5QrcodeScanner("qr-reader", { fps: 10, qrbox: {width: 250, height: 250} });
+                                if (!html5QrCode) {
+                                    html5QrCode = new Html5Qrcode("qr-reader");
                                 }
-                                html5QrcodeScanner.render(onScanSuccess);
+                                html5QrCode.start(
+                                    { facingMode: "environment" },
+                                    { fps: 10, qrbox: {width: 250, height: 250} },
+                                    onScanSuccess,
+                                    function(errorMessage) {
+                                        // parse error, ignore and keep scanning
+                                    }
+                                ).catch(function(err) {
+                                    console.error("Camera start failed:", err);
+                                    document.getElementById('qr-reader').innerHTML = '<div class="alert alert-danger m-3">Could not access camera. Please ensure permissions are granted.</div>';
+                                });
                             }, 500);
                         });
                     });
@@ -86,8 +98,8 @@
                     var modalEl = document.getElementById('qrScannerModal');
                     if (modalEl) {
                         modalEl.addEventListener('hidden.bs.modal', function () {
-                            if (html5QrcodeScanner) {
-                                html5QrcodeScanner.clear().catch(e => console.error(e));
+                            if (html5QrCode) {
+                                html5QrCode.stop().then(() => html5QrCode.clear()).catch(e => console.error(e));
                             }
                         });
                     }
