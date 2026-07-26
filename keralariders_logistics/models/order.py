@@ -85,6 +85,7 @@ class Order(models.Model):
                 raise UserError("Only order requested for Pickup can be marked as Picked Up.")
             order.shipment_ids.write({
                 'state': 'picked',
+                'estimated_delivery_date': fields.Date.today(),
             })
             order.state = 'picked'
 

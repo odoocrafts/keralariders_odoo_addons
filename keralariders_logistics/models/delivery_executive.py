@@ -7,7 +7,6 @@ class DeliveryExecutive(models.Model):
     _order = 'name'
 
     name = fields.Char(required=True, tracking=True, string='Executive Name')
-    code = fields.Char(readonly=True, copy=False, default='New', string='Executive Code')
     mobile = fields.Char(required=True, string='Mobile Number')
     email = fields.Char(string='Email')
     address = fields.Text(string='Address')
@@ -66,3 +65,12 @@ class DeliveryExecutive(models.Model):
 
     default_upi_account_id = fields.Many2one('logistics.account', string="Default UPI Account")
     default_cash_account_id = fields.Many2one('logistics.account', string="Default Cash Account")
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        recs = super().create(vals_list)
+        # Create Cash and UPI accounts for the executive
+        for rec in recs:
+            rec.default_cash_account_id = self.env['logistics.account'].create({"name": f'{rec.name} Cash', 'account_type': 'cash'}).id
+            rec.default_upi_account_id = self.env['logistics.account'].create({"name": f'{rec.name} UPI', 'account_type': 'bank'}).id
+        return recs

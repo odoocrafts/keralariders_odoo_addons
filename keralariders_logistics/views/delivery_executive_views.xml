@@ -6,7 +6,6 @@
         <field name="model">logistics.delivery.executive</field>
         <field name="arch" type="xml">
             <list>
-                <field name="code"/>
                 <field name="name"/>
                 <field name="mobile"/>
                 <field name="vehicle_type"/>
