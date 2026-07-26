@@ -35,7 +35,71 @@
             <t t-set="breadcrumbs_searchbar" t-value="True"/>
             <t t-call="portal.portal_searchbar">
                 <t t-set="title">Assigned Deliveries</t>
+                <div class="form-inline ms-auto">
+                    <button class="btn btn-primary" id="btn-scan-qr">
+                        <i class="fa fa-camera"/> Scan AWB
+                    </button>
+                </div>
             </t>
+            
+            <!-- Scanner Modal -->
+            <div class="modal fade" id="qrScannerModal" tabindex="-1" aria-hidden="true">
+                <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content">
+                        <div class="modal-header bg-primary text-white">
+                            <h5 class="modal-title"><i class="fa fa-qrcode"/> Scan AWB</h5>
+                            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body p-0">
+                            <div id="qr-reader" style="width: 100%;"></div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+            <script type="text/javascript">
+                document.addEventListener("DOMContentLoaded", function() {
+                    const btnScan = document.getElementById('btn-scan-qr');
+                    if(btnScan) {
+                        let html5QrcodeScanner = null;
+                        
+                        function onScanSuccess(decodedText, decodedResult) {
+                            if (html5QrcodeScanner) {
+                                html5QrcodeScanner.clear();
+                            }
+                            if(decodedText.includes('/my/delivery/')) {
+                                window.location.href = decodedText;
+                            } else {
+                                alert("Invalid QR Code scanned.");
+                                var modalEl = document.getElementById('qrScannerModal');
+                                var modal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
+                                modal.hide();
+                            }
+                        }
+                        
+                        btnScan.addEventListener('click', function() {
+                            var modalEl = document.getElementById('qrScannerModal');
+                            var modal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
+                            modal.show();
+                            
+                            setTimeout(function() {
+                                html5QrcodeScanner = new Html5QrcodeScanner("qr-reader", { fps: 10, qrbox: {width: 250, height: 250} });
+                                html5QrcodeScanner.render(onScanSuccess);
+                            }, 500);
+                        });
+                        
+                        document.getElementById('qrScannerModal').addEventListener('hidden.bs.modal', function () {
+                            if (html5QrcodeScanner) {
+                                html5QrcodeScanner.clear().catch(e => console.error(e));
+                            }
+                        });
+                    }
+                });
+            </script>
             
             <t t-if="error">
                 <div class="alert alert-danger" role="alert"><t t-esc="error"/></div>
