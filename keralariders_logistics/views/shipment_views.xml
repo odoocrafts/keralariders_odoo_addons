@@ -269,6 +269,7 @@
                             <field name="delivery_executive_id"/>
                             <field name="estimated_delivery_date"/>
                             <field name="actual_delivery_date"/>
+                            <field name="delivery_remarks"/>
                         </group>
                     </group>
 

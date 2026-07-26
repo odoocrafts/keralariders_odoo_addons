@@ -590,6 +590,9 @@ class LogisticsPortal(CustomerPortal):
                 else:
                     request.session['error'] = "Please select a valid COD payment method."
                     return request.redirect(f'/my/delivery/{shipment.id}')
+            # Delivery remarks
+            delivery_remarks = post.get('delivery_remarks')
+            vals['delivery_remarks'] = delivery_remarks or ''
             
             shipment.sudo().write(vals)
             request.session['success'] = f"Shipment {shipment.name} marked as delivered successfully!"
