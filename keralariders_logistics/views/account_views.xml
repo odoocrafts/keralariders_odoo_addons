@@ -115,7 +115,7 @@
         <field name="name">logistics.account.transfer.list</field>
         <field name="model">logistics.account.transfer</field>
         <field name="arch" type="xml">
-            <list string="Account Transfers">
+            <list string="Account Transfers" expand="1">
                 <field name="transfer_date" width="100" string="Date"/>
                 <field name="name" width="100" options='{"bg_color": "#e1fade: cod_clearance_transfer_id != False; #fffad6: not cod_clearance_transfer_id;  #d2c5ed: transfer_type!=&apos;cod_payment&apos;;"}'/>              
                 <field name="transfer_type" widget="badge" width="100"/>
@@ -437,9 +437,8 @@
         <field name="view_mode">list,form</field>
         <field name="view_id" ref="view_logistics_account_transfer_tree"/>
         <field name="domain">[('transfer_type', '=', 'cod_payment')]</field>
-        <field name="context">{'default_transfer_type': 'cod_payment'}</field>
         <field name="search_view_id" ref="view_logistics_account_transfer_cod_payment_search"/>
-        <field name="context">{'search_default_not_cleared': 1}</field>
+        <field name="context">{'default_transfer_type': 'cod_payment', 'search_default_not_cleared': 1, 'search_default_group_to_account': 1, }</field>
     </record>
 
     <record id="action_logistics_account_transfer_cod_clearance" model="ir.actions.act_window">
