@@ -129,6 +129,15 @@ class BankCashAccountTransfer(models.Model):
         string="Cleared COD Payments",
     )
 
+    @api.onchange('from_account_id')
+    def _compute_transaction_ids_and_amount(self):
+        if self.from_account_id and self.transfer_type == 'cod_clearance':
+            # self.cod_clearance_payment_transfer_ids = [(5)]
+            uncleared_cod_payments = self.env['logistics.account.transfer'].search([
+                ('cod_clearance_transfer_id', '=', False), ('transfer_type', '=', 'cod_payment'), ('to_account_id', '=', self.from_account_id.id)
+            ])
+            self.cod_clearance_payment_transfer_ids = [(6,0, uncleared_cod_payments.ids)]
+
     def write(self, vals):
         for rec in self:
             if rec.transfer_type == 'cod_clearance' and 'cod_clearance_payment_transfer_ids' in vals:
