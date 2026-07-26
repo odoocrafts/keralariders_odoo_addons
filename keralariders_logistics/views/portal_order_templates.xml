@@ -1,0 +1,207 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Orders List -->
+    <template id="portal_my_orders" name="My Orders">
+        <t t-call="portal.portal_layout">
+            <t t-set="breadcrumbs_searchbar" t-value="True"/>
+            <t t-call="portal.portal_searchbar">
+                <t t-set="title">Orders</t>
+                <div class="form-inline ms-auto">
+                    <a href="/my/orders/new" class="btn btn-primary"><i class="fa fa-upload me-1"/> Bulk Upload Order</a>
+                </div>
+            </t>
+            
+            <t t-if="error">
+                <div class="alert alert-danger" role="alert"><t t-esc="error"/></div>
+            </t>
+            <t t-if="success">
+                <div class="alert alert-success" role="alert"><t t-esc="success"/></div>
+            </t>
+            
+            <t t-if="not orders">
+                <p class="alert alert-info">You don't have any orders yet.</p>
+            </t>
+            <t t-if="orders" t-call="portal.portal_table">
+                <thead>
+                    <tr class="active">
+                        <th>Order No</th>
+                        <th>Order Date</th>
+                        <th>Pickup Date</th>
+                        <th>Shipments</th>
+                        <th>Total Charges</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <t t-foreach="orders" t-as="order">
+                        <tr>
+                            <td><a t-attf-href="/my/orders/#{order.id}"><span t-field="order.name"/></a></td>
+                            <td><span t-field="order.order_date"/></td>
+                            <td><span t-field="order.pickup_date"/></td>
+                            <td><span t-field="order.shipment_count"/></td>
+                            <td><span t-field="order.total_charges" t-options='{"widget": "monetary", "display_currency": order.currency_id}'/></td>
+                            <td>
+                                <span class="badge bg-secondary">
+                                    <t t-esc="dict(order.fields_get(allfields=['state'])['state']['selection'])[order.state]"/>
+                                </span>
+                            </td>
+                        </tr>
+                    </t>
+                </tbody>
+            </t>
+        </t>
+    </template>
+
+    <!-- Order Detail View -->
+    <template id="portal_my_order_detail" name="Order Detail">
+        <t t-call="portal.portal_layout">
+            <t t-if="error">
+                <div class="alert alert-danger" role="alert"><t t-esc="error"/></div>
+            </t>
+            <t t-if="success">
+                <div class="alert alert-success" role="alert"><t t-esc="success"/></div>
+            </t>
+            
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                    <h4 class="mb-0">Order: <t t-esc="order.name"/></h4>
+                    <span class="badge bg-primary fs-6"><t t-esc="dict(order.fields_get(allfields=['state'])['state']['selection'])[order.state]"/></span>
+                </div>
+                <div class="card-body">
+                    <div class="row mb-4">
+                        <div class="col-md-3">
+                            <strong>Order Date:</strong><br/>
+                            <span t-field="order.order_date"/>
+                        </div>
+                        <div class="col-md-3">
+                            <strong>Pickup Date:</strong><br/>
+                            <span t-field="order.pickup_date"/>
+                        </div>
+                        <div class="col-md-3">
+                            <strong>Total Shipments:</strong><br/>
+                            <span t-field="order.shipment_count"/>
+                        </div>
+                        <div class="col-md-3 text-end">
+                            <h4 class="text-primary mb-0">Total Charges</h4>
+                            <h5><span t-field="order.total_charges" t-options='{"widget": "monetary", "display_currency": order.currency_id}'/></h5>
+                        </div>
+                    </div>
+                    
+                    <t t-if="order.state == 'draft'">
+                        <div t-attf-class="alert #{'alert-danger' if wallet.balance &lt; order.total_charges else 'alert-success'} d-flex justify-content-between align-items-center">
+                            <div>
+                                <strong>Wallet Balance: </strong> <span t-field="wallet.balance" t-options='{"widget": "monetary", "display_currency": wallet.currency_id}'/>
+                                <t t-if="wallet.balance &lt; order.total_charges">
+                                    <br/><small>Insufficient balance. Please recharge your wallet to proceed.</small>
+                                </t>
+                            </div>
+                            <div class="text-end">
+                                <t t-if="wallet.balance &lt; order.total_charges">
+                                    <a href="/my/wallet" class="btn btn-warning">Recharge Wallet</a>
+                                </t>
+                                <t t-else="">
+                                    <form action="/my/orders/request_pickup" method="post">
+                                        <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                                        <input type="hidden" name="order_id" t-att-value="order.id"/>
+                                        <button type="submit" class="btn btn-success"><i class="fa fa-truck me-1"/> Confirm &amp; Request Pickup</button>
+                                    </form>
+                                </t>
+                            </div>
+                        </div>
+                    </t>
+
+                    <h5 class="mt-4 mb-3">Shipments Included in this Order</h5>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-striped">
+                            <thead>
+                                <tr>
+                                    <th>AWB / Ref</th>
+                                    <th>Customer Name</th>
+                                    <th>Weight (Kg)</th>
+                                    <th>Payment Type</th>
+                                    <th>Charges</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <t t-foreach="order.shipment_ids" t-as="ship">
+                                    <tr>
+                                        <td><a t-attf-href="/track/#{ship.tracking_token}"><span t-field="ship.name"/></a></td>
+                                        <td><span t-field="ship.shipping_to_name"/></td>
+                                        <td><span t-field="ship.total_weight"/></td>
+                                        <td><span t-esc="dict(ship.fields_get(allfields=['order_payment_type'])['order_payment_type']['selection'])[ship.order_payment_type]"/></td>
+                                        <td><span t-field="ship.delivery_charges_total" t-options='{"widget": "monetary", "display_currency": ship.currency_id}'/></td>
+                                        <td>
+                                            <span class="badge bg-secondary">
+                                                <t t-esc="dict(ship.fields_get(allfields=['state'])['state']['selection'])[ship.state]"/>
+                                            </span>
+                                        </td>
+                                    </tr>
+                                </t>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </t>
+    </template>
+
+    <!-- New Order Form (Bulk Upload) -->
+    <template id="portal_my_order_new" name="New Order">
+        <t t-call="portal.portal_layout">
+            <t t-if="error">
+                <div class="alert alert-danger" role="alert"><t t-esc="error"/></div>
+            </t>
+            
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-white py-3">
+                    <h4 class="mb-0">Create New Bulk Order</h4>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-8">
+                            <form action="/my/orders/bulk_upload" method="post" enctype="multipart/form-data">
+                                <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                                
+                                <div class="mb-4">
+                                    <label for="pickup_date" class="form-label fw-bold">Pickup Date</label>
+                                    <input type="date" name="pickup_date" id="pickup_date" class="form-control" required="1" t-att-value="datetime.date.today().strftime('%Y-%m-%d')"/>
+                                </div>
+
+                                <div class="mb-4">
+                                    <label class="form-label fw-bold">1. Download Template</label>
+                                    <p class="text-muted small">Please use our standard CSV template to prepare your shipment data.</p>
+                                    <a href="/my/shipments/bulk_upload/template" class="btn btn-outline-secondary btn-sm">
+                                        <i class="fa fa-download me-1"/> Download CSV Template
+                                    </a>
+                                </div>
+                                
+                                <div class="mb-4">
+                                    <label for="csv_file" class="form-label fw-bold">2. Upload Filled Template</label>
+                                    <input class="form-control" type="file" id="csv_file" name="csv_file" accept=".csv" required="1"/>
+                                </div>
+                                
+                                <div class="text-end border-top pt-3">
+                                    <a href="/my/orders" class="btn btn-secondary me-2">Cancel</a>
+                                    <button type="submit" class="btn btn-primary">Preview &amp; Calculate Charges</button>
+                                </div>
+                            </form>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="alert alert-info">
+                                <h5>How it works:</h5>
+                                <ol class="small ps-3 mb-0">
+                                    <li class="mb-2">Download the CSV template.</li>
+                                    <li class="mb-2">Fill in your shipments' details carefully. Do not change the headers.</li>
+                                    <li class="mb-2">Upload the file here.</li>
+                                    <li class="mb-2">We will parse the file and calculate the total delivery charges.</li>
+                                    <li class="mb-0">You can then review the charges, recharge your wallet if needed, and confirm the pickup request!</li>
+                                </ol>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </t>
+    </template>
+</odoo>

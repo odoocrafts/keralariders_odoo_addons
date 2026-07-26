@@ -79,6 +79,7 @@ class WalletTransaction(models.Model):
     reference = fields.Text(string='Reference')
     currency_id = fields.Many2one('res.currency', string='Currency', default=lambda self: self.env.company.currency_id.id)
     shipment_id = fields.Many2one('logistics.shipment', string="Related Shipment", ondelete="cascade")
+    order_id = fields.Many2one('logistics.order', string="Related Order", ondelete="cascade")
     recharge_request_id = fields.Many2one('logistics.wallet.recharge.request', string="Recharge Request", ondelete="cascade")
     
 class WalletRechargeRequest(models.Model):

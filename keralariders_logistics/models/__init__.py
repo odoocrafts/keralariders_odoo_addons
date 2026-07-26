@@ -3,6 +3,7 @@ from . import seller
 from . import wallet
 from . import delivery_executive
 from . import delivery_charges
+from . import order
 from . import shipment
 from . import res_config_settings
 from . import account

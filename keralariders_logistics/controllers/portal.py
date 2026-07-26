@@ -15,6 +15,9 @@ class LogisticsPortal(CustomerPortal):
         values['is_seller'] = bool(seller)
         
         if seller:
+            order_count = request.env['logistics.order'].search_count([('seller_id', '=', seller.id)])
+            values['order_count'] = str(order_count) if order_count > 0 else '0 '
+            
             shipment_count = request.env['logistics.shipment'].search_count([('seller_id', '=', seller.id)])
             values['shipment_count'] = str(shipment_count) if shipment_count > 0 else '0 '
             
@@ -243,17 +246,95 @@ class LogisticsPortal(CustomerPortal):
         ]
         return request.make_response(csv_content, headers=headers)
 
-    @http.route(['/my/shipments/bulk_upload'], type='http', auth="user", website=True, methods=['POST'])
-    def portal_my_shipments_bulk_upload(self, **post):
+    @http.route(['/my/orders', '/my/orders/page/<int:page>'], type='http', auth="user", website=True)
+    def portal_my_orders(self, page=1, date_begin=None, date_end=None, sortby=None, **kw):
+        partner = request.env.user.partner_id
+        seller = request.env['logistics.seller'].search([('partner_id', '=', partner.id)], limit=1)
+        if not seller:
+            return request.redirect('/my')
+            
+        Order = request.env['logistics.order']
+        domain = [('seller_id', '=', seller.id)]
+        
+        searchbar_sortings = {
+            'date': {'label': _('Newest'), 'order': 'create_date desc, id desc'},
+            'name': {'label': _('Reference'), 'order': 'name'},
+        }
+        if not sortby:
+            sortby = 'date'
+        order = searchbar_sortings[sortby]['order']
+
+        order_count = Order.search_count(domain)
+        pager = portal_pager(
+            url="/my/orders",
+            url_args={'date_begin': date_begin, 'date_end': date_end, 'sortby': sortby},
+            total=order_count,
+            page=page,
+            step=self._items_per_page
+        )
+        
+        orders = Order.search(domain, order=order, limit=self._items_per_page, offset=pager['offset'])
+        
+        values = {
+            'orders': orders,
+            'page_name': 'order',
+            'pager': pager,
+            'default_url': '/my/orders',
+            'searchbar_sortings': searchbar_sortings,
+            'sortby': sortby,
+            'error': request.session.pop('error', None),
+            'success': request.session.pop('success', None),
+        }
+        return request.render("keralariders_logistics.portal_my_orders", values)
+
+    @http.route(['/my/orders/<int:order_id>'], type='http', auth="user", website=True)
+    def portal_my_order_detail(self, order_id=None, **kw):
+        partner = request.env.user.partner_id
+        seller = request.env['logistics.seller'].search([('partner_id', '=', partner.id)], limit=1)
+        if not seller:
+            return request.redirect('/my')
+            
+        order = request.env['logistics.order'].search([('id', '=', order_id), ('seller_id', '=', seller.id)], limit=1)
+        if not order:
+            return request.redirect('/my/orders')
+            
+        wallet = request.env['logistics.wallet'].search([('seller_id', '=', seller.id)], limit=1)
+        
+        values = {
+            'order': order,
+            'wallet': wallet,
+            'page_name': 'order',
+            'error': request.session.pop('error', None),
+            'success': request.session.pop('success', None),
+        }
+        return request.render("keralariders_logistics.portal_my_order_detail", values)
+
+    @http.route(['/my/orders/new'], type='http', auth="user", website=True)
+    def portal_my_orders_new(self, **kw):
+        partner = request.env.user.partner_id
+        seller = request.env['logistics.seller'].search([('partner_id', '=', partner.id)], limit=1)
+        if not seller:
+            return request.redirect('/my')
+            
+        values = {
+            'page_name': 'order_new',
+            'seller': seller,
+            'error': request.session.pop('error', None),
+        }
+        return request.render("keralariders_logistics.portal_my_order_new", values)
+
+    @http.route(['/my/orders/bulk_upload'], type='http', auth="user", website=True, methods=['POST'])
+    def portal_my_orders_bulk_upload(self, **post):
         partner = request.env.user.partner_id
         seller = request.env['logistics.seller'].search([('partner_id', '=', partner.id)], limit=1)
         if not seller:
             return request.redirect('/my')
             
         csv_file = post.get('csv_file')
-        if not csv_file:
-            request.session['error'] = "No file uploaded."
-            return request.redirect('/my/shipments')
+        pickup_date = post.get('pickup_date')
+        if not csv_file or not pickup_date:
+            request.session['error'] = "Missing file or pickup date."
+            return request.redirect('/my/orders/new')
             
         try:
             import csv
@@ -264,6 +345,11 @@ class LogisticsPortal(CustomerPortal):
             
             success_count = 0
             failed_count = 0
+            
+            order = request.env['logistics.order'].sudo().create({
+                'seller_id': seller.id,
+                'pickup_date': pickup_date,
+            })
             
             for row in csv_reader:
                 customer_name = row.get('Customer Name')
@@ -286,7 +372,6 @@ class LogisticsPortal(CustomerPortal):
                     failed_count += 1
                     continue
                     
-                # Lookup District from Pincode
                 district_id = False
                 state_id = False
                 pincode_info = request.env['logistics.district'].sudo().get_district_from_pincode(pincode)
@@ -301,6 +386,7 @@ class LogisticsPortal(CustomerPortal):
                     payment_type = 'prepaid'
                     
                 shipment_vals = {
+                    'order_id': order.id,
                     'seller_id': seller.id,
                     'shipping_to_name': customer_name,
                     'shipping_to_address': address,
@@ -313,7 +399,7 @@ class LogisticsPortal(CustomerPortal):
                     'order_payment_type': payment_type,
                     'total_order_value': order_value,
                     'billing_same_as_shipping': True,
-                    'state': 'order_added',
+                    'state': 'draft',
                 }
                 
                 shipment = request.env['logistics.shipment'].sudo().create(shipment_vals)
@@ -321,57 +407,48 @@ class LogisticsPortal(CustomerPortal):
                     shipment.cod_amount = shipment.total_order_value
                 success_count += 1
                 
-            msg = f"Bulk upload complete: {success_count} shipments created successfully."
+            if success_count == 0:
+                order.sudo().unlink()
+                request.session['error'] = "All rows failed validation. Order not created."
+                return request.redirect('/my/orders/new')
+                
+            msg = f"Order created with {success_count} shipments."
             if failed_count > 0:
                 msg += f" {failed_count} rows failed validation and were skipped."
                 
             request.session['success'] = msg
+            return request.redirect(f'/my/orders/{order.id}')
             
         except UnicodeDecodeError:
             request.session['error'] = "Error reading file. Please ensure it is a valid CSV file saved with UTF-8 encoding."
+            return request.redirect('/my/orders/new')
         except Exception as e:
             request.session['error'] = f"Error processing file: {str(e)}"
+            return request.redirect('/my/orders/new')
             
-        return request.redirect('/my/shipments')
-
-    @http.route(['/my/shipments/request_pickup'], type='http', auth="user", website=True, methods=['POST'])
-    def portal_my_shipments_request_pickup(self, **post):
-        shipment_id = int(post.get('shipment_id', 0))
+    @http.route(['/my/orders/request_pickup'], type='http', auth="user", website=True, methods=['POST'])
+    def portal_my_orders_request_pickup(self, **post):
+        order_id = int(post.get('order_id', 0))
         partner = request.env.user.partner_id
         seller = request.env['logistics.seller'].search([('partner_id', '=', partner.id)], limit=1)
         
-        shipment = request.env['logistics.shipment'].search([
-            ('id', '=', shipment_id), 
+        order = request.env['logistics.order'].search([
+            ('id', '=', order_id), 
             ('seller_id', '=', seller.id),
-            ('state', '=', 'order_added')
+            ('state', '=', 'draft')
         ], limit=1)
         
-        if not shipment:
-            request.session['error'] = "Shipment not found or not in Draft state."
-            return request.redirect('/my/shipments')
+        if not order:
+            request.session['error'] = "Order not found or not in Draft state."
+            return request.redirect('/my/orders')
             
         try:
-            # Check if wallet has balance
-            wallet = seller.wallet_ids[0] if seller.wallet_ids else False
-            if not wallet:
-                raise UserError("No wallet found for your account.")
-                
-            if wallet.balance < shipment.delivery_charges_total:
-                raise UserError(f"Insufficient wallet balance. Charge is {shipment.delivery_charges_total}, your balance is {wallet.balance}. Please recharge.")
-                
-            # Create transaction and deduct
-            shipment.sudo().action_add_wallet_transaction()
-            # Update state
-            shipment.sudo().write({
-                'state': 'pickup_requested',
-                'pickup_requested_on': fields.Datetime.now()
-            })
-            
-            request.session['success'] = f"Pickup requested successfully for {shipment.name}. {shipment.delivery_charges_total} deducted from wallet."
+            order.sudo().action_request_pickup()
+            request.session['success'] = f"Pickup requested successfully for Order {order.name}. {order.total_charges} deducted from wallet."
         except Exception as e:
             request.session['error'] = str(e)
             
-        return request.redirect('/my/shipments')
+        return request.redirect(f'/my/orders/{order.id}')
 
     @http.route(['/my/shipments/request_return'], type='http', auth="user", website=True, methods=['POST'])
     def portal_my_shipments_request_return(self, **post):

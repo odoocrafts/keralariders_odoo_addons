@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_logistics_order_tree" model="ir.ui.view">
+        <field name="name">logistics.order.tree</field>
+        <field name="model">logistics.order</field>
+        <field name="arch" type="xml">
+            <tree string="Orders">
+                <field name="name"/>
+                <field name="seller_id"/>
+                <field name="order_date"/>
+                <field name="pickup_date"/>
+                <field name="shipment_count"/>
+                <field name="total_charges" sum="Total Charges"/>
+                <field name="state" widget="badge" decoration-info="state == 'draft'" decoration-warning="state == 'pickup_requested'" decoration-primary="state == 'picked'" decoration-success="state == 'delivered'" decoration-danger="state == 'cancelled'"/>
+            </tree>
+        </field>
+    </record>
+
+    <record id="view_logistics_order_form" model="ir.ui.view">
+        <field name="name">logistics.order.form</field>
+        <field name="model">logistics.order</field>
+        <field name="arch" type="xml">
+            <form string="Order">
+                <header>
+                    <button name="action_request_pickup" string="Request Pickup" type="object" class="oe_highlight" invisible="state != 'draft'"/>
+                    <field name="state" widget="statusbar" statusbar_visible="draft,pickup_requested,picked,delivered"/>
+                </header>
+                <sheet>
+                    <div class="oe_title">
+                        <h1>
+                            <field name="name" readonly="1"/>
+                        </h1>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="seller_id" readonly="state != 'draft'"/>
+                            <field name="order_date" readonly="state != 'draft'"/>
+                        </group>
+                        <group>
+                            <field name="pickup_date" readonly="state != 'draft'"/>
+                            <field name="shipment_count"/>
+                            <field name="total_charges"/>
+                            <field name="currency_id" invisible="1"/>
+                            <field name="company_id" invisible="1"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Shipments (AWBs)">
+                            <field name="shipment_ids" readonly="state != 'draft'">
+                                <tree>
+                                    <field name="name"/>
+                                    <field name="shipping_to_name"/>
+                                    <field name="shipping_to_district_id"/>
+                                    <field name="total_weight"/>
+                                    <field name="order_payment_type"/>
+                                    <field name="total_order_value"/>
+                                    <field name="delivery_charges_total"/>
+                                    <field name="state" widget="badge" decoration-info="state == 'order_added'" decoration-success="state == 'delivered'"/>
+                                </tree>
+                            </field>
+                        </page>
+                    </notebook>
+                </sheet>
+                <div class="oe_chatter">
+                    <field name="message_follower_ids"/>
+                    <field name="activity_ids"/>
+                    <field name="message_ids"/>
+                </div>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_logistics_order" model="ir.actions.act_window">
+        <field name="name">Orders</field>
+        <field name="res_model">logistics.order</field>
+        <field name="view_mode">tree,form</field>
+    </record>
+
+    <menuitem id="menu_logistics_order" name="Orders" parent="keralariders_logistics.menu_logistics_operations" action="action_logistics_order" sequence="5"/>
+</odoo>

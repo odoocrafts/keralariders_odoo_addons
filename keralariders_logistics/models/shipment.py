@@ -47,6 +47,7 @@ class Shipment(models.Model):
     company_id = fields.Many2one('res.company', string='Company', required=True, default=lambda self: self.env.company)
 
     seller_id = fields.Many2one('logistics.seller', string='Seller', required=True)
+    order_id = fields.Many2one('logistics.order', string='Order', ondelete='cascade')
     delivery_executive_id = fields.Many2one('logistics.delivery.executive', string='Delivery Executive')
     order_date = fields.Date(string='Order Date', required=True, default=fields.Date.context_today)
 
@@ -158,42 +159,7 @@ class Shipment(models.Model):
 
     state = fields.Selection(delivery_states, string='Delivery Status', default='order_added', tracking=True)
 
-    wallet_transaction_id = fields.Many2one("logistics.wallet.transaction", string="Wallet Transaction")
-
-    def action_add_wallet_transaction(self):
-        if not self.seller_id:
-            raise UserError(f'Seller must be set before adding Wallet Transaction!')
-        if not self.seller_id.wallet_ids:
-            raise UserError(f'No Wallets found for this Seller!')
-        if not self.wallet_transaction_id:
-            wallet = self.seller_id.wallet_ids[0]
-            # Check wallet balance
-            if wallet.balance < self.delivery_charges_total:
-                raise UserError(f'Insufficient balance available in your Wallet. Please recharge before proceeding')
-            
-            self.wallet_transaction_id = self.env['logistics.wallet.transaction'].sudo().create({
-                'wallet_id': wallet.id,
-                'amount': -self.delivery_charges_total,
-                'transaction_date': fields.Date.context_today(self),
-                'shipment_id': self.id,
-                'reference': self.display_name,
-            }).id
-
-    def delete_wallet_transaction(self):
-        if not self.wallet_transaction_id:
-            raise UserError(f'No transaction linked to this Shipment')
-        self.wallet_transaction_id.unlink()
-
-    def action_view_wallet_transaction(self):
-        if self.wallet_transaction_id:
-            return {
-                'name': 'Wallet Transaction',
-                'type': 'ir.actions.act_window',
-                'res_model': 'logistics.wallet.transaction',
-                'view_mode': 'list',
-                'domain': [('id', '=', self.wallet_transaction_id.id)],
-                'context': {'default_wallet_id': self.wallet_transaction_id.wallet_id.id},
-            }
+    wallet_transaction_id = fields.Many2one("logistics.wallet.transaction", string="Wallet Transaction (Legacy)")
 
     cod_payment_transfer_ids = fields.Many2many("logistics.account.transfer", string="COD Payment Transfers")
     cod_paid_amount = fields.Monetary(string="COD Paid Amount", compute="_compute_cod_paid_balance_amount", store=True)
