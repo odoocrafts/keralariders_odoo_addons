@@ -51,18 +51,19 @@ class Order(models.Model):
                 continue
                 
             states = order.shipment_ids.mapped('state')
+            if any(s in ('delivered', 'return_requested', 'return_picked', 'returned') for s in states):
+                order.state = 'partial'
+
             if all(s == 'delivered' for s in states):
                 order.state = 'delivered'
-            elif any(s == 'delivered' for s in states):
-                order.state = 'partial'
             elif all(s == 'cancelled' or s == 'cancel' for s in states):
                 order.state = 'cancelled'
-            elif any(s == 'picked' for s in states):
+            elif all(s == 'picked' for s in states):
                 order.state = 'picked'
-            elif any(s == 'pickup_requested' for s in states):
+            elif all(s == 'pickup_requested' for s in states):
                 order.state = 'pickup_requested'
-            else:
-                order.state = 'draft'
+            # else:
+            #     order.state = 'draft'
 
     def action_request_pickup(self):
         for order in self:
