@@ -217,9 +217,7 @@
             <t t-set="breadcrumbs_searchbar" t-value="True"/>
             <t t-call="portal.portal_searchbar">
                 <t t-set="title">Shipments</t>
-                <div class="form-inline ms-auto">
-                    <a href="/my/shipments/new" class="btn btn-primary">Create Single Shipment</a>
-                </div>
+
             </t>
             
             <t t-if="error">
