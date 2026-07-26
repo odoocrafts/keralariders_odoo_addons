@@ -23,3 +23,43 @@ class DeliveryExecutive(models.Model):
     assigned_region = fields.Char(string='Assigned Region')
     active = fields.Boolean(default=True)
     user_id = fields.Many2one('res.users', string='Related User')
+
+    def action_grant_portal_access(self):
+        self.ensure_one()
+        from odoo.exceptions import UserError
+        
+        if not self.email:
+            raise UserError("Delivery Executive must have an email address to grant portal access.")
+            
+        portal_group = self.env.ref('base.group_portal')
+        
+        if not self.user_id:
+            if self.env['res.users'].sudo().search([('login', '=', self.email)]):
+                raise UserError("A user with this email already exists.")
+                
+            user = self.env['res.users'].sudo().create({
+                'name': self.name,
+                'login': self.email,
+                'email': self.email,
+                'groups_id': [(4, portal_group.id)]
+            })
+            self.user_id = user.id
+            user.action_reset_password()
+            message = "Portal access granted and invitation email sent!"
+        else:
+            if portal_group not in self.user_id.groups_id:
+                self.user_id.sudo().write({'groups_id': [(4, portal_group.id)]})
+                message = "Portal access granted!"
+            else:
+                message = "Executive already has portal access."
+                
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'display_notification',
+            'params': {
+                'title': 'Portal Access',
+                'message': message,
+                'type': 'success',
+                'sticky': False,
+            }
+        }

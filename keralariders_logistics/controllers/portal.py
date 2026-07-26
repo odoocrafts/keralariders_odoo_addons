@@ -29,6 +29,13 @@ class LogisticsPortal(CustomerPortal):
                 values['wallet_balance'] = "0.00"
                 
             values['charge_calculator'] = ' '
+
+        delivery_executive = request.env['logistics.delivery.executive'].sudo().search([('user_id', '=', request.env.user.id)], limit=1)
+        values['is_delivery_executive'] = bool(delivery_executive)
+        
+        if delivery_executive:
+            assigned_shipment_count = request.env['logistics.shipment'].search_count([('delivery_executive_id', '=', delivery_executive.id), ('state', '!=', 'delivered')])
+            values['assigned_shipment_count'] = str(assigned_shipment_count) if assigned_shipment_count > 0 else '0 '
         
         return values
         
@@ -500,3 +507,104 @@ class LogisticsPortal(CustomerPortal):
             return request.redirect(f'/my/calculator?result={charge}')
         except Exception as e:
             return request.redirect(f'/my/calculator?error={e}')
+
+    @http.route(['/my/deliveries', '/my/deliveries/page/<int:page>'], type='http', auth="user", website=True)
+    def portal_my_deliveries(self, page=1, date_begin=None, date_end=None, sortby=None, **kw):
+        delivery_executive = request.env['logistics.delivery.executive'].search([('user_id', '=', request.env.user.id)], limit=1)
+        if not delivery_executive:
+            return request.redirect('/my')
+            
+        Shipment = request.env['logistics.shipment']
+        domain = [('delivery_executive_id', '=', delivery_executive.id), ('state', '!=', 'delivered')]
+        
+        searchbar_sortings = {
+            'date': {'label': _('Newest'), 'order': 'create_date desc, id desc'},
+            'name': {'label': _('Reference'), 'order': 'name'},
+        }
+        if not sortby:
+            sortby = 'date'
+        order = searchbar_sortings[sortby]['order']
+
+        shipment_count = Shipment.search_count(domain)
+        pager = portal_pager(
+            url="/my/deliveries",
+            url_args={'date_begin': date_begin, 'date_end': date_end, 'sortby': sortby},
+            total=shipment_count,
+            page=page,
+            step=self._items_per_page
+        )
+        
+        shipments = Shipment.search(domain, order=order, limit=self._items_per_page, offset=pager['offset'])
+        
+        values = {
+            'shipments': shipments,
+            'page_name': 'deliveries',
+            'pager': pager,
+            'default_url': '/my/deliveries',
+            'searchbar_sortings': searchbar_sortings,
+            'sortby': sortby,
+            'error': request.session.pop('error', None),
+            'success': request.session.pop('success', None),
+        }
+        return request.render("keralariders_logistics.portal_my_deliveries", values)
+
+    @http.route(['/my/delivery/<int:shipment_id>'], type='http', auth="user", website=True)
+    def portal_my_delivery_detail(self, shipment_id=None, **kw):
+        delivery_executive = request.env['logistics.delivery.executive'].search([('user_id', '=', request.env.user.id)], limit=1)
+        if not delivery_executive:
+            return request.redirect('/my')
+            
+        shipment = request.env['logistics.shipment'].search([('id', '=', shipment_id), ('delivery_executive_id', '=', delivery_executive.id)], limit=1)
+        if not shipment:
+            return request.redirect('/my/deliveries')
+            
+        # Get UPI Config
+        upi_id = request.env['ir.config_parameter'].sudo().get_param('keralariders_logistics.logistics_upi_id')
+        qr_url = False
+        if upi_id and shipment.order_payment_type == 'cod' and shipment.cod_amount > 0:
+            import urllib.parse
+            company_name = urllib.parse.quote_plus(request.env.company.name)
+            upi_uri = f"upi://pay?pa={upi_id}&pn={company_name}&am={shipment.cod_amount:.2f}&cu=INR"
+            encoded_uri = urllib.parse.quote_plus(upi_uri)
+            qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=250x250&data={encoded_uri}"
+
+        values = {
+            'shipment': shipment,
+            'page_name': 'deliveries',
+            'qr_url': qr_url,
+            'error': request.session.pop('error', None),
+            'success': request.session.pop('success', None),
+        }
+        return request.render("keralariders_logistics.portal_my_delivery_detail", values)
+
+    @http.route(['/my/delivery/<int:shipment_id>/mark_delivered'], type='http', auth="user", website=True, methods=['POST'])
+    def portal_my_delivery_mark_delivered(self, shipment_id=None, **post):
+        delivery_executive = request.env['logistics.delivery.executive'].search([('user_id', '=', request.env.user.id)], limit=1)
+        if not delivery_executive:
+            return request.redirect('/my')
+            
+        shipment = request.env['logistics.shipment'].search([('id', '=', shipment_id), ('delivery_executive_id', '=', delivery_executive.id)], limit=1)
+        if not shipment:
+            request.session['error'] = "Shipment not found."
+            return request.redirect('/my/deliveries')
+            
+        if shipment.state == 'delivered':
+            request.session['error'] = "Shipment is already delivered."
+            return request.redirect(f'/my/delivery/{shipment.id}')
+
+        try:
+            vals = {'state': 'delivered'}
+            if shipment.order_payment_type == 'cod':
+                payment_method = post.get('cod_payment_method')
+                if payment_method in ['cash', 'upi']:
+                    vals['cod_payment_method'] = payment_method
+                else:
+                    request.session['error'] = "Please select a valid COD payment method."
+                    return request.redirect(f'/my/delivery/{shipment.id}')
+            
+            shipment.sudo().write(vals)
+            request.session['success'] = f"Shipment {shipment.name} marked as delivered successfully!"
+            return request.redirect('/my/deliveries')
+        except Exception as e:
+            request.session['error'] = str(e)
+            return request.redirect(f'/my/delivery/{shipment.id}')

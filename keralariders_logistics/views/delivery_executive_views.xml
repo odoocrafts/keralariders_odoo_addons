@@ -23,6 +23,9 @@
         <field name="model">logistics.delivery.executive</field>
         <field name="arch" type="xml">
             <form string="Delivery Executive">
+                <header>
+                    <button name="action_grant_portal_access" string="Grant Portal Access" type="object" class="oe_highlight"/>
+                </header>
                 <sheet>
                     <div class="oe_button_box" name="button_box">
                         <!-- <button name="action_view_deliveries" type="object"

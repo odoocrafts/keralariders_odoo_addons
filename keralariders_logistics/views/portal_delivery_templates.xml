@@ -1,0 +1,194 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Portal Home Entry -->
+    <template id="portal_my_home_delivery_executive" name="Show Delivery Executive Portal Entries" customize_show="True" inherit_id="portal.portal_my_home" priority="20">
+        <xpath expr="//div[hasclass('o_portal_docs')]" position="inside">
+            <t t-if="is_delivery_executive">
+                <t t-call="keralariders_logistics.logistics_portal_card">
+                    <t t-set="title">My Deliveries</t>
+                    <t t-set="url" t-value="'/my/deliveries'"/>
+                    <t t-set="count_text" t-value="assigned_shipment_count if assigned_shipment_count else '0'"/>
+                    <t t-set="icon" t-value="'/keralariders_logistics/static/src/img/shipment.svg'"/>
+                    <t t-set="text">Manage your assigned deliveries</t>
+                </t>
+            </t>
+        </xpath>
+    </template>
+
+    <!-- Breadcrumbs -->
+    <template id="portal_breadcrumbs_delivery_executive" name="Portal Breadcrumbs Delivery" inherit_id="portal.portal_breadcrumbs" priority="20">
+        <xpath expr="//ol[hasclass('o_portal_submenu')]" position="inside">
+            <li t-if="page_name == 'deliveries'" t-attf-class="breadcrumb-item #{'active ' if not shipment else ''}">
+                <a t-if="shipment" t-attf-href="/my/deliveries?{{ keep_query() }}">My Deliveries</a>
+                <t t-else="">My Deliveries</t>
+            </li>
+            <li t-if="shipment and page_name == 'deliveries'" class="breadcrumb-item active">
+                <t t-esc="shipment.name"/>
+            </li>
+        </xpath>
+    </template>
+
+    <!-- Deliveries List -->
+    <template id="portal_my_deliveries" name="My Deliveries">
+        <t t-call="portal.portal_layout">
+            <t t-set="breadcrumbs_searchbar" t-value="True"/>
+            <t t-call="portal.portal_searchbar">
+                <t t-set="title">Assigned Deliveries</t>
+            </t>
+            
+            <t t-if="error">
+                <div class="alert alert-danger" role="alert"><t t-esc="error"/></div>
+            </t>
+            <t t-if="success">
+                <div class="alert alert-success" role="alert"><t t-esc="success"/></div>
+            </t>
+            
+            <t t-if="not shipments">
+                <p class="alert alert-info">You don't have any pending deliveries assigned.</p>
+            </t>
+            <t t-if="shipments" t-call="portal.portal_table">
+                <thead>
+                    <tr class="active">
+                        <th>AWB / Ref</th>
+                        <th>Date</th>
+                        <th>Shipping To</th>
+                        <th>Weight</th>
+                        <th>Payment Type</th>
+                        <th>Status</th>
+                        <th class="text-end">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <t t-foreach="shipments" t-as="shipment">
+                        <tr>
+                            <td><a t-attf-href="/my/delivery/#{shipment.id}"><span t-field="shipment.name"/></a></td>
+                            <td><span t-field="shipment.order_date"/></td>
+                            <td><span t-field="shipment.shipping_to_name"/><br/><small class="text-muted"><span t-field="shipment.shipping_to_mobile"/></small></td>
+                            <td><span t-field="shipment.total_weight"/> kg</td>
+                            <td>
+                                <span t-if="shipment.order_payment_type == 'cod'" class="badge bg-warning text-dark">COD: <span t-field="shipment.cod_amount"/></span>
+                                <span t-else="" class="badge bg-success">Prepaid</span>
+                            </td>
+                            <td>
+                                <span class="badge bg-secondary">
+                                    <t t-esc="dict(shipment.fields_get(allfields=['state'])['state']['selection'])[shipment.state]"/>
+                                </span>
+                            </td>
+                            <td class="text-end">
+                                <a t-attf-href="/my/delivery/#{shipment.id}" class="btn btn-sm btn-primary">View Details</a>
+                            </td>
+                        </tr>
+                    </t>
+                </tbody>
+            </t>
+        </t>
+    </template>
+
+    <!-- Delivery Detail & Mark Delivered -->
+    <template id="portal_my_delivery_detail" name="Delivery Detail">
+        <t t-call="portal.portal_layout">
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                    <h4 class="mb-0">Delivery Details - <t t-esc="shipment.name"/></h4>
+                    <span class="badge bg-secondary fs-6"><t t-esc="dict(shipment.fields_get(allfields=['state'])['state']['selection'])[shipment.state]"/></span>
+                </div>
+                <div class="card-body">
+                    <t t-if="error">
+                        <div class="alert alert-danger" role="alert"><t t-esc="error"/></div>
+                    </t>
+                    <t t-if="success">
+                        <div class="alert alert-success" role="alert"><t t-esc="success"/></div>
+                    </t>
+
+                    <div class="row mb-4">
+                        <div class="col-md-6">
+                            <h5>Customer Information</h5>
+                            <p>
+                                <strong>Name:</strong> <span t-field="shipment.shipping_to_name"/><br/>
+                                <strong>Mobile:</strong> <span t-field="shipment.shipping_to_mobile"/><br/>
+                                <strong>Address:</strong> <span t-field="shipment.shipping_to_address"/><br/>
+                                <span t-field="shipment.shipping_to_district_id.name"/>, <span t-field="shipment.shipping_to_state_id.name"/> - <span t-field="shipment.shipping_to_zip"/>
+                            </p>
+                        </div>
+                        <div class="col-md-6">
+                            <h5>Package Information</h5>
+                            <p>
+                                <strong>Weight:</strong> <span t-field="shipment.total_weight"/> kg<br/>
+                                <strong>Description:</strong> <span t-field="shipment.item_description"/><br/>
+                                <strong>Payment Type:</strong> 
+                                <span t-if="shipment.order_payment_type == 'cod'" class="text-danger fw-bold">COD (Collect ₹ <span t-field="shipment.cod_amount"/>)</span>
+                                <span t-else="" class="text-success fw-bold">Prepaid</span>
+                            </p>
+                        </div>
+                    </div>
+
+                    <t t-if="shipment.state in ['pickup_requested', 'picked', 'in_transit']">
+                        <hr/>
+                        <h4 class="mb-3 text-primary">Mark as Delivered</h4>
+                        <form t-attf-action="/my/delivery/#{shipment.id}/mark_delivered" method="post">
+                            <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                            
+                            <t t-if="shipment.order_payment_type == 'cod'">
+                                <div class="mb-4 p-3 border rounded bg-light">
+                                    <h5 class="mb-3">Collect COD Payment: ₹ <span t-field="shipment.cod_amount"/></h5>
+                                    
+                                    <div class="form-check mb-2">
+                                        <input class="form-check-input" type="radio" name="cod_payment_method" id="codCash" value="cash" required="1" checked="1"/>
+                                        <label class="form-check-label fw-bold" for="codCash">
+                                            <i class="fa fa-money text-success"/> Cash Collected
+                                        </label>
+                                    </div>
+                                    <div class="form-check mb-3">
+                                        <input class="form-check-input" type="radio" name="cod_payment_method" id="codUPI" value="upi" required="1"/>
+                                        <label class="form-check-label fw-bold" for="codUPI">
+                                            <i class="fa fa-qrcode text-primary"/> UPI Payment
+                                        </label>
+                                    </div>
+
+                                    <!-- QR Code Section (Hidden by default, shown when UPI is selected) -->
+                                    <t t-if="qr_url">
+                                        <div id="upiQRCodeContainer" class="text-center mt-3 p-3 bg-white border rounded" style="display: none;">
+                                            <p class="mb-2 text-muted">Ask the customer to scan this QR Code to pay ₹ <span t-esc="shipment.cod_amount"/></p>
+                                            <img t-att-src="qr_url" alt="UPI QR Code" style="max-width: 200px; border: 1px solid #ddd; border-radius: 10px; padding: 10px;"/>
+                                        </div>
+                                    </t>
+                                    <t t-else="">
+                                        <div id="upiQRCodeContainer" class="text-center mt-3 p-3 bg-white border rounded" style="display: none;">
+                                            <p class="text-danger mb-0"><i class="fa fa-warning"/> UPI ID is not configured. Please collect Cash.</p>
+                                        </div>
+                                    </t>
+                                </div>
+                            </t>
+
+                            <button type="submit" class="btn btn-lg btn-success w-100 fw-bold shadow-sm" onclick="return confirm('Are you sure you want to mark this shipment as DELIVERED? This action cannot be undone.');">
+                                <i class="fa fa-check-circle"/> MARK AS DELIVERED
+                            </button>
+                        </form>
+
+                        <script>
+                            document.addEventListener("DOMContentLoaded", function() {
+                                var radioCash = document.getElementById('codCash');
+                                var radioUPI = document.getElementById('codUPI');
+                                var qrContainer = document.getElementById('upiQRCodeContainer');
+                                
+                                function toggleQR() {
+                                    if(radioUPI &amp;&amp; radioUPI.checked) {
+                                        qrContainer.style.display = 'block';
+                                    } else if(qrContainer) {
+                                        qrContainer.style.display = 'none';
+                                    }
+                                }
+
+                                if (radioCash &amp;&amp; radioUPI) {
+                                    radioCash.addEventListener('change', toggleQR);
+                                    radioUPI.addEventListener('change', toggleQR);
+                                }
+                            });
+                        </script>
+                    </t>
+                </div>
+            </div>
+        </t>
+    </template>
+</odoo>

@@ -42,6 +42,8 @@ Features:
         'views/tracking_template.xml',
         'views/portal_order_templates.xml',
         'views/portal_templates.xml',
+        'views/wizard_assign_delivery_executive.xml',
+        'views/portal_delivery_templates.xml',
         'report/shipment_layout.xml',
     ],
     'images': ['static/description/icon.png'],
