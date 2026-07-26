@@ -25,6 +25,5 @@
         <field name="context">{'module' : 'keralariders_logistics', 'bin_size': False}</field>
     </record>
 
-    <menuitem id="menu_logistics_config_settings" name="Settings" parent="keralariders_logistics.menu_logistics_root"
-        sequence="100" action="action_logistics_config_settings" groups="base.group_system"/>
+
 </odoo>
