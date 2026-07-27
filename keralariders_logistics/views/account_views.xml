@@ -114,7 +114,7 @@
         <field name="name">logistics.account.kanban</field>
         <field name="model">logistics.account</field>
         <field name="arch" type="xml">
-            <kanban class="o_kanban_mobile" default_group_by="account_type" records_draggable="0">
+            <kanban class="o_kanban_mobile" default_group_by="account_type" records_draggable="0" quick_create="0">
                 <field name="name"/>
                 <field name="reference"/>
                 <field name="account_type" readonly="1" />
@@ -173,7 +173,7 @@
                                         options="{'currency_field':'currency_id'}"/>
                                 </small>
                             </div>
-                            
+
                             <div class="mt-2">
                                 <button name="action_view_transfers"
                                         type="object"
@@ -252,6 +252,83 @@
                 </sheet>
                 <chatter/>
             </form>
+        </field>
+    </record>
+
+    <record id="view_logistics_account_transfer_kanban" model="ir.ui.view">
+        <field name="name">logistics.account.transfer.kanban</field>
+        <field name="model">logistics.account.transfer</field>
+        <field name="arch" type="xml">
+            <kanban default_group_by="transfer_type" records_draggable="0" quick_create="0">
+                <field name="name"/>
+                <field name="transfer_type"/>
+                <field name="transfer_date"/>
+                <field name="amount"/>
+                <field name="currency_id"/>
+                <field name="from_account_id"/>
+                <field name="to_account_id"/>
+                <field name="shipment_id"/>
+                <field name="related_seller_id"/>
+                <field name="reference"/>
+                <field name="cod_clearance_transfer_id"/>
+
+                <templates>
+                    <t t-name="card">
+                        <div class="oe_kanban_global_click">
+
+                            <div class="d-flex justify-content-between align-items-center">
+                                <strong>
+                                    <field name="name"/>
+                                </strong>
+
+                                <field name="transfer_type" widget="badge"/>
+                            </div>
+
+                            <div class="text-muted">
+                                <field name="transfer_date"/>
+                            </div>
+
+                            <hr class="my-2"/>
+
+                            <div>
+                                <strong>Amount</strong><br/>
+                                <field name="amount"
+                                    widget="monetary"
+                                    options="{'currency_field':'currency_id'}"/>
+                            </div>
+
+                            <div class="mt-2">
+                                <i class="fa fa-arrow-right me-1"/>
+                                <field name="from_account_id"/>
+                                →
+                                <field name="to_account_id"/>
+                            </div>
+
+                            <div class="mt-2" invisible="not related_seller_id">
+                                <strong>Seller:</strong>
+                                <field name="related_seller_id"/>
+                            </div>
+
+                            <div invisible="not shipment_id">
+                                <strong>Shipment:</strong>
+                                <field name="shipment_id"/>
+                            </div>
+
+                            <div class="text-muted mt-2">
+                                <field name="reference"/>
+                            </div>
+
+                            <div class="mt-2"
+                                invisible="not cod_clearance_transfer_id">
+                                <span class="badge text-bg-success">
+                                    Cleared
+                                </span>
+                            </div>
+
+                        </div>
+                    </t>
+                </templates>
+            </kanban>
         </field>
     </record>
 
@@ -514,7 +591,7 @@
     <record id="action_logistics_account_transfer_cod_payment" model="ir.actions.act_window">
         <field name="name">COD Payment Transfers</field>
         <field name="res_model">logistics.account.transfer</field>
-        <field name="view_mode">list,form</field>
+        <field name="view_mode">list,kanban,form</field>
         <field name="view_id" ref="view_logistics_account_transfer_tree"/>
         <field name="domain">[('transfer_type', '=', 'cod_payment')]</field>
         <field name="search_view_id" ref="view_logistics_account_transfer_cod_payment_search"/>
@@ -524,7 +601,7 @@
     <record id="action_logistics_account_transfer_cod_clearance" model="ir.actions.act_window">
         <field name="name">COD Clearance Transfers</field>
         <field name="res_model">logistics.account.transfer</field>
-        <field name="view_mode">list,form</field>
+        <field name="view_mode">list,kanban,form</field>
         <field name="view_id" ref="view_logistics_account_transfer_tree"/>
         <field name="domain">[('transfer_type', '=', 'cod_clearance')]</field>
         <field name="context">{'default_transfer_type': 'cod_clearance'}</field>

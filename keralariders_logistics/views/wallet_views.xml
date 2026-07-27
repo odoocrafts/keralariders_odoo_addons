@@ -54,6 +54,109 @@
         </field>
     </record>
 
+    <record id="view_logistics_wallet_kanban" model="ir.ui.view">
+        <field name="name">logistics.wallet.kanban</field>
+        <field name="model">logistics.wallet</field>
+        <field name="arch" type="xml">
+            <kanban class="o_kanban_mobile" records_draggable="0" quick_create="0">
+
+                <field name="name"/>
+                <field name="seller_id"/>
+                <field name="balance"/>
+                <field name="currency_id"/>
+                <field name="total_credit"/>
+                <field name="total_debit"/>
+                <field name="wallet_recharge_request_count"/>
+
+                <templates>
+                    <t t-name="card">
+                        <div class="oe_kanban_global_click">
+
+                            <div class="d-flex justify-content-between align-items-center">
+                                <strong>
+                                    <field name="name"/>
+                                </strong>
+                            </div>
+
+                            <div class="text-muted mt-1">
+                                <i class="fa fa-user me-1"/>
+                                <field name="seller_id"/>
+                            </div>
+
+                            <hr class="my-2"/>
+
+                            <div class="d-flex justify-content-between">
+                                <span>Balance</span>
+                                <strong>
+                                    <field name="balance"
+                                        class="text-success"
+                                        widget="monetary"
+                                        options="{'currency_field':'currency_id'}"
+                                        invisible="balance &lt; 0"/>
+
+                                    <field name="balance"
+                                        class="text-danger"
+                                        widget="monetary"
+                                        options="{'currency_field':'currency_id'}"
+                                        invisible="balance >= 0"/>
+                                </strong>
+                            </div>
+
+                            <div class="mt-2">
+                                <small class="text-success">
+                                    <i class="fa fa-arrow-down me-1"/>
+                                    <field name="total_credit"
+                                        widget="monetary"
+                                        options="{'currency_field':'currency_id'}"/>
+                                </small>
+                            </div>
+
+                            <div>
+                                <small class="text-danger">
+                                    <i class="fa fa-arrow-up me-1"/>
+                                    <field name="total_debit"
+                                        widget="monetary"
+                                        options="{'currency_field':'currency_id'}"/>
+                                </small>
+                            </div>
+
+                            <div class="d-grid gap-1 mt-3">
+
+                                <button name="action_view_transactions"
+                                        type="object"
+                                        class="btn btn-outline-info btn-sm">
+                                    <i class="fa fa-exchange me-1"/>
+                                    Transactions
+                                </button>
+
+                                <button name="action_view_recharge_requests"
+                                        invisible="has_pending_recharge_requests"
+                                        type="object"
+                                        class="btn btn-outline-primary btn-sm">
+                                    <i class="fa fa-refresh me-1"/>
+                                    <field name="pending_recharge_request_count" class="text-info"/>
+                                    Pending Recharge Requests
+                                </button>
+
+                                <button name="action_view_recharge_requests"
+                                        invisible="not has_pending_recharge_requests"
+                                        type="object"
+                                        class="btn btn-outline-success btn-sm">
+                                    <i class="fa fa-refresh me-1"/>
+                                    <field name="pending_recharge_request_count" class="text-info"/>
+                                    Pending Recharge Requests
+                                </button>
+
+                            </div>
+
+                        </div>
+                    </t>
+                </templates>
+
+            </kanban>
+        </field>
+    </record>
+
     <record id="view_logistics_wallet_search" model="ir.ui.view">
         <field name="name">logistics.wallet.search</field>
         <field name="model">logistics.wallet</field>
@@ -74,6 +177,10 @@
                 <separator/>
 
                 <!-- Quick Filters -->
+
+                <filter name="has_pending_requests"
+                    string="Pending Recharge Requests"
+                    domain="[('has_pending_recharge_requests', '=', True)]"/>
 
                 <filter name="has_transactions"
                         string="Has Transactions"
@@ -97,8 +204,8 @@
     <record id="action_logistics_wallet" model="ir.actions.act_window">
         <field name="name">Wallets</field>
         <field name="res_model">logistics.wallet</field>
-        <field name="view_mode">list,form</field>
-        <field name="view_id" ref="view_logistics_wallet_tree"/>
+        <field name="view_mode">kanban,list,form</field>
+        <field name="view_id" ref="view_logistics_wallet_kanban"/>
         <field name="search_view_id" ref="view_logistics_wallet_search"/>
     </record>
 

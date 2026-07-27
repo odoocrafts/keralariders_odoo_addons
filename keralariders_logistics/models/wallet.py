@@ -5,6 +5,7 @@ class Wallet(models.Model):
     _name = 'logistics.wallet'
     _description = 'Wallet'
     _inherit = ['mail.thread', 'mail.activity.mixin']
+    _order = "has_pending_recharge_requests desc,name"
 
     name = fields.Char(string='Wallet Name', required=True, compute='_compute_wallet_name', store=True, readonly=False)
     
@@ -51,6 +52,7 @@ class Wallet(models.Model):
     def _compute_wallet_recharge_request_count(self):
         for rec in self:
             rec.wallet_recharge_request_count = len(rec.wallet_recharge_request_ids)
+            rec.pending_recharge_request_count = len(rec.wallet_recharge_request_ids.filtered(lambda req: req.state == 'pending_approval'))
         
     def action_view_recharge_requests(self):
         self.ensure_one()
@@ -60,8 +62,20 @@ class Wallet(models.Model):
             'res_model': 'logistics.wallet.recharge.request',
             'view_mode': 'list,form',
             'domain': [('seller_id', '=', self.seller_id.id), ('wallet_id', '=', self.id)],
-            'context': {'default_seller_id': self.seller_id.id, 'default_wallet_id': self.id},
+            'context': {'default_seller_id': self.seller_id.id, 'default_wallet_id': self.id, 'search_default_pending': 1},
         }
+
+    has_pending_recharge_requests = fields.Boolean(string="Has Pending Recharge Requests", compute="_compute_has_pending_recharge_requests", store=True, readonly=False)
+
+    @api.depends('wallet_recharge_request_ids.state')
+    def _compute_has_pending_recharge_requests(self):
+        for record in self:
+            if 'pending_approval' in self.wallet_recharge_request_ids.mapped('state'):
+                record.has_pending_recharge_requests = True
+            else:
+                record.has_pending_recharge_requests = False
+
+    pending_recharge_request_count = fields.Integer(compute="_compute_wallet_recharge_request_count")
     
 class WalletTransaction(models.Model):
     _name = 'logistics.wallet.transaction'
