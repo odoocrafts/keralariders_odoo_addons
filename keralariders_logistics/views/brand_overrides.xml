@@ -3,8 +3,24 @@
     <!-- Replace "Powered by Odoo" on the Login Page -->
     <template id="login_layout_odoocrafts" inherit_id="web.login_layout" priority="99">
         <xpath expr="//a[contains(@href, 'odoo.com')]" position="replace">
-            <a href="https://odoocrafts.com" target="_blank">Powered by <span>Odoocrafts</span></a>
+            <a href="https://odoocrafts.com" target="_blank" style="text-decoration: none; color: inherit; font-weight: bold;">
+                Powered by 
+                <img src="https://odoocrafts.com/_next/static/media/logo_dark.2c4xfx9oh941p.png" alt="Odoocrafts" style="height: 14px; margin-left: 4px; margin-right: 2px; vertical-align: text-bottom;"/>
+                <span>Odoocrafts</span>
+            </a>
         </xpath>
     </template>
 
+    <!-- Replace "Powered by Odoo" in the Portal Footer -->
+    <template id="brand_promotion_odoocrafts" inherit_id="web.brand_promotion" priority="99">
+        <xpath expr="//div[hasclass('o_brand_promotion')]" position="replace">
+            <div class="o_brand_promotion">
+                Powered by 
+                <a target="_blank" href="https://odoocrafts.com" class="badge text-bg-light" style="text-decoration: none; color: inherit; padding: 4px 8px; font-weight: bold; font-size: 13px;">
+                    <img src="https://odoocrafts.com/_next/static/media/logo_dark.2c4xfx9oh941p.png" alt="Odoocrafts" style="height: 14px; margin-right: 3px; vertical-align: text-bottom;"/>
+                    Odoocrafts
+                </a>
+            </div>
+        </xpath>
+    </template>
 </odoo>
