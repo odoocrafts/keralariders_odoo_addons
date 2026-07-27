@@ -53,7 +53,7 @@ class BankCashAccount(models.Model):
     transfer_count = fields.Integer(compute="_compute_transfer_count")
     def _compute_transfer_count(self):
         for rec in self:
-            rec.transfer_count = self.env['logistics.account.transfer'].search_count(['|', ('from_account_id', '=', self.id), ('to_account_id', '=', self.id)])
+            rec.transfer_count = self.env['logistics.account.transfer'].search_count(['|', ('from_account_id', '=', rec.id), ('to_account_id', '=', rec.id)])
 
 class BankCashAccountTransfer(models.Model):
     _name = "logistics.account.transfer"
