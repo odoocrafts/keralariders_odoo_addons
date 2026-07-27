@@ -24,6 +24,8 @@
             <form string="Delivery Executive">
                 <header>
                     <button name="action_grant_portal_access" string="Grant Portal Access" type="object" class="oe_highlight"/>
+                    <button name="action_update_password" type="object" string="Update Password" class="btn-primary" invisible="not user_id"/>
+
                 </header>
                 <sheet>
                     <div class="oe_button_box" name="button_box">

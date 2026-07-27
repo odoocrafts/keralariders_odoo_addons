@@ -114,3 +114,15 @@ class DeliveryExecutive(models.Model):
             'domain': [('id', 'in', pending_shipments.ids)],
             'context': {'default_seller_id': self.id},
         }
+
+    def action_update_password(self):
+        return {
+            'type': 'ir.actions.act_window',
+            'target': 'new',
+            'res_model': 'change.password.wizard',
+            'view_mode': 'form',
+            'context': {
+                "active_model": 'res.users',
+                'active_ids': self.user_id.ids
+            }
+        }
