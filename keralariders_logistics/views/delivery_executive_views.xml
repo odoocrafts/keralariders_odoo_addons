@@ -102,7 +102,7 @@
                                 class="d-block position-relative h-100"/>
                         </aside>
 
-                        <main class="ps-2 flex-grow-1">
+                        <main class="ps-2 flex-grow-1 d-flex flex-column">
 
                             <div class="d-flex justify-content-between align-items-center">
                                 <strong>
@@ -132,11 +132,11 @@
                                 <field name="assigned_region"/>
                             </div>
 
-                            <div class="d-flex gap-2 mt-3">
+                            <div class="d-flex gap-2 mt-auto pt-3">
 
                                 <button name="action_view_pending_shipments"
                                         type="object"
-                                        class="btn btn-outline-info btn-sm flex-fill">
+                                        class="btn btn-outline-info btn-sm flex-fill text-nowrap">
                                     <i class="fa fa-truck me-1"/>
                                     <field name="pending_shipments_count"/>
                                     Pending
@@ -144,7 +144,7 @@
 
                                 <button name="action_view_delivered_shipments"
                                         type="object"
-                                        class="btn btn-outline-success btn-sm flex-fill">
+                                        class="btn btn-outline-success btn-sm flex-fill text-nowrap">
                                     <i class="fa fa-clock-o me-1"/>
                                     <field name="delivered_shipments_count"/>
                                     Delivered
