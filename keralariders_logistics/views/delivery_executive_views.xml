@@ -97,7 +97,7 @@
 
                         <aside class="o_kanban_aside_full">
                             <field name="avatar_128"
-                                widget="background_image"
+                                widget="image"
                                 options="{'zoom': true, 'zoom_delay': 1000,}"
                                 class="d-block position-relative"/>
                         </aside>

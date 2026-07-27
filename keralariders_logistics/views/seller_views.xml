@@ -141,7 +141,7 @@
                     <t t-name="card" class="flex-row">
                         <!-- <div class="oe_kanban_global_click"> -->
                             <aside class="o_kanban_aside_full">
-                                <field name="avatar_128" widget="background_image" options="{'zoom': true, 'zoom_delay': 1000}" class="d-block position-relative"/>
+                                <field name="avatar_128" widget="image" options="{'zoom': true, 'zoom_delay': 1000}" class="d-block position-relative"/>
 
                                 <!-- <field name="avatar_128" class="w-100 h-auto m-0" widget="image" options="{'img_class': 'object-fit-contain w-100 h-100'}"/> -->
                                 <!-- <div t-else="" class="d-flex align-items-center justify-content-center bg-100 bg-gradient">
