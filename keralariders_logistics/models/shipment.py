@@ -246,3 +246,24 @@ class Shipment(models.Model):
                 'domain': [('id', 'in', self.cod_payment_transfer_ids.ids)],
                 'context': {"create": 0, "no_create": 1},
             }
+
+    def action_create_payment_cod_from_portal(self, payment_method: str):
+        for rec in self:
+            if rec.order_payment_type == 'cod' and rec.cod_balance_amount > 0:
+                if payment_method == 'upi':
+                    from_account_id = self.env['logistics.account'].search([('account_type', '=', 'cod_customer'), ('name', 'ilike', 'upi')], limit=1)
+                elif payment_method == 'cash':
+                    from_account_id = self.env['logistics.account'].search([('account_type', '=', 'cod_customer'), ('name', 'ilike', 'cash')], limit=1)
+
+                cod_payment_wizard = self.env['logistics.cod.payment.wizard'].create({
+                    'from_account_id': from_account_id.id,
+                    'to_account_id': from_account_id.id, #dummy to_account
+                    'shipment_id': rec.id,
+                    'amount': self.cod_balance_amount,
+                    'reference':  f'COD Payment for {self.name}',
+                    'seller_id': self.seller_id.id,
+                })
+                cod_payment_wizard.from_account_id = from_account_id.id
+                # Compute new to_account from from_account
+                cod_payment_wizard._compute_to_account()
+                cod_payment_wizard.action_create_transfer()

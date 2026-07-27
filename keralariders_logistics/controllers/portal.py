@@ -615,6 +615,8 @@ class LogisticsPortal(CustomerPortal):
             vals['delivery_remarks'] = delivery_remarks or ''
             
             shipment.sudo().write(vals)
+            shipment.sudo().action_create_payment_cod_from_portal(payment_method=payment_method)
+
             request.session['success'] = f"Shipment {shipment.name} marked as delivered successfully!"
             return request.redirect('/my/deliveries')
         except Exception as e:

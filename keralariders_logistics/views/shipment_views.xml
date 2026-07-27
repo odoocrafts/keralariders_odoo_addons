@@ -143,6 +143,7 @@
                 <field name="name" string="Reference No." width="100"/>
                 <field name="order_id" width="100"/>
                 <field name="seller_id" width="100"/>
+                <field name="shipping_to_name" width="100" string="Shipping To"/>
                 <field name="delivery_executive_id" string="Delivery Exec." width="100"/>
                 <field name="order_date" width="100"/>
                 <field name="shipping_from_district_id" string="Shipping From" width="100"/>
