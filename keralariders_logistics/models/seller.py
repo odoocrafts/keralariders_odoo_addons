@@ -158,3 +158,35 @@ class Seller(models.Model):
             'domain': [('seller_id', '=', self.id)],
             'context': {'default_seller_id': self.id},
         }
+
+    order_ids = fields.One2many('logistics.order', 'seller_id', string="Orders")
+    orders_count = fields.Integer(compute="_compute_orders_shipment_count")
+    shipment_ids = fields.One2many('logistics.shipment', 'seller_id', string="Shipments")
+    shipments_count = fields.Integer(compute="_compute_orders_shipment_count")
+
+    def _compute_orders_shipment_count(self):
+        for rec in self:
+            rec.orders_count = len(rec.order_ids)
+            rec.shipments_count = len(rec.shipment_ids)
+            
+    def action_view_orders(self):
+        self.ensure_one()
+        return {
+            'name': 'Orders',
+            'type': 'ir.actions.act_window',
+            'res_model': 'logistics.order',
+            'view_mode': 'kanban,list,form',
+            'domain': [('seller_id', '=', self.id)],
+            'context': {'default_seller_id': self.id},
+        }
+
+    def action_view_shipments(self):
+        self.ensure_one()
+        return {
+            'name': 'Shipments',
+            'type': 'ir.actions.act_window',
+            'res_model': 'logistics.shipment',
+            'view_mode': 'list,form',
+            'domain': [('seller_id', '=', self.id)],
+            'context': {'default_seller_id': self.id},
+        }

@@ -28,6 +28,29 @@
                 </header>
                 <sheet>
                     <div class="oe_button_box" name="button_box">
+
+                        <button name="action_view_orders"
+                                type="object"
+                                class="oe_stat_button" icon="fa-shopping-cart">
+                            <div class="o_stat_info">
+                                Orders
+                                <span class="o_stat_value">
+                                    <field name="orders_count"/>
+                                </span>
+                            </div>
+                        </button>
+                        
+                        <button name="action_view_shipments"
+                                type="object"
+                                class="oe_stat_button" icon="fa-truck">
+                            <div class="o_stat_info">
+                                Shipments
+                                <span class="o_stat_value">
+                                    <field name="shipments_count"/>
+                                </span>
+                            </div>
+                        </button>
+
                         <button name="action_view_wallets" type="object"
                                 class="oe_stat_button" icon="fa-money">
                             <div class="o_stat_info">
@@ -81,6 +104,87 @@
         </field>
     </record>
 
+    <record id="view_logistics_seller_kanban" model="ir.ui.view">
+        <field name="name">logistics.seller.kanban</field>
+        <field name="model">logistics.seller</field>
+        <field name="arch" type="xml">
+            <kanban class="o_kanban_mobile"
+                    records_draggable="0">
+
+                <field name="name"/>
+                <field name="partner_id"/>
+                <field name="email"/>
+                <field name="phone"/>
+                <field name="city"/>
+                <field name="district_id"/>
+                <field name="state_id"/>
+                <field name="country_id"/>
+                <field name="tax_id"/>
+
+                <field name="wallet_count"/>
+                <field name="total_wallet_balance"/>
+                <field name="wallet_recharge_request_count"/>
+                <field name="currency_id"/>
+
+                <templates>
+                    <t t-name="card">
+                        <div class="oe_kanban_global_click">
+
+                            <div class="d-flex justify-content-between align-items-center">
+                                <strong>
+                                    <field name="name"/>
+                                </strong>
+                            </div>
+
+                            <div class="text-muted mt-1" invisible="not email">
+                                <i class="fa fa-envelope me-1"/>
+                                <field name="email"/>
+                            </div>
+
+                            <div class="text-muted" invisible="not phone">
+                                <i class="fa fa-phone me-1"/>
+                                <field name="phone"/>
+                            </div>
+
+                            <div class="text-muted">
+                                <i class="fa fa-map-marker me-1"/>
+                                <field name="city"/>
+                                <span invisible="not district_id">, <field name="district_id"/></span>
+                            </div>
+
+                            <div class="text-muted">
+                                <i class="fa fa-file me-1"/>
+                                <i><field name="tax_id"/></i>
+                            </div>
+
+                            <div class="d-flex gap-2 mt-3">
+
+                                <button name="action_view_orders"
+                                        type="object"
+                                        class="btn btn-outline-warning btn-sm flex-fill">
+                                    <i class="fa fa-shopping-cart me-1"/>
+                                    <field name="orders_count"/>
+                                    Orders
+                                </button>
+
+                                <button name="action_view_shipments"
+                                        type="object"
+                                        class="btn btn-outline-info btn-sm flex-fill">
+                                    <i class="fa fa-truck me-1"/>
+                                    <field name="shipments_count"/>
+                                    Shipments
+                                </button>
+
+                            </div>
+
+                        </div>
+                    </t>
+                </templates>
+
+            </kanban>
+        </field>
+    </record>
+
     <record id="view_logistics_seller_search" model="ir.ui.view">
         <field name="name">logistics.seller.search</field>
         <field name="model">logistics.seller</field>
@@ -131,8 +235,8 @@
     <record id="action_logistics_seller" model="ir.actions.act_window">
         <field name="name">Sellers</field>
         <field name="res_model">logistics.seller</field>
-        <field name="view_mode">list,form</field>
-        <field name="view_id" ref="view_logistics_seller_tree"/>
+        <field name="view_mode">kanban,list,form</field>
+        <field name="view_id" ref="view_logistics_seller_kanban"/>
         <field name="search_view_id" ref="view_logistics_seller_search"/>
     </record>
 

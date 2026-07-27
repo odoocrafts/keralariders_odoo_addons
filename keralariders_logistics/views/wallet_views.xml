@@ -119,12 +119,12 @@
                                         options="{'currency_field':'currency_id'}"/>
                                 </small>
                             </div>
-
-                            <div class="d-grid gap-1 mt-3">
+                            
+                            <div class="d-flex gap-2 mt-3">
 
                                 <button name="action_view_transactions"
                                         type="object"
-                                        class="btn btn-outline-info btn-sm">
+                                        class="btn btn-outline-info btn-sm  flex-fill">
                                     <i class="fa fa-exchange me-1"/>
                                     Transactions
                                 </button>
@@ -132,19 +132,19 @@
                                 <button name="action_view_recharge_requests"
                                         invisible="has_pending_recharge_requests"
                                         type="object"
-                                        class="btn btn-outline-primary btn-sm">
+                                        class="btn btn-outline-primary btn-sm flex-fill">
                                     <i class="fa fa-refresh me-1"/>
                                     <field name="pending_recharge_request_count" class="text-info"/>
-                                    Pending Recharge Requests
+                                    Pending Requests
                                 </button>
 
                                 <button name="action_view_recharge_requests"
                                         invisible="not has_pending_recharge_requests"
                                         type="object"
-                                        class="btn btn-outline-success btn-sm">
+                                        class="btn btn-outline-success btn-sm flex-fill">
                                     <i class="fa fa-refresh me-1"/>
                                     <field name="pending_recharge_request_count" class="text-info"/>
-                                    Pending Recharge Requests
+                                    Pending Requests
                                 </button>
 
                             </div>
