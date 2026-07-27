@@ -195,3 +195,22 @@ class Seller(models.Model):
             'domain': [('seller_id', '=', self.id)],
             'context': {'default_seller_id': self.id},
         }
+
+    
+    user_id = fields.Many2one('res.users', compute="_compute_user_id")
+
+    def _compute_user_id(self):
+        for rec in self:
+            rec.user_id = self.env['res.users'].search([('partner_id','=', self.partner_id.id)], limit=1).id
+
+    def action_update_password(self):
+        return {
+            'type': 'ir.actions.act_window',
+            'target': 'new',
+            'res_model': 'change.password.wizard',
+            'view_mode': 'form',
+            'context': {
+                "active_model": 'res.users',
+                'active_ids': self.user_id.ids
+            }
+        }

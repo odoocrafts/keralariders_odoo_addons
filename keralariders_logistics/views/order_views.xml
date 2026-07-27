@@ -163,12 +163,12 @@
                                     Print AWB / Delivery Slips
                                 </button>
 
-                                <button name="action_request_pickup"
+                                <!-- <button name="action_request_pickup"
                                         type="object"
                                         class="btn btn-primary btn-sm"
                                         invisible="state != 'draft'">
                                     Request Pickup
-                                </button>
+                                </button> -->
 
                                 <button name="action_mark_picked_up"
                                         type="object"
