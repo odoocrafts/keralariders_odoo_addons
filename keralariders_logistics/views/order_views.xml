@@ -92,7 +92,7 @@
                 <field name="state"/>
 
                 <templates>
-                    <t t-name="card">
+                    <t t-name="card" class="mt-1">
                         <div class="oe_kanban_global_click">
 
                             <div class="d-flex justify-content-between align-items-center">

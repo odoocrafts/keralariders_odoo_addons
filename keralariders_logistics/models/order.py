@@ -5,8 +5,8 @@ class Order(models.Model):
     _name = 'logistics.order'
     _description = 'Order'
     _inherit = ['mail.thread', 'mail.activity.mixin']
-    _order = 'create_date desc'
-
+    _order = 'name desc, write_date desc'
+    
     name = fields.Char(string='Order Reference', required=True, copy=False, readonly=True, index=True, default=lambda self: _('New'))
     
     seller_id = fields.Many2one('logistics.seller', string='Seller', required=True)
