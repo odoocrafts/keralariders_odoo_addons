@@ -3,7 +3,7 @@ from odoo import models, fields, api, _
 class DeliveryExecutive(models.Model):
     _name = 'logistics.delivery.executive'
     _description = 'Delivery Executive'
-    _inherit = ['mail.thread', 'mail.activity.mixin']
+    _inherit = ['mail.thread', 'mail.activity.mixin', 'avatar.mixin']
     _order = 'name'
 
     name = fields.Char(required=True, tracking=True, string='Executive Name')
@@ -74,3 +74,43 @@ class DeliveryExecutive(models.Model):
             rec.default_cash_account_id = self.env['logistics.account'].create({"name": f'{rec.name} Cash', 'account_type': 'cash'}).id
             rec.default_upi_account_id = self.env['logistics.account'].create({"name": f'{rec.name} UPI', 'account_type': 'bank'}).id
         return recs
+
+    delivered_shipments_count = fields.Integer(compute="_compute_shipments_count")
+    total_shipments_count = fields.Integer(compute="_compute_shipments_count")
+    pending_shipments_count = fields.Integer(compute="_compute_shipments_count")
+
+    def get_shipments_data(self):
+        all_shipments = self.env['logistics.shipment'].search([('delivery_executive_id', '=', self.id)])
+        delivered_shipments = all_shipments.filtered(lambda rec: rec.state in ('delivered', 'return_requested', 'return_picked', 'returned'))
+        pending_shipments = (all_shipments - delivered_shipments).filtered(lambda rec: rec.state != 'cancelled')
+        return all_shipments, delivered_shipments, pending_shipments
+
+    def _compute_shipments_count(self):
+        for rec in self:
+            all_shipments, delivered_shipments, pending_shipments = rec.get_shipments_data()
+            rec.delivered_shipments_count = len(delivered_shipments)
+            rec.pending_shipments_count = len(pending_shipments)
+
+    def action_view_delivered_shipments(self):
+        self.ensure_one()
+        all_shipments, delivered_shipments, pending_shipments = self.get_shipments_data()
+        return {
+            'name': 'Delivered Shipments',
+            'type': 'ir.actions.act_window',
+            'res_model': 'logistics.shipment',
+            'view_mode': 'list,form',
+            'domain': [('id', 'in', delivered_shipments.ids)],
+            'context': {'default_seller_id': self.id},
+        }
+
+    def action_view_pending_shipments(self):
+        self.ensure_one()
+        all_shipments, delivered_shipments, pending_shipments = self.get_shipments_data()
+        return {
+            'name': 'Pending Shipments',
+            'type': 'ir.actions.act_window',
+            'res_model': 'logistics.shipment',
+            'view_mode': 'list,form',
+            'domain': [('id', 'in', pending_shipments.ids)],
+            'context': {'default_seller_id': self.id},
+        }

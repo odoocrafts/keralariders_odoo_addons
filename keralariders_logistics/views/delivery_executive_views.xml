@@ -32,11 +32,18 @@
                             <field name="delivery_count" widget="statinfo" string="Deliveries"/>
                         </button> -->
                     </div>
-                    <div class="oe_title">
-                        <label for="name"/>
-                        <h1>
-                            <field name="name" placeholder="Executive Name"/>
-                        </h1>
+                    <div class="d-flex flex-column flex-sm-row align-items-center">
+                        <div class="ms-2 p-0">
+                            <field name="image_1920" widget="contact_image" options="{'preview_image': 'avatar_128', 'size': [130,130], 'img_class': 'rounded border'}"/>
+                            <field name="avatar_128" invisible="1"/> <!-- Needed in contact_image widget -->
+                        </div>
+                        <div class="col-12 col-sm-6 col-md-7 col-lg-8 px-4">
+                            <div class="oe_title mw-100 ps-0 pe-sm-2">
+                                <h1 class="d-flex flex-row align-items-center">
+                                    <field name="name" placeholder="Executive's Name" required="True" style="font-size: min(4vw, 2.6rem);"/>
+                                </h1>
+                            </div>
+                        </div>
                     </div>
                     <group>
                         <group string="Personal Information">
@@ -68,6 +75,92 @@
         </field>
     </record>
 
+    <record id="view_delivery_executive_kanban" model="ir.ui.view">
+        <field name="name">logistics.delivery.executive.kanban</field>
+        <field name="model">logistics.delivery.executive</field>
+        <field name="arch" type="xml">
+            <kanban class="o_kanban_mobile"
+                    records_draggable="0">
+
+                <field name="name"/>
+                <field name="avatar_128"/>
+                <field name="mobile"/>
+                <field name="email"/>
+                <field name="aadhaar_number"/>
+                <field name="vehicle_type"/>
+                <field name="vehicle_number"/>
+                <field name="assigned_region"/>
+                <field name="active"/>
+
+                <templates>
+                    <t t-name="card" class="flex-row">
+
+                        <aside class="o_kanban_aside_full">
+                            <field name="avatar_128"
+                                widget="background_image"
+                                options="{'zoom': true, 'zoom_delay': 1000,}"
+                                class="d-block position-relative"/>
+                        </aside>
+
+                        <main class="ps-2 flex-grow-1">
+
+                            <div class="d-flex justify-content-between align-items-center">
+                                <strong>
+                                    <field name="name"/>
+                                </strong>
+                            </div>
+
+                            <div class="text-muted mt-1">
+                                <i class="fa fa-phone me-1"/>
+                                <field name="mobile"/>
+                            </div>
+
+                            <div class="text-muted">
+                                <i class="fa fa-envelope me-1"/>
+                                <field name="email"/>
+                            </div>
+
+                            <div class="text-muted mt-1">
+                                <i class="fa fa-truck me-1"/>
+                                <span invisible="not vehicle_number">
+                                    <field name="vehicle_number"/>
+                                </span>
+                            </div>
+
+                            <div class="text-muted">
+                                <i class="fa fa-map-marker me-1"/>
+                                <field name="assigned_region"/>
+                            </div>
+
+                            <div class="d-flex gap-2 mt-3">
+
+                                <button name="action_view_pending_shipments"
+                                        type="object"
+                                        class="btn btn-outline-info btn-sm flex-fill">
+                                    <i class="fa fa-truck me-1"/>
+                                    <field name="pending_shipments_count"/>
+                                    Pending
+                                </button>
+
+                                <button name="action_view_delivered_shipments"
+                                        type="object"
+                                        class="btn btn-outline-success btn-sm flex-fill">
+                                    <i class="fa fa-clock-o me-1"/>
+                                    <field name="delivered_shipments_count"/>
+                                    Delivered
+                                </button>
+
+                            </div>
+
+                        </main>
+
+                    </t>
+                </templates>
+
+            </kanban>
+        </field>
+    </record>
+
     <!-- Search View -->
     <record id="view_delivery_executive_search" model="ir.ui.view">
         <field name="name">logistics.delivery.executive.search</field>
@@ -92,7 +185,7 @@
     <record id="action_delivery_executive" model="ir.actions.act_window">
         <field name="name">Delivery Executives</field>
         <field name="res_model">logistics.delivery.executive</field>
-        <field name="view_mode">list,form</field>
+        <field name="view_mode">kanban,list,form</field>
         <field name="help" type="html">
             <p class="o_view_nocontent_smiling_face">
                 Add a delivery executive
