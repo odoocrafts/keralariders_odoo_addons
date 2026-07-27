@@ -30,6 +30,7 @@
                         <th>Shipments</th>
                         <th>Total Charges</th>
                         <th>Status</th>
+                        <th class="text-end">Actions</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -44,6 +45,11 @@
                                 <span class="badge bg-secondary">
                                     <t t-esc="dict(order.fields_get(allfields=['state'])['state']['selection'])[order.state]"/>
                                 </span>
+                            </td>
+                            <td class="text-end">
+                                <a t-attf-href="/my/orders/#{order.id}/print" class="btn btn-sm btn-outline-primary" title="Print All AWBs" target="_blank">
+                                    <i class="fa fa-print"/> Print
+                                </a>
                             </td>
                         </tr>
                     </t>
@@ -65,7 +71,12 @@
             <div class="card shadow-sm mb-4">
                 <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
                     <h4 class="mb-0">Order: <t t-esc="order.name"/></h4>
-                    <span class="badge bg-primary fs-6"><t t-esc="dict(order.fields_get(allfields=['state'])['state']['selection'])[order.state]"/></span>
+                    <div>
+                        <a t-attf-href="/my/orders/#{order.id}/print" class="btn btn-sm btn-outline-primary me-2" target="_blank">
+                            <i class="fa fa-print me-1"/> Print AWBs
+                        </a>
+                        <span class="badge bg-primary fs-6"><t t-esc="dict(order.fields_get(allfields=['state'])['state']['selection'])[order.state]"/></span>
+                    </div>
                 </div>
                 <div class="card-body">
                     <div class="row mb-4">
