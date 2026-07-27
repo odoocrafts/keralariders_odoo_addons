@@ -73,11 +73,18 @@
                             </div>
                         </button>
                     </div>
-                    <div class="oe_title">
-                        <label for="name"/>
-                        <h1>
-                            <field name="name" placeholder="Seller Name"/>
-                        </h1>
+                    <div class="d-flex flex-column flex-sm-row align-items-center">
+                        <div class="ms-2 p-0">
+                            <field name="image_1920" widget="contact_image" options="{'preview_image': 'avatar_128', 'size': [130,130], 'img_class': 'rounded border'}"/>
+                            <field name="avatar_128" invisible="1"/> <!-- Needed in contact_image widget -->
+                        </div>
+                        <div class="col-12 col-sm-6 col-md-7 col-lg-8 px-4">
+                            <div class="oe_title mw-100 ps-0 pe-sm-2">
+                                <h1 class="d-flex flex-row align-items-center">
+                                    <field name="name" placeholder="Seller's Name" required="True" style="font-size: min(4vw, 2.6rem);"/>
+                                </h1>
+                            </div>
+                        </div>
                     </div>
                     <group>
                         <group string="General Information">
@@ -120,64 +127,81 @@
                 <field name="state_id"/>
                 <field name="country_id"/>
                 <field name="tax_id"/>
-
-                <field name="wallet_count"/>
+                <field name="avatar_128"/>
+                <!-- <field name="image_128"/> -->
+                <field name="wallet_count" />
                 <field name="total_wallet_balance"/>
                 <field name="wallet_recharge_request_count"/>
                 <field name="currency_id"/>
 
                 <templates>
-                    <t t-name="card">
-                        <div class="oe_kanban_global_click">
+                    <t t-name="card" class="flex-row">
+                        <!-- <div class="oe_kanban_global_click"> -->
+                            <aside class="o_kanban_aside_full">
+                                <field name="avatar_128" widget="background_image" options="{'zoom': true, 'zoom_delay': 1000}" class="d-block position-relative"/>
 
-                            <div class="d-flex justify-content-between align-items-center">
-                                <strong>
-                                    <field name="name"/>
-                                </strong>
-                            </div>
+                                <!-- <field name="avatar_128" class="w-100 h-auto m-0" widget="image" options="{'img_class': 'object-fit-contain w-100 h-100'}"/> -->
+                                <!-- <div t-else="" class="d-flex align-items-center justify-content-center bg-100 bg-gradient">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="w-75 h-75 opacity-50" viewBox="0 0 20 20">
+                                        <g fill="currentColor">
+                                            <path d="M 10 11 C 4.08 11 2 14 2 16 L 2 19 L 18 19 L 18 16 C 18 14 15.92 11 10 11 Z"/>
+                                            <circle cx="10" cy="5.5" r="4.5"/>
+                                        </g>
+                                    </svg>
+                                </div> -->
+                            </aside>
+                            <main class="ps-2">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <strong>
+                                        <field name="name"/>
+                                    </strong>
+                                </div>
 
-                            <div class="text-muted mt-1" invisible="not email">
-                                <i class="fa fa-envelope me-1"/>
-                                <field name="email"/>
-                            </div>
+                                <div class="text-muted mt-1" invisible="not email">
+                                    <i class="fa fa-envelope me-1"/>
+                                    <field name="email"/>
+                                </div>
 
-                            <div class="text-muted" invisible="not phone">
-                                <i class="fa fa-phone me-1"/>
-                                <field name="phone"/>
-                            </div>
+                                <div class="text-muted" invisible="not phone">
+                                    <i class="fa fa-phone me-1"/>
+                                    <field name="phone"/>
+                                </div>
 
-                            <div class="text-muted">
-                                <i class="fa fa-map-marker me-1"/>
-                                <field name="city"/>
-                                <span invisible="not district_id">, <field name="district_id"/></span>
-                            </div>
+                                <div class="text-muted">
+                                    <i class="fa fa-map-marker me-1"/>
+                                    <field name="zip"/>, 
+                                    <field name="city"/> 
+                                    <span invisible="not district_id">, <field name="district_id"/></span>
+                                </div>
 
-                            <div class="text-muted">
-                                <i class="fa fa-file me-1"/>
-                                <i><field name="tax_id"/></i>
-                            </div>
+                                <div class="text-muted">
+                                    <i class="fa fa-file me-1"/>
+                                    <i><field name="tax_id"/></i>
+                                </div>
 
-                            <div class="d-flex gap-2 mt-3">
+                                <div class="d-flex gap-2 mt-3">
 
-                                <button name="action_view_orders"
-                                        type="object"
-                                        class="btn btn-outline-warning btn-sm flex-fill">
-                                    <i class="fa fa-shopping-cart me-1"/>
-                                    <field name="orders_count"/>
-                                    Orders
-                                </button>
+                                    <button name="action_view_orders"
+                                            type="object"
+                                            class="btn btn-outline-warning btn-sm flex-fill">
+                                        <i class="fa fa-shopping-cart me-1"/>
+                                        <field name="orders_count"/>
+                                        Orders
+                                    </button>
 
-                                <button name="action_view_shipments"
-                                        type="object"
-                                        class="btn btn-outline-info btn-sm flex-fill">
-                                    <i class="fa fa-truck me-1"/>
-                                    <field name="shipments_count"/>
-                                    Shipments
-                                </button>
+                                    <button name="action_view_shipments"
+                                            type="object"
+                                            class="btn btn-outline-info btn-sm flex-fill">
+                                        <i class="fa fa-truck me-1"/>
+                                        <field name="shipments_count"/>
+                                        Shipments
+                                    </button>
 
-                            </div>
+                                </div>
+                            </main>
+                            
 
-                        </div>
+                        <!-- </div> -->
                     </t>
                 </templates>
 

@@ -3,7 +3,11 @@ from odoo import models, fields, api
 class Seller(models.Model):
     _name = 'logistics.seller'
     _description = 'Seller/Vendor'
-    _inherit = ['mail.thread', 'mail.activity.mixin']
+    _inherit = ['mail.thread', 'mail.activity.mixin','avatar.mixin']
+
+    image_1920 = fields.Image(related="partner_id.image_1920", store=True, readonly=False)
+    image_128 = fields.Image(related="partner_id.image_128", store=True, readonly=False)
+    avatar_128 = fields.Image(related="partner_id.avatar_128")
 
     partner_id = fields.Many2one('res.partner', string='Partner')
     name = fields.Char(string='Seller Name', related='partner_id.name', required=True, store=True, readonly=False)
@@ -168,7 +172,7 @@ class Seller(models.Model):
         for rec in self:
             rec.orders_count = len(rec.order_ids)
             rec.shipments_count = len(rec.shipment_ids)
-            
+
     def action_view_orders(self):
         self.ensure_one()
         return {

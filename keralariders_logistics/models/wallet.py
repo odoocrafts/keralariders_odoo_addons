@@ -13,7 +13,7 @@ class Wallet(models.Model):
     def _compute_wallet_name(self):
         for wallet in self:
             wallet.name = f"{wallet.seller_id.name} - Wallet" if wallet.seller_id else ''
-    seller_id = fields.Many2one('logistics.seller', string='Seller', required=True)
+    seller_id = fields.Many2one('logistics.seller', string='Seller', required=True, ondelete="cascade")
     transaction_ids = fields.One2many('logistics.wallet.transaction', 'wallet_id', string='Transactions')
     balance = fields.Monetary(string='Balance', compute="_compute_balance", currency_field='currency_id')
 
