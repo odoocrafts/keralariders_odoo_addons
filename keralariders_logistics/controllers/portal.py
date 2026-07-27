@@ -316,6 +316,26 @@ class LogisticsPortal(CustomerPortal):
         }
         return request.render("keralariders_logistics.portal_my_order_detail", values)
 
+    @http.route(['/my/orders/<int:order_id>/print'], type='http', auth="user", website=True)
+    def portal_my_order_print(self, order_id=None, **kw):
+        partner = request.env.user.partner_id
+        seller = request.env['logistics.seller'].search([('partner_id', '=', partner.id)], limit=1)
+        if not seller:
+            return request.redirect('/my')
+            
+        order = request.env['logistics.order'].search([('id', '=', order_id), ('seller_id', '=', seller.id)], limit=1)
+        if not order:
+            return request.redirect('/my/orders')
+            
+        shipment_ids = order.shipment_ids.ids
+        if not shipment_ids:
+            request.session['error'] = "No shipments found for this order."
+            return request.redirect(f'/my/orders/{order.id}')
+            
+        # Create a comma-separated string of shipment IDs
+        shipment_ids_str = ",".join(str(s_id) for s_id in shipment_ids)
+        return request.redirect(f'/report/pdf/keralariders_logistics.action_report_shipment/{shipment_ids_str}')
+
     @http.route(['/my/orders/new'], type='http', auth="user", website=True)
     def portal_my_orders_new(self, **kw):
         partner = request.env.user.partner_id

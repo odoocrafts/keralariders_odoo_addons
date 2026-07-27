@@ -258,6 +258,9 @@
                                 </span>
                             </td>
                             <td class="text-end">
+                                <a t-attf-href="/report/pdf/keralariders_logistics.action_report_shipment/#{shipment.id}" class="btn btn-sm btn-outline-primary me-1" title="Print AWB" target="_blank">
+                                    <i class="fa fa-print"/>
+                                </a>
                                 <t t-if="shipment.state == 'order_added'">
                                     <form action="/my/shipments/request_pickup" method="post" style="display:inline;">
                                         <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
