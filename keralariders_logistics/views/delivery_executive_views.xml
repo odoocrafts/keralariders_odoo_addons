@@ -98,8 +98,8 @@
                         <aside class="o_kanban_aside_full">
                             <field name="avatar_128"
                                 widget="image"
-                                options="{'zoom': true, 'zoom_delay': 1000,}"
-                                class="d-block position-relative"/>
+                                options="{'zoom': true, 'zoom_delay': 1000, 'img_class': 'object-fit-cover w-100 h-100'}"
+                                class="d-block position-relative h-100"/>
                         </aside>
 
                         <main class="ps-2 flex-grow-1">
