@@ -23,51 +23,43 @@
                 <t t-call="web.basic_layout">
                     <div class="page" style="font-family: Arial, sans-serif; font-size: 12px; color: black;">
                         
-                        <table style="width: 100%; border-collapse: collapse; border: 2px solid black;">
+                        <table style="width: 100%; border-collapse: collapse; border: 2px solid black; border-bottom: 0px;">
                             <!-- HEADER -->
                             <tr>
-                                <td style="width: 30%; border: 2px solid black; padding: 15px 20px; text-align: left; vertical-align: middle;">
-                                    <img t-if="company.logo" t-att-src="image_data_uri(company.logo)" style="max-height: 60px; max-width: 100%;" alt="Logo"/>
+                                <td class="text-center" colspan="1" style="border: 2px solid black; padding: 5px 10px; text-align: left; vertical-align: middle;" >
+                                    <img t-if="o.seller_id.image_1920" t-att-src="image_data_uri(o.seller_id.image_1920)" style="max-width: 200px;" alt="Logo"/>
+                                    <img t-else="" t-att-src="image_data_uri(company.logo)" style="max-width: 200px;" alt="Logo"/>
                                 </td>
-                                <td style="width: 70%; border: 2px solid black; padding: 15px 20px; text-align: left; vertical-align: middle;">
-                                    <h2 style="margin: 0; font-size: 30px; font-weight: 900; letter-spacing: 1px; text-transform: uppercase;">
-                                        <span t-field="company.name"/>
-                                    </h2>
+                                <td class="text-center" colspan="1" style="border: 2px solid black; padding: 5px 10px; text-align: left; vertical-align: middle;">
+                                    <img t-if="company.logo" t-att-src="image_data_uri(company.logo)" style="max-width: 200px;" alt="Logo" />
                                 </td>
                             </tr>
-                            
+                        </table>
+                        <table style="width: 100%; border-collapse: collapse; border: 2px solid black;">
+
                             <!-- QR CODE AND AWB -->
                             <tr>
-                                <td colspan="2" style="border: 2px solid black; padding: 20px; text-align: center;">
+                                <td colspan="2" style="border: 2px solid black; padding: 12px; text-align: center;">
                                     <div style="margin: 0 auto; display: inline-block;">
-                                        <img t-att-src="'https://api.qrserver.com/v1/create-qr-code/?size=150x150&amp;data=%s/my/delivery/%s' % (o.get_base_url(), o.id)" style="width: 150px; height: 150px; margin: 0 auto; display: block;" alt="QR Code"/>
+                                        <img t-att-src="'https://api.qrserver.com/v1/create-qr-code/?size=150x150&amp;data=%s' % (o.name)" style="width: 150px; margin: 0 auto; display: block;" alt="QR Code"/>
                                     </div>
-                                    <h2 style="margin: 10px 0 0 0; font-size: 24px; font-weight: 900; letter-spacing: 2px;">
-                                        AWB: <span t-field="o.name"/>
-                                    </h2>
-                                    <div style="font-size: 16px; font-weight: bold; margin-top: 5px; text-transform: uppercase;">
-                                        <span t-field="o.shipping_to_district_id"/> <span t-if="o.shipping_to_state_id" t-esc="'/ ' + o.shipping_to_state_id.name"/>
-                                    </div>
+                                    <h6>
+                                        <strong>AWB# <span t-field="o.name"/></strong>
+                                    </h6>
                                 </td>
                             </tr>
                             
                             <!-- SHIP TO & PAYMENT TYPE -->
                             <tr>
-                                <td style="width: 70%; border: 2px solid black; padding: 15px; vertical-align: top;">
-                                    <div style="font-size: 14px; font-weight: bold; margin-bottom: 5px;">Ship To:</div>
-                                    <div style="font-size: 18px; font-weight: 900; text-transform: uppercase;" t-field="o.shipping_to_name"/>
-                                    <div style="font-size: 14px; margin-top: 3px;">
-                                        <span t-field="o.shipping_to_address"/>
-                                    </div>
-                                    <div style="font-size: 14px;">
-                                        <span t-field="o.shipping_to_district_id"/>, <span t-field="o.shipping_to_state_id"/>
-                                    </div>
-                                    <div style="font-size: 16px; font-weight: bold; margin-top: 8px;">
-                                        PIN: <span t-field="o.shipping_to_zip"/>
-                                    </div>
-                                    <div style="font-size: 14px; font-weight: bold; margin-top: 5px;">
-                                        Mobile: <span t-field="o.shipping_to_mobile"/>
-                                    </div>
+                                <td style="width: 70%; border: 2px solid black; padding: 10px 15px; vertical-align: middle; font-size: 15px;">
+                                    <strong>Ship To: </strong><strong style="font-size: 17px;" t-field="o.shipping_to_name" class="text-uppercase"/>
+                                    <br/>
+                                    <strong>Address: </strong>
+                                        <span t-field="o.shipping_to_address"/>, 
+                                        <span t-field="o.shipping_to_district_id"/>, 
+                                        <span t-field="o.shipping_to_state_id"/>
+                                    <br/>
+                                    <strong>PIN: </strong><strong t-field="o.shipping_to_zip"/>
                                 </td>
                                 <td style="width: 30%; border: 2px solid black; padding: 15px; text-align: center; vertical-align: middle;">
                                     <t t-if="o.order_payment_type == 'cod'">
@@ -84,40 +76,52 @@
                             
                             <!-- SELLER AND DATE -->
                             <tr>
-                                <td style="width: 70%; border: 2px solid black; padding: 10px 15px; vertical-align: top;">
-                                    <div style="font-weight: bold; font-size: 14px; margin-bottom: 2px;">Seller: <span t-field="o.shipping_from_name"/></div>
-                                    <div style="font-size: 12px; margin-top: 2px;">
+                                <td style="width: 70%; border: 2px solid black; padding: 10px 15px; vertical-align: middle; font-size: 15px;">
+                                    <strong>Seller: </strong><span t-field="o.shipping_from_name" class="text-uppercase"/>
+                                    <br/>
+                                    <strong>Address: </strong>
                                         <span t-field="o.shipping_from_address"/>, 
                                         <span t-field="o.shipping_from_district_id"/>, 
-                                        <span t-field="o.shipping_from_state_id"/> - <span t-field="o.shipping_from_zip"/>
-                                    </div>
+                                        <span t-field="o.shipping_from_state_id"/>
+                                    <br/>
+                                    <strong>PIN: </strong><strong t-field="o.shipping_from_zip"/>
                                 </td>
-                                <td style="width: 30%; border: 2px solid black; padding: 10px 15px; vertical-align: top;">
-                                    <div style="font-weight: bold; font-size: 14px;">Date:</div>
-                                    <div style="font-size: 14px; margin-bottom: 10px;" t-field="o.order_date" t-options="{'widget': 'date'}"/>
-                                    
-                                    <div style="font-weight: bold; font-size: 14px;">Weight:</div>
-                                    <div style="font-size: 14px;"><span t-field="o.total_weight"/> Kg</div>
+                                <td style="width: 30%; border: 2px solid black; padding: 10px 15px; vertical-align: middle; font-size: 15px;">
+                                    <span><strong>Date: </strong><span t-field="o.order_date" t-options="{'widget': 'date'}"/></span>
+                                    <br/>
+                                    <span><strong>Weight: </strong><span t-field="o.total_weight"/> Kg</span>
                                 </td>
                             </tr>
                             
                             <!-- PRODUCT DETAILS HEADER -->
                             <tr>
-                                <td style="width: 70%; border: 2px solid black; border-bottom: 1px solid black; padding: 10px 15px; font-weight: bold; font-size: 14px;">
-                                    Product Description
+                                <td style="width: 70%; border: 2px solid black; border-bottom: 1px solid black; padding: 7px; font-weight: bold; font-size: 14px;">
+                                    Item Description
                                 </td>
-                                <td style="width: 30%; border: 2px solid black; border-bottom: 1px solid black; padding: 10px 15px; font-weight: bold; font-size: 14px; text-align: right;">
-                                    Value
+                                <td style="width: 30%; border: 2px solid black; border-bottom: 1px solid black; padding: 7px; font-weight: bold; font-size: 14px; text-align: right;">
+                                    Total Value
                                 </td>
                             </tr>
                             
                             <!-- PRODUCT DETAILS -->
                             <tr>
-                                <td style="width: 70%; border: 2px solid black; border-top: none; padding: 15px; vertical-align: top; font-size: 14px;">
+                                <td style="width: 70%; border: 2px solid black; border-top: none; padding: 7px; vertical-align: middle; font-size: 14px;">
                                     <span t-field="o.item_description"/>
                                 </td>
-                                <td style="width: 30%; border: 2px solid black; border-top: none; padding: 15px; text-align: right; vertical-align: top; font-size: 14px; font-weight: bold;">
+                                <td style="width: 30%; border: 2px solid black; border-top: none; text-align: right; padding: 7px; vertical-align: middle; font-size: 14px; font-weight: bold;">
                                     <span t-field="o.total_order_value"/>
+                                </td>
+                            </tr>
+
+                            <!-- QR CODE OF ORDER -->
+                            <tr>
+                                <td colspan="2" style="border: 2px solid black; padding: 2px; text-align: center;">
+                                    <div style="margin: 0 auto; display: inline-block;" class="mt-2">
+                                        <img t-att-src="'/report/barcode/Code128/%s?width=330&amp;height=70' % o.order_id.name" style="width: 330px; height: 70px; margin: 0 auto; display: block;" alt="QR Code"/>
+                                    </div>
+                                    <h6>
+                                        <strong>Order# <span t-field="o.order_id.name"/></strong>
+                                    </h6>
                                 </td>
                             </tr>
                             
@@ -136,12 +140,12 @@
     </template>
 
     <record id="action_report_shipment" model="ir.actions.report">
-        <field name="name">Shipment</field>
+        <field name="name">AWB / Shipping Label</field>
         <field name="model">logistics.shipment</field>
         <field name="report_type">qweb-pdf</field>
         <field name="report_name">keralariders_logistics.report_shipment_document</field>
         <field name="report_file">keralariders_logistics.report_shipment_document</field>
-        <field name="print_report_name">'AWB - %s' % (object.name)</field>
+        <field name="print_report_name">'AWB - %s - %s' % (object.name, object.order_payment_type.upper())</field>
         <field name="binding_model_id" ref="model_logistics_shipment" />
         <field name="binding_type">report</field>
         <field name="paperformat_id" ref="paperformat_shipping_label" />
