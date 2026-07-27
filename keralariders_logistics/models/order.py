@@ -15,8 +15,9 @@ class Order(models.Model):
 
     shipment_ids = fields.One2many('logistics.shipment', 'order_id', string='Shipments')
     
-    shipment_count = fields.Integer(string='Number of Shipments', compute='_compute_shipment_details', store=True)
-    total_charges = fields.Monetary(string='Total Delivery Charges', currency_field='currency_id', compute='_compute_shipment_details', store=True)
+    shipment_count = fields.Integer(string='Number of Shipments', compute='_compute_shipment_details')
+    delivered_shipment_count = fields.Integer(string="Number of Delivered Shipments")
+    total_charges = fields.Monetary(string='Total Delivery Charges', currency_field='currency_id', compute='_compute_shipment_details')
     
     currency_id = fields.Many2one('res.currency', string='Currency', default=lambda self: self.env.company.currency_id.id)
     company_id = fields.Many2one('res.company', string='Company', required=True, default=lambda self: self.env.company)
@@ -41,6 +42,7 @@ class Order(models.Model):
     def _compute_shipment_details(self):
         for order in self:
             order.shipment_count = len(order.shipment_ids)
+            order.delivered_shipment_count = len(order.shipment_ids.filtered(lambda rec: rec.state in ('delivered', 'return_requested', 'return_picked', 'returned')))
             order.total_charges = sum(order.shipment_ids.mapped('delivery_charges_total'))
 
     @api.depends('shipment_ids.state')
