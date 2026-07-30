@@ -23,9 +23,17 @@ class SellerSignup(http.Controller):
             email = post.get('email')
             phone = post.get('phone')
             password = post.get('password')
+            confirm_password = post.get('confirm_password')
+            agreement = post.get('agreement')
             
-            if not all([name, email, phone, password]):
+            if not all([name, email, phone, password, confirm_password]):
                 raise UserError(_("All fields are required."))
+                
+            if password != confirm_password:
+                raise UserError(_("Passwords do not match."))
+                
+            if not agreement:
+                raise UserError(_("You must agree to the Seller Terms & Conditions."))
                 
             # Check if user already exists
             existing_user = request.env['res.users'].sudo().search([('login', '=', email)], limit=1)
