@@ -75,23 +75,35 @@ class ShipmentInherit(models.Model):
                         'from_hub_id': False,
                         'to_hub_id': source_hub.id,
                     }),(0, 0, {
-                        'sequence': 2,
-                        'name': f'{source_hub.name} --> {central_hub.name}',
-                        'from_hub_id': source_hub.id,
-                        'to_hub_id': central_hub.id,
-                    }),(0, 0, {
-                        'sequence': 3,
-                        'name': f'{central_hub.name} --> {final_hub.name}',
-                        'from_hub_id': central_hub.id,
-                        'to_hub_id': final_hub.id,
-                    }),(0, 0, {
                         'sequence': 4,
                         'name': f'{final_hub.name} --> Delivery at Consignee Address',
                         'from_hub_id': final_hub.id,
                         'to_hub_id': False
                     }
                     )]
+                    # If central_hub is the source or final hub, then the intermediary transfer is not required
+                    if central_hub in (source_hub, final_hub):
+                        lines.insert(1, (0, 0, {
+                        'sequence': 2,
+                        'name': f'{source_hub.name} --> {final_hub.name}',
+                        'from_hub_id': source_hub.id,
+                        'to_hub_id': final_hub.id,
+                    }))
                     # Add the Source to Central Hub line only when the Central HUB is not the actual Source or Destination Hub
+                    else:
+                        lines.insert(1, (0, 0, {
+                        'sequence': 2,
+                        'name': f'{source_hub.name} --> {central_hub.name}',
+                        'from_hub_id': source_hub.id,
+                        'to_hub_id': central_hub.id,
+                    }))
+                        lines.insert(2, (0, 0, {
+                        'sequence': 3,
+                        'name': f'{central_hub.name} --> {final_hub.name}',
+                        'from_hub_id': central_hub.id,
+                        'to_hub_id': final_hub.id,
+                    }))
+
 
                 rec.estimated_route_ids = [(2, route_id.id) for route_id in rec.estimated_route_ids] + lines                    
 
