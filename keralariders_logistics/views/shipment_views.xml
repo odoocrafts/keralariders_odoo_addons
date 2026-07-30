@@ -278,7 +278,7 @@
                         <group string="Shipping From (Seller)">
                             <field name="shipping_from_name" string="Name"/>
                             <field name="shipping_from_address" string="Address"/>
-                            <field name="shipping_from_zip" string="Pincode"/>
+                            <field name="shipping_from_zip" string="Pincode" force_save="1"/>
                             <field name="shipping_from_district_id" string="District"/>
                             <field name="shipping_from_state_id" string="State"/>
                             <field name="shipping_from_country_id" string="Country"/>
@@ -286,7 +286,7 @@
                         <group string="Shipping To (Customer)">
                             <field name="shipping_to_name" string="Name"/>
                             <field name="shipping_to_address" string="Address"/>
-                            <field name="shipping_to_zip" string="Pincode"/>
+                            <field name="shipping_to_zip" string="Pincode" force_save="1"/>
                             <field name="shipping_to_district_id" string="District"/>
                             <field name="shipping_to_state_id" string="State"/>
                             <field name="shipping_to_country_id" string="Country"/>
@@ -304,6 +304,18 @@
                             <field name="billing_country_id" string="Country"/>
                         </group>
                     </group>
+                    <notebook>
+                        <page string="Estimated Route">
+                            <field name="estimated_route_ids">
+                                <list>
+                                    <field name="sequence"/>
+                                    <field name="name"/>
+                                    <field name="from_hub_id"/>
+                                    <field name="to_hub_id"/>
+                                </list>
+                            </field>
+                        </page>
+                    </notebook>
                 </sheet>
                 <chatter/>
             </form>

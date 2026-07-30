@@ -1,5 +1,28 @@
 from odoo import models, fields, api, _
+from odoo.exceptions import UserError
 
+north_kerala_districts = {
+    'kerala_district_1': 'kasargod',
+    'kerala_district_2': 'kannur',
+    'kerala_district_3': 'wayanad',
+    'kerala_district_4': 'kozhikode',
+    'kerala_district_5': 'malappuram',
+    'kerala_district_6': 'palakkad',
+}
+
+central_district = {
+    'kerala_district_7': 'thrissur',
+}
+
+south_kerala_districts = {
+    'kerala_district_8': 'ernakulam',
+    'kerala_district_9': 'idukki',
+    'kerala_district_10': 'kottayam',
+    'kerala_district_11': 'alappuzha',
+    'kerala_district_12': 'pathanamthitta',
+    'kerala_district_13': 'kollam',
+    'kerala_district_14': 'thiruvananthapuram',
+}
 class Pincode(models.Model):
     _name = 'logistics.pincode'
     _description = 'Pincode'
@@ -11,7 +34,7 @@ class Pincode(models.Model):
         for rec in self:
             district_id = self.env['logistics.district'].get_district_from_pincode(rec.name)['district_id']
             rec.district_id = district_id.id if district_id else False
-            
+
     district_name = fields.Char(string='District Name', store=True)
     state_name = fields.Char(string='State Name', store=True)
 
@@ -45,3 +68,19 @@ class District(models.Model):
             'district_name': '',
             'state_name': '',
         }
+
+    @api.model
+    def get_district_zone(self, district_id):
+        if district_id.name.lower() in central_district.values():
+            return 'central'
+        elif district_id.name.lower() in north_kerala_districts.values():
+            return 'north'
+        elif district_id.name.lower() in south_kerala_districts.values():
+            return 'south'
+        else:
+            raise UserError(f'Zone cannot be determined from the {district_id.name} district')
+
+    @api.model
+    def get_central_district_id(self):
+        central_district_id = self.env.ref(f'keralariders_logistics.{list(central_district.keys())[0]}')
+        return central_district_id

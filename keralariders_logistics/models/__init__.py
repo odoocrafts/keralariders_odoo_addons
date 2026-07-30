@@ -6,5 +6,6 @@ from . import delivery_executive
 from . import delivery_charges
 from . import order
 from . import shipment
+from . import shipment_estimated_route
 from . import res_config_settings
 from . import account

@@ -65,7 +65,7 @@ class Shipment(models.Model):
     # Shipping From Address
     shipping_from_name = fields.Char(string='Shipping From Name', compute='_compute_shippping_from', store=True, readonly=False)
     shipping_from_address = fields.Text(string='Shipping From Address', compute='_compute_shippping_from', store=True, readonly=False)
-    shipping_from_zip = fields.Char(string='Shipping From Pincode', compute='_compute_shippping_from', store=True, readonly=False)
+    shipping_from_zip = fields.Char(string='Shipping From Pincode', compute='_compute_shippping_from', store=True, readonly=False, required=True)
     @api.onchange('shipping_from_zip')
     def _onchange_shipping_from_zip(self):
         if self.shipping_from_zip:
@@ -80,7 +80,7 @@ class Shipment(models.Model):
     # Shipping To Address
     shipping_to_name = fields.Char(string='Shipping To Name',)
     shipping_to_address = fields.Text(string='Shipping To Address')
-    shipping_to_zip = fields.Char(string='Shipping To Pincode')
+    shipping_to_zip = fields.Char(string='Shipping To Pincode', required=True)
     @api.onchange('shipping_to_zip')
     def _onchange_shipping_to_zip(self):
         if self.shipping_to_zip:

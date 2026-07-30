@@ -11,6 +11,7 @@ access_district_all,access_district_all,model_logistics_district,base.group_user
 access_shipment_admin,access_shipment_admin,model_logistics_shipment,group_logistics_admin,1,1,1,1
 access_delivery_charges_admin,access_delivery_charges_admin,model_logistics_delivery_charges,group_logistics_admin,1,1,1,1
 access_hub_all,access_hub_all,model_logistics_hub,base.group_user,1,0,0,0
+access_estimated_shipment_route_all,access_estimated_shipment_route_all,model_logistics_shipment_estimated_route,base.group_user,1,1,1,1
 
 access_seller_portal,access_seller_portal,model_logistics_seller,base.group_portal,1,0,0,0
 access_wallet_portal,access_wallet_portal,model_logistics_wallet,base.group_portal,1,0,0,0
