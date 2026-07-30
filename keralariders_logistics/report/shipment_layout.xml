@@ -117,10 +117,10 @@
                             <tr>
                                 <td colspan="2" style="border: 2px solid black; padding: 2px; text-align: center;">
                                     <div style="margin: 0 auto; display: inline-block;" class="mt-2">
-                                        <img t-att-src="'https://bwipjs-api.metafloor.com/?bcid=code128&amp;text=%s&amp;scale=2' % o.order_id.name" style="width: 330px; height: 70px; margin: 0 auto; display: block;" alt="Order Barcode"/>
+                                        <img t-att-src="'https://bwipjs-api.metafloor.com/?bcid=code128&amp;text=%s&amp;scale=2' % o.name" style="width: 330px; height: 70px; margin: 0 auto; display: block;" alt="AWB Barcode"/>
                                     </div>
                                     <h6>
-                                        <strong>Order# <span t-field="o.order_id.name"/></strong>
+                                        <strong>AWB# <span t-field="o.name"/></strong>
                                     </h6>
                                 </td>
                             </tr>
