@@ -61,10 +61,17 @@
                             <field name="assigned_region"/>
                             <field name="active"/>
                         </group>
+                        <group string="Address">
+                            <field name="address" placeholder="Full address..."/>
+                        </group>
+                        <group string="Roles">
+                            <field name="is_delivery"/>
+                            <field name="is_pickup"/>
+                            <field name="is_driver"/>
+                            <field name="is_manager"/>
+                        </group>
                     </group>
-                    <group string="Address">
-                        <field name="address" nolabel="1" placeholder="Full address..."/>
-                    </group>
+
                     <group>
                         <group string="UPI &amp; Cash Accounts">
                             <field name="default_upi_account_id" context="{'default_account_type': 'bank'}" domain="[('account_type', '=', 'bank')]"/>

@@ -23,6 +23,11 @@ class DeliveryExecutive(models.Model):
     active = fields.Boolean(default=True)
     user_id = fields.Many2one('res.users', string='Related User')
 
+    is_delivery = fields.Boolean(string='Is Delivery Executive', default=True, help="Indicates if the executive is a delivery executive.")
+    is_pickup = fields.Boolean(string='Is Pickup Executive', default=False, help="Indicates if the executive is a pickup executive.")
+    is_driver = fields.Boolean(string='Is Hub to Hub Driver', default=False, help="Indicates if the executive is a driver.")
+    is_manager = fields.Boolean(string='Is Manager', default=False, help="Indicates if the executive is a manager.")
+
     def action_grant_portal_access(self):
         self.ensure_one()
         from odoo.exceptions import UserError

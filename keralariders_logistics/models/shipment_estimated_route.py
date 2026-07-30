@@ -151,7 +151,7 @@ class ShipmentInherit(models.Model):
                 ">
                 <div style="margin-bottom:20px;">
                     <h3 style="margin:0; color:#1e3a8a; font-size:16px; font-weight:700;">
-                        📍 Shipment Route Journey
+                        📍 Planned Journey
                     </h3>
                 </div>
                 """
