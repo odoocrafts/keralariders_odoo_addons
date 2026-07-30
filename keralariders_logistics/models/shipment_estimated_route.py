@@ -24,18 +24,22 @@ class ShipmentInherit(models.Model):
                     if source_hub == final_hub:
                         lines = [(0, 0, {
                             'sequence': 1,
-                            # 'name': f'Pickup from Source Address --> {source_hub.name}',
+                            'name': f'Pickup from Source Address --> {source_hub.name}',
                             'source_location_name': 'Pickup from Source Address',
                             'destination_location_name': f'{source_hub.name}',
                             'from_hub_id': False,
                             'to_hub_id': source_hub.id,
+                            'executive1_id': self.env['logistics.delivery.executive'].get_assigned_executive_for_pincode(rec.shipping_from_zip, 'pickup').id,
+                            'operation_type': 'pickup',
                         }),(0, 0, {
                             'sequence': 2,
                             'name': f'{source_hub.name} --> Delivery at Consignee Address',
                             'source_location_name': f'{source_hub.name}',
                             'destination_location_name': f'Delivery at Consignee Address',
                             'from_hub_id': source_hub.id,
-                            'to_hub_id': False
+                            'to_hub_id': False,
+                            'executive1_id': self.env['logistics.delivery.executive'].get_assigned_executive_for_pincode(rec.shipping_to_zip, 'delivery').id,
+                            'operation_type': 'delivery',
                         }
                         )]
                     # If source and final hub is in same zone but in different districts, 
@@ -51,6 +55,8 @@ class ShipmentInherit(models.Model):
                             'destination_location_name': f'{source_hub.name}',
                             'from_hub_id': False,
                             'to_hub_id': source_hub.id,
+                            'executive1_id': self.env['logistics.delivery.executive'].get_assigned_executive_for_pincode(rec.shipping_from_zip, 'pickup').id,
+                            'operation_type': 'pickup',
                         }),(0, 0, {
                             'sequence': 2,
                             'name': f'{source_hub.name} --> {final_hub.name}',
@@ -58,13 +64,16 @@ class ShipmentInherit(models.Model):
                             'destination_location_name': f'{final_hub.name}',
                             'from_hub_id': source_hub.id,
                             'to_hub_id': final_hub.id,
+                            'operation_type': 'hub_transfer',
                         }),(0, 0, {
                             'sequence': 3,
                             'name': f'{final_hub.name} --> Delivery at Consignee Address',
                             'source_location_name': f'{final_hub.name}',
                             'destination_location_name': f'Delivery at Consignee Address',
                             'from_hub_id': final_hub.id,
-                            'to_hub_id': False
+                            'to_hub_id': False,
+                            'operation_type': 'delivery',
+                            'executive1_id': self.env['logistics.delivery.executive'].get_assigned_executive_for_pincode(rec.shipping_to_zip, 'delivery').id,
                         }
                         )]
 
@@ -87,13 +96,17 @@ class ShipmentInherit(models.Model):
                         'destination_location_name': f'{source_hub.name}',
                         'from_hub_id': False,
                         'to_hub_id': source_hub.id,
+                        'executive1_id': self.env['logistics.delivery.executive'].get_assigned_executive_for_pincode(rec.shipping_from_zip, 'pickup').id,
+                        'operation_type': 'pickup',
                     }),(0, 0, {
                         'sequence': 4,
                         'name': f'{final_hub.name} --> Delivery at Consignee Address',
                         'source_location_name': f'{final_hub.name}',
                         'destination_location_name': f'Delivery at Consignee Address',
                         'from_hub_id': final_hub.id,
-                        'to_hub_id': False
+                        'to_hub_id': False,
+                        'operation_type': 'delivery',
+                        'executive1_id': self.env['logistics.delivery.executive'].get_assigned_executive_for_pincode(rec.shipping_to_zip, 'delivery').id,
                     }
                     )]
                     # If central_hub is the source or final hub, then the intermediary transfer is not required
@@ -105,6 +118,7 @@ class ShipmentInherit(models.Model):
                         'destination_location_name': f'{final_hub.name}',
                         'from_hub_id': source_hub.id,
                         'to_hub_id': final_hub.id,
+                        'operation_type': 'hub_transfer',
                     }))
                     # Add the Source to Central Hub line only when the Central HUB is not the actual Source or Destination Hub
                     else:
@@ -115,6 +129,7 @@ class ShipmentInherit(models.Model):
                         'destination_location_name': f'{central_hub.name}',
                         'from_hub_id': source_hub.id,
                         'to_hub_id': central_hub.id,
+                        'operation_type': 'hub_transfer',
                     }))
                         lines.insert(2, (0, 0, {
                         'sequence': 3,
@@ -123,6 +138,7 @@ class ShipmentInherit(models.Model):
                         'destination_location_name': f'{final_hub.name}',
                         'from_hub_id': central_hub.id,
                         'to_hub_id': final_hub.id,
+                        'operation_type': 'hub_transfer',
                     }))
                 rec.estimated_route_ids = [(2, route_id.id) for route_id in rec.estimated_route_ids] + lines                    
 
@@ -133,6 +149,7 @@ class ShipmentInherit(models.Model):
         'estimated_route_ids.name',
         'estimated_route_ids.from_hub_id',
         'estimated_route_ids.to_hub_id',
+        'estimated_route_ids.operation_type',
     )
     def _compute_estimated_route_html(self):
         for rec in self:
@@ -159,6 +176,12 @@ class ShipmentInherit(models.Model):
 
             routes = rec.estimated_route_ids.sorted("sequence")
 
+            operation_type_map = {
+                'pickup': ('🎯 Pickup', '#059669'),
+                'hub_transfer': ('🔄 Hub Transfer', '#0891b2'),
+                'delivery': ('🚚 Delivery', '#7c3aed'),
+            }
+
             for index, route in enumerate(routes, start=1):
 
                 if not route.from_hub_id:
@@ -180,6 +203,10 @@ class ShipmentInherit(models.Model):
                     to_name = route.destination_location_name or route.to_hub_id.name
                     to_icon = "🏢"
                     to_badge_bg = "#0ea5e9"
+
+                operation_type_label, operation_type_color = operation_type_map.get(
+                    route.operation_type, ('Unknown', '#6b7280')
+                )
 
                 html.append(f"""
                     <div style="
@@ -220,6 +247,28 @@ class ShipmentInherit(models.Model):
                             box-shadow:0 4px 12px rgba(0,0,0,.06);
                             transition:all 0.3s ease;
                         ">
+                            <div style="
+                                display:flex;
+                                align-items:center;
+                                gap:12px;
+                                flex-wrap:wrap;
+                                margin-bottom:12px;
+                            ">
+                                <!-- Operation Type Badge -->
+                                <span style="
+                                    # background:{operation_type_color};
+                                    color:black;
+                                    padding:6px 10px;
+                                    # border-radius:16px;
+                                    font-weight:900;
+                                    font-size:11px;
+                                    white-space:nowrap;
+                                    box-shadow:0 2px 8px rgba(0,0,0,0.15);
+                                    text-transform:uppercase;
+                                ">
+                                    {operation_type_label}
+                                </span>
+                            </div>
                             <div style="
                                 display:flex;
                                 align-items:center;
@@ -266,6 +315,15 @@ class ShipmentInherit(models.Model):
                                     {to_icon} {to_name}
                                 </span>
                             </div>
+                            <div style="
+                                display:flex;
+                                gap:12px;
+                                margin-top:12px;
+                                flex-wrap:wrap;
+                            ">
+                                {"<span style='background:#8b5cf6;color:white;padding:6px 10px;border-radius:16px;font-weight:600;font-size:12px;white-space:nowrap;box-shadow:0 2px 8px rgba(139, 92, 246, 0.2);'>👤 " + route.executive1_id.name + "</span>" if route.executive1_id else ""}
+                                {"<span style='background:#ec4899;color:white;padding:6px 10px;border-radius:16px;font-weight:600;font-size:12px;white-space:nowrap;box-shadow:0 2px 8px rgba(236, 72, 153, 0.2);'>👤 " + route.executive2_id.name + "</span>" if route.executive2_id else ""}
+                            </div>
                         </div>
                     </div>
                 """)
@@ -273,6 +331,10 @@ class ShipmentInherit(models.Model):
             html.append("</div>")
 
             rec.estimated_route_html = Markup("".join(html))
+
+    def action_recompute_estimated_route(self):
+        for rec in self:
+            rec._compute_estimated_route_ids()
 
 class ShipmentEstimatedRoute(models.Model):
     _name = "logistics.shipment.estimated.route"
@@ -286,4 +348,13 @@ class ShipmentEstimatedRoute(models.Model):
     from_district_id = fields.Many2one('logistics.district')
     to_hub_id = fields.Many2one('logistics.hub', string="To HUB")
     to_district_id = fields.Many2one('logistics.district')
+
+    operation_type = fields.Selection([
+        ('pickup', 'Pickup'),
+        ('hub_transfer', 'Hub Transfer'),
+        ('delivery', 'Delivery')
+    ], string="Operation Type", default='pickup')
+
+    executive1_id = fields.Many2one('logistics.delivery.executive', string="Executive 1")
+    executive2_id = fields.Many2one('logistics.delivery.executive', string="Executive 2")
 

@@ -37,7 +37,7 @@
                     <notebook>
                         <page string="Assigned Pincodes">
                             <field name="pincode_ids">
-                                <list create="0" edit="0">
+                                <list create="0" edit="0" editable="bottom">
                                     <field name="name"/>
                                     <field name="district_id"/>
                                 </list>

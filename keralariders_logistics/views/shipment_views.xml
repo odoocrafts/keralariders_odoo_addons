@@ -305,7 +305,30 @@
                         </group>
                     </group>
                     <notebook>
+                        <page string="Estimated Route" invisible="1">
+                            <button name="action_recompute_estimated_route"
+                                    type="object"
+                                    class="btn btn-primary btn-sm mb-2"
+                                    icon="fa-refresh"
+                                    string="Recompute Estimated Route"/>
+                            <field name="estimated_route_ids">
+                                <list>
+                                    <field name="sequence"/>
+                                    <field name="name"/>
+                                    <field name="from_hub_id"/>
+                                    <field name="to_hub_id"/>
+                                    <field name="executive1_id"/>
+                                    <field name="executive2_id"/>
+                                    <field name="operation_type"/>
+                                </list>
+                            </field>
+                        </page>
                         <page string="Estimated Route">
+                            <button name="action_recompute_estimated_route"
+                                    type="object"
+                                    class="btn btn-primary btn-sm mb-2"
+                                    icon="fa-refresh"
+                                    string="Recompute Estimated Route"/>
                             <!-- <field name="estimated_route_ids">
                                 <list>
                                     <field name="sequence"/>

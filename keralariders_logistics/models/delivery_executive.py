@@ -134,3 +134,17 @@ class DeliveryExecutive(models.Model):
 
     assigned_pickup_pincodes = fields.Many2many('logistics.pincode', 'delivery_executive_pickup_pincode_rel', string="Assigned Pickup Pincodes")
     assigned_delivery_pincodes = fields.Many2many('logistics.pincode', 'delivery_executive_delivery_pincode_rel', string="Assigned Delivery Pincodes")
+
+    @api.model
+    def get_assigned_executive_for_pincode(self, pincode, operation_type):
+        pincode = self.env['logistics.pincode'].search([('name', '=', pincode)], limit=1)
+        if pincode:
+            if operation_type == 'pickup':
+                executive = self.search([('assigned_pickup_pincodes', 'in', [pincode.id])], limit=1)
+            elif operation_type == 'delivery':
+                executive = self.search([('assigned_delivery_pincodes', 'in', [pincode.id])], limit=1)
+            else:
+                raise ValueError("Invalid operation type. Must be either 'pickup' or 'delivery'.")
+        else:
+            executive = self #return empty recordset if no pincode found
+        return executive
