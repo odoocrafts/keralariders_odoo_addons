@@ -59,6 +59,16 @@
                         string="In Transit"
                         domain="[('state', '=', 'in_transit')]"/>
 
+                <filter name="at_source_hub"
+                        string="At Source Hub"
+                        domain="[('state', '=', 'at_source_hub')]"/>
+                <filter name="at_central_hub"
+                        string="At Central Hub"
+                        domain="[('state', '=', 'at_central_hub')]"/>
+                <filter name="at_destination_hub"
+                        string="At Destination Hub"
+                        domain="[('state', '=', 'at_destination_hub')]"/>
+
                 <filter name="delivered"
                         string="Delivered"
                         domain="[('state', '=', 'delivered')]"/>
@@ -177,7 +187,9 @@
             <form string="Shipment">
                 <header>
                     <button name="%(keralariders_logistics.action_report_shipment)d" string="Print AWB" type="action" class="btn-primary"/>
-                    <field name="state" widget="statusbar" options="{'clickable':1}"/>
+                    <field name="state" widget="statusbar" options="{'clickable':1}" groups="keralariders_logistics.group_logistics_admin"/>
+                    <field name="state" widget="statusbar" options="{'clickable':1}" invisible="1"/>
+
                 </header>
                 <sheet>
                     <div class="oe_title" >
