@@ -118,7 +118,10 @@
                 <field name="vehicle_number"/>
                 <field name="assigned_region"/>
                 <field name="active"/>
-
+                <field name="is_delivery"/>
+                <field name="is_pickup"/>
+                <field name="is_driver"/>
+                <field name="is_manager"/>
                 <templates>
                     <t t-name="card" class="flex-row">
 
@@ -135,6 +138,12 @@
                                 <strong>
                                     <field name="name"/>
                                 </strong>
+                                <div class="d-flex gap-1 flex-wrap">
+                                    <span t-if="record.is_delivery.raw_value" class="badge text-bg-info">Delivery</span>
+                                    <span t-if="record.is_pickup.raw_value" class="badge text-bg-warning">Pickup</span>
+                                    <span t-if="record.is_driver.raw_value" class="badge text-bg-primary">Driver</span>
+                                    <span t-if="record.is_manager.raw_value" class="badge text-bg-success">Manager</span>
+                                </div>
                             </div>
 
                             <div class="text-muted mt-1">

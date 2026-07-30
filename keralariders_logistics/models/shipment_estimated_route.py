@@ -143,14 +143,14 @@ class ShipmentInherit(models.Model):
                 rec.estimated_route_ids = [(2, route_id.id) for route_id in rec.estimated_route_ids] + lines                    
 
 
-    @api.depends(
-        'estimated_route_ids',
-        'estimated_route_ids.sequence',
-        'estimated_route_ids.name',
-        'estimated_route_ids.from_hub_id',
-        'estimated_route_ids.to_hub_id',
-        'estimated_route_ids.operation_type',
-    )
+    # @api.depends(
+    #     'estimated_route_ids',
+    #     'estimated_route_ids.sequence',
+    #     'estimated_route_ids.name',
+    #     'estimated_route_ids.from_hub_id',
+    #     'estimated_route_ids.to_hub_id',
+    #     'estimated_route_ids.operation_type',
+    # )
     def _compute_estimated_route_html(self):
         for rec in self:
             if not rec.estimated_route_ids:
