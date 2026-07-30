@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <record id="view_logistics_pincode_tree" model="ir.ui.view">
+        <field name="name">logistics.pincode.list</field>
+        <field name="model">logistics.pincode</field>
+        <field name="arch" type="xml">
+            <list string="Pincodes">
+                <field name="name"/>
+                <field name="district_id"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_logistics_hub_tree" model="ir.ui.view">
+        <field name="name">logistics.hub.list</field>
+        <field name="model">logistics.hub</field>
+        <field name="arch" type="xml">
+            <list string="Hubs">
+                <field name="name"/>
+                <field name="district_id"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_logistics_hub_form" model="ir.ui.view">
+        <field name="name">logistics.hub.form</field>
+        <field name="model">logistics.hub</field>
+        <field name="arch" type="xml">
+            <form string="Hubs">
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="name"/>
+                            <field name="district_id" options="{'no_create': 1}"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Assigned Pincodes">
+                            <field name="pincode_ids">
+                                <list create="0" edit="0">
+                                    <field name="name"/>
+                                    <field name="district_id"/>
+                                </list>
+                            </field>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_logistics_hub" model="ir.actions.act_window">
+        <field name="name">Hubs</field>
+        <field name="res_model">logistics.hub</field>
+        <field name="view_mode">kanban,list,form</field>
+        <field name="view_id" ref="view_logistics_hub_tree"/>
+    </record>
+
+    <menuitem id="menu_logistics_hub_root" parent="menu_logistics_root" sequence="90" name="Hubs" action="action_logistics_hub"/>
+</odoo>

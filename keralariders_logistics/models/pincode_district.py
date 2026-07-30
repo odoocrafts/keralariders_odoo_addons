@@ -5,7 +5,13 @@ class Pincode(models.Model):
     _description = 'Pincode'
 
     name = fields.Char(string='Pincode')
-    district_id = fields.Many2one('logistics.district', string='District')
+    district_id = fields.Many2one('logistics.district', string='District', compute="_compute_district_id")
+
+    def _compute_district_id(self):
+        for rec in self:
+            district_id = self.env['logistics.district'].get_district_from_pincode(rec.name)['district_id']
+            rec.district_id = district_id.id if district_id else False
+            
     district_name = fields.Char(string='District Name', store=True)
     state_name = fields.Char(string='State Name', store=True)
 
