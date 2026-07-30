@@ -321,8 +321,8 @@ class ShipmentInherit(models.Model):
                                 margin-top:12px;
                                 flex-wrap:wrap;
                             ">
-                                {"<span style='background:#8b5cf6;color:white;padding:6px 10px;border-radius:16px;font-weight:600;font-size:12px;white-space:nowrap;box-shadow:0 2px 8px rgba(139, 92, 246, 0.2);'>👤 " + route.executive1_id.name + "</span>" if route.executive1_id else ""}
-                                {"<span style='background:#ec4899;color:white;padding:6px 10px;border-radius:16px;font-weight:600;font-size:12px;white-space:nowrap;box-shadow:0 2px 8px rgba(236, 72, 153, 0.2);'>👤 " + route.executive2_id.name + "</span>" if route.executive2_id else ""}
+                                {"<span style='background:#8b5cf6;color:white;padding:6px 10px;border-radius:4px;font-weight:600;font-size:12px;white-space:nowrap;box-shadow:0 2px 8px rgba(139, 92, 246, 0.2);' class='text-center'>👤 " + route.executive1_id.name + "</span>" if route.executive1_id else ""}
+                                {"<span style='background:#ec4899;color:white;padding:6px 10px;border-radius:4px;font-weight:600;font-size:12px;white-space:nowrap;box-shadow:0 2px 8px rgba(236, 72, 153, 0.2);'>👤 " + route.executive2_id.name + "</span>" if route.executive2_id else ""}
                             </div>
                         </div>
                     </div>
