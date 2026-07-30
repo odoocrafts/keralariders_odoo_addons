@@ -11,6 +11,23 @@
         </field>
     </record>
 
+    <record id="view_logistics_pincode_search" model="ir.ui.view">
+        <field name="name">logistics.pincode.search</field>
+        <field name="model">logistics.pincode</field>
+        <field name="arch" type="xml">
+            <search string="Search Pincodes">
+                <field name="name"/>
+                <field name="district_name"/>
+                <separator/>
+                <group>
+                    <filter string="District Name"
+                            name="group_district_name"
+                            context="{'group_by': 'district_name'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
     <record id="view_logistics_hub_tree" model="ir.ui.view">
         <field name="name">logistics.hub.list</field>
         <field name="model">logistics.hub</field>

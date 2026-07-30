@@ -71,14 +71,15 @@ class District(models.Model):
 
     @api.model
     def get_district_zone(self, district_id):
-        if district_id.name.lower() in central_district.values():
+        district_name = (district_id.name or "").lower()
+        if district_name in central_district.values():
             return 'central'
-        elif district_id.name.lower() in north_kerala_districts.values():
+        elif district_name in north_kerala_districts.values():
             return 'north'
-        elif district_id.name.lower() in south_kerala_districts.values():
+        elif district_name in south_kerala_districts.values():
             return 'south'
-        else:
-            raise UserError(f'Zone cannot be determined from the {district_id.name} district')
+        # else:
+        #     raise UserError(f'Zone cannot be determined from the {district_name} district')
 
     @api.model
     def get_central_district_id(self):

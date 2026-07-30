@@ -7,6 +7,8 @@ class ShipmentInherit(models.Model):
     _inherit = "logistics.shipment"
     estimated_route_ids = fields.One2many('logistics.shipment.estimated.route', 'shipment_id', compute="_compute_estimated_route_ids", store=True)
     estimated_route_html = fields.Html(compute="_compute_estimated_route_html")
+    source_hub_id = fields.Many2one('logistics.hub', string="Source Hub", compute="_compute_estimated_route_ids", store=True)
+    destination_hub_id = fields.Many2one('logistics.hub', string="Destination Hub", compute="_compute_estimated_route_ids", store=True)
     @api.depends('shipping_from_zip', 'shipping_to_zip')
     def _compute_estimated_route_ids(self):
         for rec in self:
@@ -141,7 +143,8 @@ class ShipmentInherit(models.Model):
                         'operation_type': 'hub_transfer',
                     }))
                 rec.estimated_route_ids = [(2, route_id.id) for route_id in rec.estimated_route_ids] + lines                    
-
+                rec.source_hub_id = source_hub.id
+                rec.destination_hub_id = final_hub.id
 
     # @api.depends(
     #     'estimated_route_ids',

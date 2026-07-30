@@ -14,6 +14,7 @@ class Hub(models.Model):
         if hub:
             return hub
         else:
+            return hub
             raise UserError(f'Cannot find any Hub assigned to the selected Pincode or District')
 
     pincode_ids = fields.Many2many('logistics.pincode', string="Assigned Pincodes")
