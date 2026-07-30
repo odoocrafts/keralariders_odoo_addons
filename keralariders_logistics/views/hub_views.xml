@@ -49,11 +49,87 @@
         </field>
     </record>
 
+    <record id="view_logistics_hub_kanban" model="ir.ui.view">
+        <field name="name">logistics.hub.kanban</field>
+        <field name="model">logistics.hub</field>
+        <field name="arch" type="xml">
+            <kanban class="o_kanban_mobile">
+                <field name="name"/>
+                <field name="district_id"/>
+                <field name="pincode_ids"/>
+                <field name="pincodes_count"/>
+
+                <templates>
+                    <t t-name="card">
+                        <div class="oe_kanban_global_click">
+
+                            <div class="fw-bold fs-5">
+                                <field name="name"/>
+                            </div>
+
+                            <div class="text-muted mb-2">
+                                <i class="fa fa-map-marker me-1"/>
+                                <field name="district_id"/>
+                            </div>
+
+                            <!-- <div class="mt-2">
+                                <span class="badge bg-primary">
+                                    <field name="pincode_ids" widget="many2many_tags"/>
+                                </span>
+                            </div> -->
+
+                            <div class="text-end mt-3">
+                                <span class="badge rounded-pill bg-info text-white">
+                                    <field name="pincodes_count"/> Pincodes
+                                </span>
+                            </div>
+
+                        </div>
+                    </t>
+                </templates>
+            </kanban>
+        </field>
+    </record>
+
+    <record id="view_logistics_hub_search" model="ir.ui.view">
+        <field name="name">logistics.hub.search</field>
+        <field name="model">logistics.hub</field>
+        <field name="arch" type="xml">
+            <search string="Search Hubs">
+
+                <field name="name"
+                    string="Hub"
+                    filter_domain="[
+                        '|',
+                        ('name', 'ilike', self),
+                        ('district_id.name', 'ilike', self)
+                    ]"/>
+
+
+                <field name="pincode_ids"
+                    string="Assigned Pincodes"/>
+
+                <field name="district_id"/>
+
+                <separator/>
+
+                <group>
+
+                    <filter string="District"
+                            name="group_district"
+                            context="{'group_by': 'district_id'}"/>
+
+                </group>
+
+            </search>
+        </field>
+    </record>
+
     <record id="action_logistics_hub" model="ir.actions.act_window">
         <field name="name">Hubs</field>
         <field name="res_model">logistics.hub</field>
         <field name="view_mode">kanban,list,form</field>
-        <field name="view_id" ref="view_logistics_hub_tree"/>
+        <field name="view_id" ref="view_logistics_hub_kanban"/>
     </record>
 
     <menuitem id="menu_logistics_hub_root" parent="menu_logistics_root" sequence="90" name="Hubs" action="action_logistics_hub"/>

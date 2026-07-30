@@ -17,3 +17,8 @@ class Hub(models.Model):
             raise UserError(f'Cannot find any Hub assigned to the selected Pincode or District')
 
     pincode_ids = fields.Many2many('logistics.pincode', string="Assigned Pincodes")
+    pincodes_count = fields.Integer(string="Pincodes Count", compute="_compute_pincodes_count")
+
+    def _compute_pincodes_count(self):
+        for rec in self:
+            rec.pincodes_count = len(rec.pincode_ids)
