@@ -131,3 +131,6 @@ class DeliveryExecutive(models.Model):
                 'active_ids': self.user_id.ids
             }
         }
+
+    assigned_pickup_pincodes = fields.Many2many('logistics.pincode', 'delivery_executive_pickup_pincode_rel', string="Assigned Pickup Pincodes")
+    assigned_delivery_pincodes = fields.Many2many('logistics.pincode', 'delivery_executive_delivery_pincode_rel', string="Assigned Delivery Pincodes")

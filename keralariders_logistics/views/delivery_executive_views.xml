@@ -78,6 +78,24 @@
                             <field name="default_cash_account_id" context="{'default_account_type': 'cash'}" domain="[('account_type', '=', 'cash')]"/>
                         </group>
                     </group>
+                    <notebook>
+                        <page string="Assigned Pickup Pincodes" invisible="not is_pickup">
+                            <field name="assigned_pickup_pincodes">
+                                <list create="0" edit="0" delete="0" editable="bottom">
+                                    <field name="name"/>
+                                    <field name="district_name"/>
+                                </list>
+                            </field>
+                        </page>
+                        <page string="Assigned Delivery Pincodes" invisible="not is_delivery">
+                            <field name="assigned_delivery_pincodes">
+                                <list create="0" edit="0" delete="0" editable="bottom">
+                                    <field name="name"/>
+                                    <field name="district_name"/>
+                                </list>
+                            </field>
+                        </page>
+                    </notebook>
                 </sheet>
                 <chatter/>
             </form>
