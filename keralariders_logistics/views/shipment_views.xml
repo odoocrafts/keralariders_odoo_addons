@@ -306,14 +306,15 @@
                     </group>
                     <notebook>
                         <page string="Estimated Route">
-                            <field name="estimated_route_ids">
+                            <!-- <field name="estimated_route_ids">
                                 <list>
                                     <field name="sequence"/>
                                     <field name="name"/>
                                     <field name="from_hub_id"/>
                                     <field name="to_hub_id"/>
                                 </list>
-                            </field>
+                            </field> -->
+                            <field name="estimated_route_html"/>
                         </page>
                     </notebook>
                 </sheet>
