@@ -37,6 +37,7 @@ class Pincode(models.Model):
 
     district_name = fields.Char(string='District Name', store=True)
     state_name = fields.Char(string='State Name', store=True)
+    po_names = fields.Text(string='Post Office Names', store=True)
 
 class District(models.Model):
     _name = 'logistics.district'
