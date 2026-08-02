@@ -16,6 +16,10 @@ class SellerSignup(http.Controller):
         }
         return request.render("keralariders_logistics.seller_signup_page", values)
 
+    @http.route('/seller/signup/success', type='http', auth="public", website=True, sitemap=False)
+    def seller_signup_success(self, **kw):
+        return request.render("keralariders_logistics.seller_signup_success_page")
+
     @http.route('/seller/signup/submit', type='http', auth="public", website=True, methods=['POST'], csrf=True)
     def seller_signup_submit(self, **post):
         try:
@@ -57,9 +61,8 @@ class SellerSignup(http.Controller):
                 'partner_id': user.partner_id.id
             })
             
-            # Registration successful, redirect to login page
-            request.session['success'] = "Account created successfully. Please login to continue."
-            return request.redirect('/web/login')
+            # Registration successful, redirect to success page
+            return request.redirect('/seller/signup/success')
             
         except Exception as e:
             request.session['error'] = str(e)

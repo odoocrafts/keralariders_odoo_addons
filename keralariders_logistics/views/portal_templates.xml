@@ -545,6 +545,56 @@
         </t>
     </template>
 
+    <!-- Seller Signup Success Page -->
+    <template id="seller_signup_success_page" name="Seller Signup Success">
+        <t t-call="portal.frontend_layout">
+            <div id="wrap" class="oe_structure oe_empty">
+                <section class="s_cover pt96 pb96" data-snippet="s_cover" data-name="Cover" style="background-color: #f8f9fa;">
+                    <div class="container">
+                        <div class="row justify-content-center">
+                            <div class="col-lg-6 col-md-8">
+                                <div class="card shadow-lg border-0 rounded-4 overflow-hidden text-center">
+                                    <div class="bg-success text-white p-5">
+                                        <div class="mb-3">
+                                            <i class="fa fa-check-circle fa-5x text-white"/>
+                                        </div>
+                                        <h2 class="fw-bold mb-1">Registration Successful!</h2>
+                                        <p class="text-white-50 mb-0">Welcome to the KeralaXpress Network</p>
+                                    </div>
+                                    
+                                    <div class="p-4 p-md-5">
+                                        <h5 class="fw-semibold text-dark mb-3">Your seller account has been created.</h5>
+                                        <p class="text-muted mb-4">
+                                            Thank you for registering with KeralaXpress. You can now log in to access your seller portal dashboard, track shipments, and manage your account.
+                                        </p>
+                                        
+                                        <div class="card bg-light border-0 rounded-3 p-3 mb-4 text-start">
+                                            <div class="d-flex align-items-center mb-2">
+                                                <i class="fa fa-info-circle text-primary me-2 fa-lg"/>
+                                                <span class="fw-bold text-dark">What's Next?</span>
+                                            </div>
+                                            <ul class="text-muted mb-0 ps-4 small">
+                                                <li>Sign in using your registered email and password.</li>
+                                                <li>Complete your business profile &amp; KYC details.</li>
+                                                <li>Start creating shipments &amp; scheduling pickups.</li>
+                                            </ul>
+                                        </div>
+                                        
+                                        <div class="d-grid gap-2">
+                                            <a href="/web/login" class="btn btn-success btn-lg rounded-pill fw-bold shadow-sm">
+                                                Proceed to Sign In <i class="fa fa-arrow-right ms-2"/>
+                                            </a>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </t>
+    </template>
+
     <!-- Inherit Login Page to add Seller Signup Link -->
     <template id="login_logistics_seller" inherit_id="web.login" name="Seller Signup Link">
         <xpath expr="//div[hasclass('oe_login_buttons')]" position="after">
