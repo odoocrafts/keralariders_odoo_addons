@@ -57,10 +57,9 @@ class SellerSignup(http.Controller):
                 'partner_id': user.partner_id.id
             })
             
-            # Authenticate user manually
-            request.session.authenticate(request.session.db, email, password)
-            
-            return request.redirect('/my/home')
+            # Registration successful, redirect to login page
+            request.session['success'] = "Account created successfully. Please login to continue."
+            return request.redirect('/web/login')
             
         except Exception as e:
             request.session['error'] = str(e)
