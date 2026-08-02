@@ -1,4 +1,4 @@
-from odoo import http, _
+from odoo import http
 from odoo.http import request
 from odoo.exceptions import UserError
 import werkzeug
@@ -27,18 +27,18 @@ class SellerSignup(http.Controller):
             agreement = post.get('agreement')
             
             if not all([name, email, phone, password, confirm_password]):
-                raise UserError(_("All fields are required."))
+                raise UserError("All fields are required.")
                 
             if password != confirm_password:
-                raise UserError(_("Passwords do not match."))
+                raise UserError("Passwords do not match.")
                 
             if not agreement:
-                raise UserError(_("You must agree to the Seller Terms & Conditions."))
+                raise UserError("You must agree to the Seller Terms & Conditions.")
                 
             # Check if user already exists
             existing_user = request.env['res.users'].sudo().search([('login', '=', email)], limit=1)
             if existing_user:
-                raise UserError(_("Another user is already registered using this email address."))
+                raise UserError("Another user is already registered using this email address.")
                 
             # Create user
             portal_group = request.env.ref('base.group_portal')
@@ -63,5 +63,8 @@ class SellerSignup(http.Controller):
             return request.redirect('/my/home')
             
         except Exception as e:
+            import traceback
+            import logging
+            logging.getLogger(__name__).error("Signup error: %s", traceback.format_exc())
             request.session['error'] = str(e)
             return request.redirect('/seller/signup')
