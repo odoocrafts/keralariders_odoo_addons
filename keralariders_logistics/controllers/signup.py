@@ -64,7 +64,5 @@ class SellerSignup(http.Controller):
             
         except Exception as e:
             import traceback
-            import logging
-            logging.getLogger(__name__).error("Signup error: %s", traceback.format_exc())
-            request.session['error'] = str(e)
+            request.session['error'] = str(traceback.format_exc())
             return request.redirect('/seller/signup')
