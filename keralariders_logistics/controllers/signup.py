@@ -58,11 +58,10 @@ class SellerSignup(http.Controller):
             })
             
             # Authenticate user manually
-            request.session.authenticate(email, password)
+            request.session.authenticate(request.session.db, email, password)
             
             return request.redirect('/my/home')
             
         except Exception as e:
-            import traceback
-            request.session['error'] = str(traceback.format_exc())
+            request.session['error'] = str(e)
             return request.redirect('/seller/signup')
