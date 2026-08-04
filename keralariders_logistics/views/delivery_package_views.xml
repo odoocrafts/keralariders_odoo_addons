@@ -64,7 +64,7 @@
     <!-- Menu Item -->
     <menuitem id="menu_logistics_delivery_package"
               name="Delivery Packages"
-              parent="menu_logistics_management"
+              parent="menu_logistics_root"
               action="action_logistics_delivery_package"
               sequence="65"/>
 
