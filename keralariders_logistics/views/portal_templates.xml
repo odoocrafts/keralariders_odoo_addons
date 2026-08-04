@@ -624,9 +624,25 @@
                     var cropImage = document.getElementById('crop_image');
                     var avatarPreview = document.getElementById('avatar_preview');
                     var avatarBase64 = document.getElementById('avatar_base64');
-                    var cropModalElement = document.getElementById('cropModal');
-                    var cropModal = new bootstrap.Modal(cropModalElement);
                     var cropper;
+
+                    function showModal() {
+                        if (window.jQuery) {
+                            window.jQuery('#cropModal').modal('show');
+                        } else {
+                            var modal = new bootstrap.Modal(document.getElementById('cropModal'));
+                            modal.show();
+                        }
+                    }
+
+                    function hideModal() {
+                        if (window.jQuery) {
+                            window.jQuery('#cropModal').modal('hide');
+                        } else {
+                            var modal = bootstrap.Modal.getInstance(document.getElementById('cropModal'));
+                            if(modal) { modal.hide(); }
+                        }
+                    }
 
                     avatarUpload.addEventListener('change', function (e) {
                         var files = e.target.files;
@@ -634,27 +650,36 @@
                             var reader = new FileReader();
                             reader.onload = function (event) {
                                 cropImage.src = event.target.result;
-                                cropModal.show();
+                                showModal();
                             };
                             reader.readAsDataURL(files[0]);
                         }
                     });
 
-                    cropModalElement.addEventListener('shown.bs.modal', function () {
+                    function initCropper() {
                         cropper = new Cropper(cropImage, {
                             aspectRatio: 1,
                             viewMode: 1,
                             autoCropArea: 1,
                         });
-                    });
-
-                    cropModalElement.addEventListener('hidden.bs.modal', function () {
+                    }
+                    
+                    function destroyCropper() {
                         if (cropper) {
                             cropper.destroy();
                             cropper = null;
                         }
                         avatarUpload.value = '';
-                    });
+                    }
+
+                    if (window.jQuery) {
+                        window.jQuery('#cropModal').on('shown.bs.modal', initCropper);
+                        window.jQuery('#cropModal').on('hidden.bs.modal', destroyCropper);
+                    } else {
+                        var modalEl = document.getElementById('cropModal');
+                        modalEl.addEventListener('shown.bs.modal', initCropper);
+                        modalEl.addEventListener('hidden.bs.modal', destroyCropper);
+                    }
 
                     document.getElementById('crop_btn').addEventListener('click', function () {
                         if (cropper) {
@@ -665,7 +690,7 @@
                             var base64data = canvas.toDataURL('image/jpeg', 0.8);
                             avatarPreview.src = base64data;
                             avatarBase64.value = base64data;
-                            cropModal.hide();
+                            hideModal();
                         }
                     });
                 });
