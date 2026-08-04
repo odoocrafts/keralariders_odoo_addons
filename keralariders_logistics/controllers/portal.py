@@ -611,6 +611,7 @@ class LogisticsPortal(CustomerPortal):
 
         try:
             vals = {'state': 'delivered', 'actual_delivery_date': fields.Datetime.now()}
+            payment_method = None
             if shipment.order_payment_type == 'cod':
                 payment_method = post.get('cod_payment_method')
                 if payment_method in ['cash', 'upi']:
@@ -623,7 +624,8 @@ class LogisticsPortal(CustomerPortal):
             vals['delivery_remarks'] = delivery_remarks or ''
             
             shipment.sudo().write(vals)
-            shipment.sudo().action_create_payment_cod_from_portal(payment_method=payment_method)
+            if shipment.order_payment_type == 'cod':
+                shipment.sudo().action_create_payment_cod_from_portal(payment_method=payment_method)
 
             request.session['success'] = f"Shipment {shipment.name} marked as delivered successfully!"
             return request.redirect('/my/deliveries')
