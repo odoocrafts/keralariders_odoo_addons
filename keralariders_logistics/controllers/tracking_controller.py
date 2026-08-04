@@ -35,6 +35,13 @@ class TrackingController(http.Controller):
         if not shipment:
             return request.not_found()
             
+        # If logged in as the assigned delivery executive, redirect to the portal delivery update page
+        if not request.env.user._is_public():
+            delivery_executive = request.env['logistics.delivery.executive'].sudo().search([('user_id', '=', request.env.user.id)], limit=1)
+            if delivery_executive and shipment.delivery_executive_id.id == delivery_executive.id:
+                return request.redirect(f'/my/delivery/{shipment.id}')
+            
+            
         state_dict = dict(shipment._fields['state'].selection)
         shipment_state_str = state_dict.get(shipment.state, shipment.state)
         
