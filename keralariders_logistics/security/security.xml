@@ -57,6 +57,51 @@
             <field name="perm_unlink" eval="False"/>
         </record>
 
+        <!-- Admin: unrestricted access (OR'd with implied hub_manager/executive rules) -->
+        <record id="logistics_hub_admin_rule" model="ir.rule">
+            <field name="name">Logistics Admin All Hubs</field>
+            <field name="model_id" ref="model_logistics_hub"/>
+            <field name="domain_force">[(1, '=', 1)]</field>
+            <field name="groups" eval="[(4, ref('group_logistics_admin'))]"/>
+            <field name="perm_read" eval="True"/>
+            <field name="perm_write" eval="True"/>
+            <field name="perm_create" eval="True"/>
+            <field name="perm_unlink" eval="True"/>
+        </record>
+
+        <record id="logistics_shipment_admin_rule" model="ir.rule">
+            <field name="name">Logistics Admin All Shipments</field>
+            <field name="model_id" ref="model_logistics_shipment"/>
+            <field name="domain_force">[(1, '=', 1)]</field>
+            <field name="groups" eval="[(4, ref('group_logistics_admin'))]"/>
+            <field name="perm_read" eval="True"/>
+            <field name="perm_write" eval="True"/>
+            <field name="perm_create" eval="True"/>
+            <field name="perm_unlink" eval="True"/>
+        </record>
+
+        <record id="logistics_de_admin_rule" model="ir.rule">
+            <field name="name">Logistics Admin All Delivery Executives</field>
+            <field name="model_id" ref="model_logistics_delivery_executive"/>
+            <field name="domain_force">[(1, '=', 1)]</field>
+            <field name="groups" eval="[(4, ref('group_logistics_admin'))]"/>
+            <field name="perm_read" eval="True"/>
+            <field name="perm_write" eval="True"/>
+            <field name="perm_create" eval="True"/>
+            <field name="perm_unlink" eval="True"/>
+        </record>
+
+        <record id="logistics_shipment_event_admin_rule" model="ir.rule">
+            <field name="name">Logistics Admin All Shipment Events</field>
+            <field name="model_id" ref="model_logistics_shipment_event"/>
+            <field name="domain_force">[(1, '=', 1)]</field>
+            <field name="groups" eval="[(4, ref('group_logistics_admin'))]"/>
+            <field name="perm_read" eval="True"/>
+            <field name="perm_write" eval="True"/>
+            <field name="perm_create" eval="True"/>
+            <field name="perm_unlink" eval="True"/>
+        </record>
+
         <!-- Delivery Executive: assigned shipments + own DE record -->
         <record id="logistics_shipment_de_rule" model="ir.rule">
             <field name="name">DE Shipment Rule</field>
@@ -106,7 +151,7 @@
             <field name="perm_unlink" eval="False"/>
         </record>
 
-        <!-- Events: portal/DE/hub can read related; admin full via ACL -->
+        <!-- Events: portal/DE/hub can read related; admin full via ACL + admin rule -->
         <record id="logistics_shipment_event_portal_rule" model="ir.rule">
             <field name="name">Portal Shipment Event (Seller)</field>
             <field name="model_id" ref="model_logistics_shipment_event"/>
