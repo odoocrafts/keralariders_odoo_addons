@@ -474,19 +474,71 @@
                                         <form action="/seller/signup/submit" method="post" class="oe_signup_form">
                                             <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
                                             
+                                            <!-- Avatar Upload with Cropper -->
+                                            <div class="mb-4 text-center">
+                                                <div class="position-relative d-inline-block">
+                                                    <img id="avatar_preview" src="/web/static/img/placeholder.png" class="rounded-circle shadow-sm border" style="width: 120px; height: 120px; object-fit: cover; cursor: pointer;"/>
+                                                    <div class="position-absolute bottom-0 end-0 bg-primary rounded-circle p-2 shadow-sm" style="cursor: pointer;" onclick="document.getElementById('avatar_upload').click();">
+                                                        <i class="fa fa-camera text-white"></i>
+                                                    </div>
+                                                </div>
+                                                <input type="file" id="avatar_upload" accept="image/*" class="d-none"/>
+                                                <input type="hidden" name="avatar_base64" id="avatar_base64"/>
+                                            </div>
+
                                             <div class="form-floating mb-3">
                                                 <input type="text" name="name" id="name" class="form-control" placeholder="Company Name" required="required"/>
                                                 <label for="name" class="text-muted"><i class="fa fa-building me-1"/> Full Name / Company Name</label>
                                             </div>
                                             
-                                            <div class="form-floating mb-3">
-                                                <input type="email" name="email" id="email" class="form-control" placeholder="Email Address" required="required"/>
-                                                <label for="email" class="text-muted"><i class="fa fa-envelope me-1"/> Email Address</label>
+                                            <div class="row">
+                                                <div class="col-md-6">
+                                                    <div class="form-floating mb-3">
+                                                        <input type="email" name="email" id="email" class="form-control" placeholder="Email Address" required="required"/>
+                                                        <label for="email" class="text-muted"><i class="fa fa-envelope me-1"/> Email Address</label>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <div class="form-floating mb-3">
+                                                        <input type="tel" name="phone" id="phone" class="form-control" placeholder="Phone Number" required="required"/>
+                                                        <label for="phone" class="text-muted"><i class="fa fa-phone me-1"/> Phone Number</label>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div class="row">
+                                                <div class="col-md-6">
+                                                    <div class="form-floating mb-3">
+                                                        <input type="text" name="street" id="street" class="form-control" placeholder="Address Line 1" required="required"/>
+                                                        <label for="street" class="text-muted"><i class="fa fa-map-marker me-1"/> Address Line 1</label>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <div class="form-floating mb-3">
+                                                        <input type="text" name="street2" id="street2" class="form-control" placeholder="Address Line 2"/>
+                                                        <label for="street2" class="text-muted"><i class="fa fa-map-marker me-1"/> Address Line 2 (Optional)</label>
+                                                    </div>
+                                                </div>
                                             </div>
                                             
-                                            <div class="form-floating mb-3">
-                                                <input type="tel" name="phone" id="phone" class="form-control" placeholder="Phone Number" required="required"/>
-                                                <label for="phone" class="text-muted"><i class="fa fa-phone me-1"/> Phone Number</label>
+                                            <div class="row">
+                                                <div class="col-md-6">
+                                                    <div class="form-floating mb-3">
+                                                        <input type="text" name="city" id="city" class="form-control" placeholder="City" required="required"/>
+                                                        <label for="city" class="text-muted"><i class="fa fa-building-o me-1"/> City</label>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <div class="form-floating mb-3">
+                                                        <input type="text" name="zip" id="zip" class="form-control" placeholder="Pincode" required="required"/>
+                                                        <label for="zip" class="text-muted"><i class="fa fa-map-pin me-1"/> Pincode</label>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div class="form-floating mb-4">
+                                                <input type="text" name="tax_id" id="tax_id" class="form-control" placeholder="GSTIN (Optional)"/>
+                                                <label for="tax_id" class="text-muted"><i class="fa fa-id-card me-1"/> GSTIN (Optional)</label>
                                             </div>
                                             
                                             <div class="form-floating mb-4">
@@ -542,6 +594,82 @@
                     </div>
                 </section>
             </div>
+            
+            <!-- Cropper Modal -->
+            <div class="modal fade" id="cropModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+                <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title">Crop Profile Picture</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body text-center">
+                            <div style="max-height: 400px; overflow: hidden;">
+                                <img id="crop_image" style="max-width: 100%;" src=""/>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                            <button type="button" class="btn btn-primary" id="crop_btn">Crop &amp; Save</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css"/>
+            <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
+            <script type="text/javascript">
+                document.addEventListener('DOMContentLoaded', function () {
+                    var avatarUpload = document.getElementById('avatar_upload');
+                    var cropImage = document.getElementById('crop_image');
+                    var avatarPreview = document.getElementById('avatar_preview');
+                    var avatarBase64 = document.getElementById('avatar_base64');
+                    var cropModalElement = document.getElementById('cropModal');
+                    var cropModal = new bootstrap.Modal(cropModalElement);
+                    var cropper;
+
+                    avatarUpload.addEventListener('change', function (e) {
+                        var files = e.target.files;
+                        if (files.length > 0) {
+                            var reader = new FileReader();
+                            reader.onload = function (event) {
+                                cropImage.src = event.target.result;
+                                cropModal.show();
+                            };
+                            reader.readAsDataURL(files[0]);
+                        }
+                    });
+
+                    cropModalElement.addEventListener('shown.bs.modal', function () {
+                        cropper = new Cropper(cropImage, {
+                            aspectRatio: 1,
+                            viewMode: 1,
+                            autoCropArea: 1,
+                        });
+                    });
+
+                    cropModalElement.addEventListener('hidden.bs.modal', function () {
+                        if (cropper) {
+                            cropper.destroy();
+                            cropper = null;
+                        }
+                        avatarUpload.value = '';
+                    });
+
+                    document.getElementById('crop_btn').addEventListener('click', function () {
+                        if (cropper) {
+                            var canvas = cropper.getCroppedCanvas({
+                                width: 400,
+                                height: 400,
+                            });
+                            var base64data = canvas.toDataURL('image/jpeg', 0.8);
+                            avatarPreview.src = base64data;
+                            avatarBase64.value = base64data;
+                            cropModal.hide();
+                        }
+                    });
+                });
+            </script>
         </t>
     </template>
 
