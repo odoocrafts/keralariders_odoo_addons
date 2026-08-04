@@ -84,7 +84,7 @@
                         var modalEl = document.getElementById('qrScannerModal');
                         if (typeof $ !== 'undefined') {
                             $('#qrScannerModal').modal('hide');
-                        } else if (typeof bootstrap !== 'undefined' && modalEl) {
+                        } else if (typeof bootstrap !== 'undefined' &amp;&amp; modalEl) {
                             var modal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
                             modal.hide();
                         }
@@ -239,7 +239,7 @@
         </t>
     </template>
 
-    <!-- Delivery Detail & Mark Delivered -->
+    <!-- Delivery Detail &amp; Mark Delivered -->
     <template id="portal_my_delivery_detail" name="Delivery Detail">
         <t t-call="portal.portal_layout">
             <div class="card shadow-sm mb-4">
