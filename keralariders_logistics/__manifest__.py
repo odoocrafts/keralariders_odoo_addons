@@ -42,6 +42,7 @@ Features:
         'views/order_views.xml',
         "views/account_views.xml",
         "wizard/cod_payment_views.xml",
+        "wizard/create_hub_manager_wizard_views.xml",
         "views/hub_views.xml",
         'views/res_config_settings_views.xml',
         'views/tracking_template.xml',

@@ -49,10 +49,12 @@
         <field name="arch" type="xml">
             <form string="Hubs">
                 <header>
-                    <button name="action_assign_district_pincodes" type="object"
-                            string="Assign District Pincodes" class="btn-secondary"/>
+                    <button name="action_open_create_hub_manager_wizard" type="object"
+                            string="Create Hub Manager" class="btn-primary"/>
                     <button name="action_grant_managers_portal_access" type="object"
                             string="Grant Managers Portal Access" class="btn-secondary"/>
+                    <button name="action_assign_district_pincodes" type="object"
+                            string="Assign District Pincodes" class="btn-secondary"/>
                 </header>
                 <sheet>
                     <div class="oe_button_box" name="button_box">
@@ -70,11 +72,19 @@
                             <field name="active"/>
                             <field name="pincodes_count"/>
                         </group>
-                        <group>
-                            <field name="manager_ids" widget="many2many_tags" options="{'no_create': 1}"/>
-                        </group>
                     </group>
                     <notebook>
+                        <page string="Hub Managers">
+                            <field name="manager_ids" options="{'no_create': 1, 'no_create_edit': 1}">
+                                <list string="Hub Managers">
+                                    <field name="name"/>
+                                    <field name="login"/>
+                                    <field name="email"/>
+                                    <field name="phone" optional="show"/>
+                                    <field name="active" optional="hide"/>
+                                </list>
+                            </field>
+                        </page>
                         <page string="Assigned Pincodes">
                             <field name="pincode_ids">
                                 <list create="0" edit="0" editable="bottom">

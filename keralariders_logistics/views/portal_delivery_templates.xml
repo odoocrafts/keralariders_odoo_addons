@@ -51,10 +51,65 @@
                 var btnScanList = document.querySelectorAll('.btn-scan-qr');
                 if(btnScanList.length > 0) {
                     let html5QrCode = null;
-                    
+                    let scanTargetSelector = null;
+
+                    function extractAwb(decodedText) {
+                        if (!decodedText) {
+                            return '';
+                        }
+                        try {
+                            if (decodedText.indexOf('track?id=') !== -1 || decodedText.indexOf('track/?id=') !== -1) {
+                                var url = new URL(decodedText, window.location.origin);
+                                var id = url.searchParams.get('id');
+                                if (id) {
+                                    return id;
+                                }
+                            }
+                            if (decodedText.indexOf('/my/delivery/') !== -1) {
+                                var parts = decodedText.split('/').filter(Boolean);
+                                return parts[parts.length - 1] || decodedText;
+                            }
+                            if (decodedText.indexOf('http') === 0) {
+                                var httpUrl = new URL(decodedText);
+                                var pathParts = httpUrl.pathname.split('/').filter(Boolean);
+                                return pathParts[pathParts.length - 1] || decodedText;
+                            }
+                        } catch (e) {
+                            // fall through to raw text
+                        }
+                        return decodedText;
+                    }
+
+                    function hideQrModal() {
+                        var modalEl = document.getElementById('qrScannerModal');
+                        if (typeof $ !== 'undefined') {
+                            $('#qrScannerModal').modal('hide');
+                        } else if (typeof bootstrap !== 'undefined' && modalEl) {
+                            var modal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
+                            modal.hide();
+                        }
+                    }
+
                     function onScanSuccess(decodedText, decodedResult) {
                         if (html5QrCode) {
                             html5QrCode.stop().then(() => html5QrCode.clear()).catch(e => console.error(e));
+                        }
+                        if (scanTargetSelector) {
+                            var input = document.querySelector(scanTargetSelector);
+                            if (input) {
+                                input.value = extractAwb(decodedText);
+                                input.dispatchEvent(new Event('input', {bubbles: true}));
+                                input.dispatchEvent(new Event('change', {bubbles: true}));
+                                hideQrModal();
+                                var form = input.closest('form');
+                                var submitBtn = form ? form.querySelector('button[type="submit"]') : null;
+                                if (submitBtn) {
+                                    submitBtn.focus();
+                                } else {
+                                    input.focus();
+                                }
+                                return;
+                            }
                         }
                         if(decodedText.includes('/my/delivery/')) {
                             window.location.href = decodedText;
@@ -68,6 +123,7 @@
                     btnScanList.forEach(function(btnScan) {
                         btnScan.addEventListener('click', function(e) {
                             e.preventDefault();
+                            scanTargetSelector = btnScan.getAttribute('data-scan-target') || null;
                             if (typeof $ !== 'undefined') {
                                 $('#qrScannerModal').modal('show');
                             } else if (typeof bootstrap !== 'undefined') {

@@ -86,12 +86,19 @@
                     </div>
                     <div class="mb-3">
                         <label class="form-label">AWB / Scanned Code</label>
-                        <input type="text" name="awb" class="form-control form-control-lg" placeholder="Enter or scan AWB" required="1" autofocus="1"/>
+                        <div class="input-group">
+                            <input type="text" name="awb" id="hub_receive_awb" class="form-control form-control-lg" placeholder="Enter or scan AWB" required="1" autofocus="1"/>
+                            <button type="button" class="btn btn-primary btn-scan-qr" data-scan-target="#hub_receive_awb" title="Scan AWB QR Code">
+                                <i class="fa fa-camera"/>
+                            </button>
+                        </div>
+                        <div class="form-text">Or use the camera to scan the AWB QR code.</div>
                     </div>
                     <button type="submit" class="btn btn-success w-100">
                         <i class="fa fa-check"/> Confirm Receive
                     </button>
                 </form>
+                <t t-call="keralariders_logistics.portal_qr_scanner_modal"/>
             </div>
         </t>
     </template>

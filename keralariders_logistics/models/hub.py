@@ -99,25 +99,68 @@ class Hub(models.Model):
             hub.pincode_ids = [(6, 0, matched.ids)]
         return True
 
+    def action_open_create_hub_manager_wizard(self):
+        """Open wizard to create a new hub manager portal user."""
+        self.ensure_one()
+        return {
+            'type': 'ir.actions.act_window',
+            'name': _('Create Hub Manager'),
+            'res_model': 'logistics.create.hub.manager.wizard',
+            'view_mode': 'form',
+            'target': 'new',
+            'context': {
+                'default_hub_id': self.id,
+                'active_id': self.id,
+                'active_model': 'logistics.hub',
+            },
+        }
+
     def action_grant_managers_portal_access(self):
-        """Ensure hub managers have portal + hub manager groups."""
+        """Ensure linked hub managers have portal + hub manager groups.
+
+        Does not create users — use Create Hub Manager for that.
+        Validates that each manager has an email suitable for portal login.
+        """
         portal_group = self.env.ref('base.group_portal')
         hub_mgr_group = self.env.ref('keralariders_logistics.group_logistics_hub_manager')
+        invited = self.env['res.users']
         for hub in self:
+            if not hub.manager_ids:
+                raise UserError(_(
+                    "No hub managers are linked on '%s'. "
+                    "Use Create Hub Manager, or link an existing user first."
+                ) % hub.name)
             for user in hub.manager_ids:
+                email = (user.email or user.login or '').strip()
+                if not email or '@' not in email:
+                    raise UserError(_(
+                        "Hub manager '%s' must have a valid email address "
+                        "to grant portal access."
+                    ) % user.name)
                 groups = []
-                if portal_group not in user.group_ids:
+                newly_portal = portal_group not in user.group_ids
+                if newly_portal:
                     groups.append((4, portal_group.id))
                 if hub_mgr_group not in user.group_ids:
                     groups.append((4, hub_mgr_group.id))
                 if groups:
                     user.sudo().write({'group_ids': groups})
+                if newly_portal:
+                    invited |= user
+        for user in invited:
+            user.sudo().action_reset_password()
+        message = _('Portal / Hub Manager access granted to linked users.')
+        if invited:
+            message = _(
+                'Portal / Hub Manager access granted. '
+                'Invitation email sent to %s newly portal-enabled user(s).'
+            ) % len(invited)
         return {
             'type': 'ir.actions.client',
             'tag': 'display_notification',
             'params': {
-                'title': 'Hub Managers',
-                'message': 'Portal / Hub Manager access granted to linked users.',
+                'title': _('Hub Managers'),
+                'message': message,
                 'type': 'success',
                 'sticky': False,
             }

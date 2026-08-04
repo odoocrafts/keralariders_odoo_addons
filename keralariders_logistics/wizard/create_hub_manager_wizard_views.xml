@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_create_hub_manager_wizard_form" model="ir.ui.view">
+        <field name="name">logistics.create.hub.manager.wizard.form</field>
+        <field name="model">logistics.create.hub.manager.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Create Hub Manager">
+                <group>
+                    <field name="hub_id" readonly="1"/>
+                    <field name="name" placeholder="e.g. Anas"/>
+                    <field name="email" placeholder="manager@example.com"/>
+                    <field name="phone"/>
+                </group>
+                <footer>
+                    <button string="Create &amp; Grant Portal Access"
+                            name="action_create_hub_manager"
+                            type="object"
+                            class="btn-primary"/>
+                    <button string="Cancel" class="btn-secondary" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_create_hub_manager_wizard" model="ir.actions.act_window">
+        <field name="name">Create Hub Manager</field>
+        <field name="res_model">logistics.create.hub.manager.wizard</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+    </record>
+</odoo>
