@@ -28,7 +28,7 @@ class LogisticsPortal(CustomerPortal):
             else:
                 values['wallet_balance'] = "0.00"
                 
-            cod_transfers = request.env['logistics.account.transfer'].search([
+            cod_transfers = request.env['logistics.account.transfer'].sudo().search([
                 ('related_seller_id', '=', seller.id),
                 ('transfer_type', 'in', ['cod_payment', 'cod_clearance'])
             ])
