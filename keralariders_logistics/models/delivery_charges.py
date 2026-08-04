@@ -29,8 +29,7 @@ class DeliveryCharges(models.Model):
         compute="_compute_name",
         store=True,
     )
-    
-    package_id = fields.Many2one("logistics.delivery.package", string="Delivery Package", required=True)
+    package_id = fields.Many2one("logistics.delivery.package", string="Delivery Package", ondelete="cascade")
 
     @api.depends("minimum_weight", "maximum_weight")
     def _compute_name(self):

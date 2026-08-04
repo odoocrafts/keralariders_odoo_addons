@@ -52,7 +52,7 @@
                 <field name="name"/>
                 <field name="package_id"/>
                 <group expand="0" string="Group By">
-                    <filter string="Delivery Package" name="group_by_package" context="{'group_by': 'package_id'}"/>
+                    <filter string="Delivery Package" name="group_by_package" domain="[]" context="{'group_by': 'package_id'}"/>
                 </group>
             </search>
         </field>
