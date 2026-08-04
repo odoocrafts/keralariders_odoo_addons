@@ -41,6 +41,13 @@
                     <t t-set="text">View balance and recharges</t>
                 </t>
                 <t t-call="keralariders_logistics.logistics_portal_card">
+                    <t t-set="title">COD Settlements</t>
+                    <t t-set="url" t-value="'/my/cod_settlements'"/>
+                    <t t-set="count_text" t-value="cod_balance if cod_balance else '₹ 0.00'"/>
+                    <t t-set="icon" t-value="'/keralariders_logistics/static/src/img/wallet.svg'"/>
+                    <t t-set="text">View COD payments and settlements</t>
+                </t>
+                <t t-call="keralariders_logistics.logistics_portal_card">
                     <t t-set="title">Charge Calculator</t>
                     <t t-set="url" t-value="'/my/calculator'"/>
                     <t t-set="count_text" t-value="' '"/>
@@ -56,6 +63,9 @@
         <xpath expr="//ol[hasclass('o_portal_submenu')]" position="inside">
             <li t-if="page_name == 'wallet'" class="breadcrumb-item">
                 Wallet
+            </li>
+            <li t-if="page_name == 'cod_settlements'" class="breadcrumb-item">
+                COD Settlements
             </li>
             <li t-if="page_name == 'order' or page_name == 'order_new'" t-attf-class="breadcrumb-item #{'active ' if not order else ''}">
                 <a t-if="page_name == 'order_new'" t-attf-href="/my/orders?{{ keep_query() }}">Orders</a>
@@ -206,6 +216,83 @@
                         <a href="/my/wallet" class="btn btn-outline-secondary me-2">Cancel</a>
                         <button type="submit" class="btn btn-primary">I Have Paid</button>
                     </form>
+                </div>
+            </div>
+        </t>
+    </template>
+
+    <!-- COD Settlements -->
+    <template id="portal_my_cod_settlements" name="COD Settlements">
+        <t t-call="portal.portal_layout">
+            <t t-set="breadcrumbs_searchbar" t-value="True"/>
+            <t t-call="portal.portal_searchbar">
+                <t t-set="title">COD Transactions &amp; Settlements</t>
+            </t>
+            
+            <div class="row mt-4 mb-5">
+                <div class="col-md-4">
+                    <div class="card bg-success text-white shadow-sm mb-4">
+                        <div class="card-body text-center">
+                            <h5>Pending COD Balance</h5>
+                            <h2><span t-esc="cod_balance" t-options='{"widget": "monetary", "display_currency": currency_id}'/></h2>
+                            <p class="mb-0 mt-2 small opacity-75">This amount is yet to be settled to your bank account.</p>
+                        </div>
+                    </div>
+                    
+                    <div class="card shadow-sm mb-4">
+                        <div class="card-header bg-white">
+                            <h5 class="mb-0">Recent Settlements</h5>
+                        </div>
+                        <ul class="list-group list-group-flush">
+                            <t t-foreach="recent_clearances" t-as="clearance">
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <strong><span t-field="clearance.name"/></strong><br/>
+                                        <small class="text-muted"><span t-field="clearance.transfer_date" t-options='{"widget": "date"}'/></small>
+                                    </div>
+                                    <div class="text-end">
+                                        <span class="text-success fw-bold" t-field="clearance.amount" t-options='{"widget": "monetary", "display_currency": clearance.currency_id}'/>
+                                    </div>
+                                </li>
+                            </t>
+                            <li t-if="not recent_clearances" class="list-group-item text-muted">No recent settlements.</li>
+                        </ul>
+                    </div>
+                </div>
+                
+                <div class="col-md-8">
+                    <t t-if="not transfers">
+                        <p class="alert alert-info">There are currently no COD transactions.</p>
+                    </t>
+                    <t t-if="transfers" t-call="portal.portal_table">
+                        <thead>
+                            <tr class="active">
+                                <th>Date</th>
+                                <th>Reference</th>
+                                <th>Type</th>
+                                <th class="text-end">Amount</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <t t-foreach="transfers" t-as="tx">
+                                <tr>
+                                    <td><span t-field="tx.transfer_date"/></td>
+                                    <td>
+                                        <span t-esc="tx.reference or tx.name or '-'"/>
+                                        <div class="small text-muted" t-if="tx.shipment_id">Shipment: <span t-field="tx.shipment_id.name"/></div>
+                                    </td>
+                                    <td>
+                                        <span t-attf-class="badge #{'bg-success' if tx.transfer_type == 'cod_payment' else 'bg-primary'}">
+                                            <span t-esc="dict(tx.fields_get(allfields=['transfer_type'])['transfer_type']['selection'])[tx.transfer_type]"/>
+                                        </span>
+                                    </td>
+                                    <td class="text-end">
+                                        <span t-attf-class="{'text-success' if tx.transfer_type == 'cod_payment' else 'text-primary'}" t-field="tx.amount" t-options='{"widget": "monetary", "display_currency": tx.currency_id}'/>
+                                    </td>
+                                </tr>
+                            </t>
+                        </tbody>
+                    </t>
                 </div>
             </div>
         </t>

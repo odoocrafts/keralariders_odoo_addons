@@ -28,6 +28,14 @@ class LogisticsPortal(CustomerPortal):
             else:
                 values['wallet_balance'] = "0.00"
                 
+            cod_transfers = request.env['logistics.account.transfer'].search([
+                ('related_seller_id', '=', seller.id),
+                ('transfer_type', 'in', ['cod_payment', 'cod_clearance'])
+            ])
+            cod_balance_val = sum(t.amount if t.transfer_type == 'cod_payment' else -t.amount for t in cod_transfers)
+            symbol = wallet.currency_id.symbol if wallet else '₹'
+            values['cod_balance'] = f"{symbol} {cod_balance_val:,.2f}"
+                
             values['charge_calculator'] = ' '
 
         delivery_executive = request.env['logistics.delivery.executive'].sudo().search([('user_id', '=', request.env.user.id)], limit=1)
@@ -622,3 +630,52 @@ class LogisticsPortal(CustomerPortal):
         except Exception as e:
             request.session['error'] = str(e)
             return request.redirect(f'/my/delivery/{shipment.id}')
+
+    @http.route(['/my/cod_settlements', '/my/cod_settlements/page/<int:page>'], type='http', auth="user", website=True)
+    def portal_my_cod_settlements(self, page=1, **kw):
+        values = self._prepare_portal_layout_values()
+        partner = request.env.user.partner_id
+        seller = request.env['logistics.seller'].sudo().search([('partner_id', '=', partner.id)], limit=1)
+        
+        if not seller:
+            return request.redirect('/my')
+
+        Transfer = request.env['logistics.account.transfer'].sudo()
+        domain = [('related_seller_id', '=', seller.id), ('transfer_type', 'in', ['cod_payment', 'cod_clearance'])]
+        
+        # count for pager
+        transfer_count = Transfer.search_count(domain)
+        # pager
+        pager = portal_pager(
+            url="/my/cod_settlements",
+            url_args={},
+            total=transfer_count,
+            page=page,
+            step=20
+        )
+        
+        # content according to pager
+        transfers = Transfer.search(domain, order='transfer_date desc, id desc', limit=20, offset=pager['offset'])
+        
+        # Pending balance
+        all_transfers = Transfer.search(domain)
+        cod_balance = sum(t.amount if t.transfer_type == 'cod_payment' else -t.amount for t in all_transfers)
+        
+        # Recent Clearances
+        recent_clearances = Transfer.search([
+            ('related_seller_id', '=', seller.id),
+            ('transfer_type', '=', 'cod_clearance')
+        ], order='transfer_date desc, id desc', limit=5)
+        
+        values.update({
+            'transfers': transfers,
+            'page_name': 'cod_settlements',
+            'pager': pager,
+            'default_url': '/my/cod_settlements',
+            'cod_balance': cod_balance,
+            'recent_clearances': recent_clearances,
+            'seller': seller,
+            'currency_id': seller.currency_id or request.env.company.currency_id,
+        })
+        
+        return request.render("keralariders_logistics.portal_my_cod_settlements", values)
