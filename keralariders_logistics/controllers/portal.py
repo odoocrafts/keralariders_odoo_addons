@@ -582,7 +582,7 @@ class LogisticsPortal(CustomerPortal):
         if not delivery_executive:
             return request.redirect('/my')
             
-        shipment = request.env['logistics.shipment'].sudo().search([('id', '=', shipment_id), ('delivery_executive_id', '=', delivery_executive.id)], limit=1)
+        shipment = request.env['logistics.shipment'].sudo().search([('id', '=', shipment_id)], limit=1)
         if not shipment:
             return request.redirect('/my/deliveries')
             
@@ -600,7 +600,7 @@ class LogisticsPortal(CustomerPortal):
         if not delivery_executive:
             return request.redirect('/my')
             
-        shipment = request.env['logistics.shipment'].sudo().search([('id', '=', shipment_id), ('delivery_executive_id', '=', delivery_executive.id)], limit=1)
+        shipment = request.env['logistics.shipment'].sudo().search([('id', '=', shipment_id)], limit=1)
         if not shipment:
             request.session['error'] = "Shipment not found."
             return request.redirect('/my/deliveries')
