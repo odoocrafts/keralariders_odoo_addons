@@ -56,9 +56,11 @@ class District(models.Model):
         )
         result = self.env.cr.fetchone()
         if result:
-
             district_name, state_name = result
             district_id = self.search([('name', 'ilike', district_name)], limit=1)
+            # CSV uses KASARAGOD; seeded district is named Kasargod
+            if not district_id and district_name and district_name.upper() == 'KASARAGOD':
+                district_id = self.search([('name', 'ilike', 'Kasargod')], limit=1)
             return {
                 'district_id': district_id,
                 'district_name': district_name,

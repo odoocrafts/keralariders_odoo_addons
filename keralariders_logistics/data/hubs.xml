@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <data noupdate="1">
+        <!-- One hub per Kerala district. Thrissur = Main Hub. -->
+        <record id="hub_kasargod" model="logistics.hub">
+            <field name="name">Kasargod Hub</field>
+            <field name="code">KSD</field>
+            <field name="district_id" ref="kerala_district_1"/>
+            <field name="hub_type">district</field>
+        </record>
+        <record id="hub_kannur" model="logistics.hub">
+            <field name="name">Kannur Hub</field>
+            <field name="code">KNR</field>
+            <field name="district_id" ref="kerala_district_2"/>
+            <field name="hub_type">district</field>
+        </record>
+        <record id="hub_wayanad" model="logistics.hub">
+            <field name="name">Wayanad Hub</field>
+            <field name="code">WYD</field>
+            <field name="district_id" ref="kerala_district_3"/>
+            <field name="hub_type">district</field>
+        </record>
+        <record id="hub_kozhikode" model="logistics.hub">
+            <field name="name">Kozhikode Hub</field>
+            <field name="code">KKD</field>
+            <field name="district_id" ref="kerala_district_4"/>
+            <field name="hub_type">district</field>
+        </record>
+        <record id="hub_malappuram" model="logistics.hub">
+            <field name="name">Malappuram Hub</field>
+            <field name="code">MLP</field>
+            <field name="district_id" ref="kerala_district_5"/>
+            <field name="hub_type">district</field>
+        </record>
+        <record id="hub_palakkad" model="logistics.hub">
+            <field name="name">Palakkad Hub</field>
+            <field name="code">PKD</field>
+            <field name="district_id" ref="kerala_district_6"/>
+            <field name="hub_type">district</field>
+        </record>
+        <record id="hub_thrissur" model="logistics.hub">
+            <field name="name">Thrissur Main Hub</field>
+            <field name="code">TSR</field>
+            <field name="district_id" ref="kerala_district_7"/>
+            <field name="hub_type">main</field>
+        </record>
+        <record id="hub_ernakulam" model="logistics.hub">
+            <field name="name">Ernakulam Hub</field>
+            <field name="code">EKM</field>
+            <field name="district_id" ref="kerala_district_8"/>
+            <field name="hub_type">district</field>
+        </record>
+        <record id="hub_idukki" model="logistics.hub">
+            <field name="name">Idukki Hub</field>
+            <field name="code">IDK</field>
+            <field name="district_id" ref="kerala_district_9"/>
+            <field name="hub_type">district</field>
+        </record>
+        <record id="hub_kottayam" model="logistics.hub">
+            <field name="name">Kottayam Hub</field>
+            <field name="code">KTM</field>
+            <field name="district_id" ref="kerala_district_10"/>
+            <field name="hub_type">district</field>
+        </record>
+        <record id="hub_alappuzha" model="logistics.hub">
+            <field name="name">Alappuzha Hub</field>
+            <field name="code">ALP</field>
+            <field name="district_id" ref="kerala_district_11"/>
+            <field name="hub_type">district</field>
+        </record>
+        <record id="hub_pathanamthitta" model="logistics.hub">
+            <field name="name">Pathanamthitta Hub</field>
+            <field name="code">PTA</field>
+            <field name="district_id" ref="kerala_district_12"/>
+            <field name="hub_type">district</field>
+        </record>
+        <record id="hub_kollam" model="logistics.hub">
+            <field name="name">Kollam Hub</field>
+            <field name="code">KLM</field>
+            <field name="district_id" ref="kerala_district_13"/>
+            <field name="hub_type">district</field>
+        </record>
+        <record id="hub_thiruvananthapuram" model="logistics.hub">
+            <field name="name">Thiruvananthapuram Hub</field>
+            <field name="code">TVM</field>
+            <field name="district_id" ref="kerala_district_14"/>
+            <field name="hub_type">district</field>
+        </record>
+    </data>
+</odoo>

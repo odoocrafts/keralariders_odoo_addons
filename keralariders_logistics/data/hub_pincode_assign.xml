@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <!-- Assign district pincodes to hubs on install/upgrade -->
+    <data noupdate="0">
+        <function model="logistics.hub" name="assign_all_hub_pincodes"/>
+    </data>
+</odoo>

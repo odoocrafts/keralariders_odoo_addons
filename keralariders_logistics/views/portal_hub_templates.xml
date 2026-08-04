@@ -1,0 +1,165 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <template id="portal_my_home_hub_manager" name="Show Hub Manager Portal Entries" customize_show="True" inherit_id="portal.portal_my_home" priority="25">
+        <xpath expr="//div[hasclass('o_portal_docs')]" position="inside">
+            <t t-if="is_hub_manager">
+                <t t-call="keralariders_logistics.logistics_portal_card">
+                    <t t-set="title">My Hub</t>
+                    <t t-set="url" t-value="'/my/hub'"/>
+                    <t t-set="count_text" t-value="hub_inventory_count if hub_inventory_count else '0'"/>
+                    <t t-set="icon" t-value="'/keralariders_logistics/static/src/img/shipment.svg'"/>
+                    <t t-set="text">Hub inventory, receive &amp; dispatch</t>
+                </t>
+            </t>
+        </xpath>
+    </template>
+
+    <template id="portal_my_hub_home" name="Hub Manager Home">
+        <t t-call="portal.portal_layout">
+            <div class="container py-3">
+                <t t-if="error">
+                    <div class="alert alert-danger"><t t-esc="error"/></div>
+                </t>
+                <t t-if="success">
+                    <div class="alert alert-success"><t t-esc="success"/></div>
+                </t>
+                <h3 class="mb-3">Hub Operations</h3>
+                <p class="text-muted">Managed hubs:
+                    <t t-foreach="hubs" t-as="hub">
+                        <span class="badge text-bg-secondary me-1"><t t-esc="hub.name"/></span>
+                    </t>
+                </p>
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <div class="card shadow-sm h-100">
+                            <div class="card-body">
+                                <h5 class="card-title">Inventory</h5>
+                                <p class="display-6"><t t-esc="inventory_count"/></p>
+                                <a href="/my/hub/inventory" class="btn btn-primary btn-sm">View inventory</a>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card shadow-sm h-100">
+                            <div class="card-body">
+                                <h5 class="card-title">Awaiting receive</h5>
+                                <p class="display-6"><t t-esc="awaiting_receive"/></p>
+                                <p class="small text-muted">Dropped by DE, not yet scanned in</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card shadow-sm h-100">
+                            <div class="card-body">
+                                <h5 class="card-title">Receive scan</h5>
+                                <p class="text-muted">Scan or enter AWB to take hub custody</p>
+                                <a href="/my/hub/receive" class="btn btn-success btn-sm">Receive package</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </t>
+    </template>
+
+    <template id="portal_my_hub_receive" name="Hub Receive">
+        <t t-call="portal.portal_layout">
+            <div class="container py-3" style="max-width: 560px;">
+                <a href="/my/hub" class="btn btn-link ps-0 mb-2"><i class="fa fa-arrow-left"/> Back</a>
+                <h3>Receive at Hub</h3>
+                <t t-if="error">
+                    <div class="alert alert-danger"><t t-esc="error"/></div>
+                </t>
+                <t t-if="success">
+                    <div class="alert alert-success"><t t-esc="success"/></div>
+                </t>
+                <form action="/my/hub/receive" method="post" class="card shadow-sm p-4">
+                    <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                    <div class="mb-3">
+                        <label class="form-label">Hub</label>
+                        <select name="hub_id" class="form-select" required="1">
+                            <t t-foreach="hubs" t-as="hub">
+                                <option t-att-value="hub.id"><t t-esc="hub.name"/></option>
+                            </t>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">AWB / Scanned Code</label>
+                        <input type="text" name="awb" class="form-control form-control-lg" placeholder="Enter or scan AWB" required="1" autofocus="1"/>
+                    </div>
+                    <button type="submit" class="btn btn-success w-100">
+                        <i class="fa fa-check"/> Confirm Receive
+                    </button>
+                </form>
+            </div>
+        </t>
+    </template>
+
+    <template id="portal_my_hub_inventory" name="Hub Inventory">
+        <t t-call="portal.portal_layout">
+            <div class="container py-3">
+                <a href="/my/hub" class="btn btn-link ps-0 mb-2"><i class="fa fa-arrow-left"/> Back</a>
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h3 class="mb-0">Hub Inventory</h3>
+                    <a href="/my/hub/receive" class="btn btn-success btn-sm">Receive AWB</a>
+                </div>
+                <t t-if="error">
+                    <div class="alert alert-danger"><t t-esc="error"/></div>
+                </t>
+                <t t-if="success">
+                    <div class="alert alert-success"><t t-esc="success"/></div>
+                </t>
+                <t t-if="not shipments">
+                    <p class="alert alert-info">No packages currently in hub custody.</p>
+                </t>
+                <t t-else="">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle">
+                            <thead>
+                                <tr>
+                                    <th>AWB</th>
+                                    <th>Hub</th>
+                                    <th>Status</th>
+                                    <th>To</th>
+                                    <th>Dispatch</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <t t-foreach="shipments" t-as="shipment">
+                                    <tr>
+                                        <td><t t-esc="shipment.name"/></td>
+                                        <td><t t-esc="shipment.current_hub_id.name"/></td>
+                                        <td><span class="badge text-bg-secondary"><t t-esc="shipment.state"/></span></td>
+                                        <td>
+                                            <t t-esc="shipment.shipping_to_name"/><br/>
+                                            <small class="text-muted"><t t-esc="shipment.shipping_to_zip"/></small>
+                                        </td>
+                                        <td>
+                                            <form t-attf-action="/my/hub/dispatch/#{shipment.id}" method="post" class="d-flex flex-wrap gap-1">
+                                                <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                                                <select name="delivery_executive_id" class="form-select form-select-sm" required="1" style="min-width:140px;">
+                                                    <option value="">Select DE</option>
+                                                    <t t-foreach="executives" t-as="de">
+                                                        <option t-att-value="de.id"><t t-esc="de.name"/></option>
+                                                    </t>
+                                                </select>
+                                                <select name="for_delivery" class="form-select form-select-sm" style="min-width:120px;">
+                                                    <option value="1">Out for delivery</option>
+                                                    <option value="0">Hub transfer</option>
+                                                </select>
+                                                <button type="submit" class="btn btn-primary btn-sm">Dispatch</button>
+                                            </form>
+                                        </td>
+                                    </tr>
+                                </t>
+                            </tbody>
+                        </table>
+                    </div>
+                    <t t-call="portal.pager"/>
+                </t>
+            </div>
+        </t>
+    </template>
+
+</odoo>

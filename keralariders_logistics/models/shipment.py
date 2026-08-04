@@ -46,7 +46,268 @@ class Shipment(models.Model):
         for vals in vals_list:
             if vals.get('name', _('New')) == _('New'):
                 vals['name'] = self.env['ir.sequence'].sudo().next_by_code('logistics.shipment') or _('New')
+            # Initial custody: package starts with the seller until DE pickup.
+            vals.setdefault('custodian_type', 'seller')
         return super(Shipment, self).create(vals_list)
+
+    # -------------------------------------------------------------------------
+    # Custody
+    # Custody after DE "drop at hub" stays with DE until hub manager receive
+    # scan — that receive is the source of truth that sets custodian_type=hub.
+    # -------------------------------------------------------------------------
+    custodian_type = fields.Selection([
+        ('seller', 'Seller'),
+        ('de', 'Delivery Executive'),
+        ('hub', 'Hub'),
+        ('customer', 'Customer'),
+    ], string='Custodian', default='seller', tracking=True, index=True)
+    custodian_de_id = fields.Many2one(
+        'logistics.delivery.executive',
+        string='Custodian DE',
+        tracking=True,
+    )
+    current_hub_id = fields.Many2one('logistics.hub', string='Current Hub', tracking=True, index=True)
+    active_leg_id = fields.Many2one('logistics.shipment.estimated.route', string='Active Route Leg')
+    route_locked = fields.Boolean(
+        string='Route Locked',
+        default=False,
+        help='When set, estimated route is not recomputed (ops have started). Admins can force recompute.',
+    )
+    event_ids = fields.One2many('logistics.shipment.event', 'shipment_id', string='Custody Events')
+    event_count = fields.Integer(compute='_compute_event_count')
+
+    @api.depends('event_ids')
+    def _compute_event_count(self):
+        for rec in self:
+            rec.event_count = len(rec.event_ids)
+
+    def _lock_route(self):
+        self.filtered(lambda s: not s.route_locked).write({'route_locked': True})
+
+    def _create_custody_event(self, event_type, to_custodian=None, hub=None, actor_de=None,
+                              scanned_code=None, note=None, leg=None):
+        """Create a custody event for each shipment in self."""
+        Event = self.env['logistics.shipment.event']
+        for shipment in self:
+            Event.create({
+                'shipment_id': shipment.id,
+                'event_type': event_type,
+                'event_time': fields.Datetime.now(),
+                'actor_user_id': self.env.user.id,
+                'actor_de_id': actor_de.id if actor_de else False,
+                'hub_id': hub.id if hub else (shipment.current_hub_id.id if shipment.current_hub_id else False),
+                'leg_id': leg.id if leg else (shipment.active_leg_id.id if shipment.active_leg_id else False),
+                'from_custodian_type': shipment.custodian_type,
+                'to_custodian_type': to_custodian or shipment.custodian_type,
+                'scanned_code': scanned_code,
+                'note': note,
+            })
+
+    def action_mark_picked(self, actor_de=None, scanned_code=None, note=None):
+        """DE confirms pickup from seller. Custody → DE."""
+        for shipment in self:
+            if shipment.state not in ('pickup_requested', 'order_added'):
+                raise UserError(
+                    _("Shipment %s cannot be marked picked from state '%s'.")
+                    % (shipment.name, shipment.state)
+                )
+            de = actor_de or shipment.delivery_executive_id or shipment.custodian_de_id
+            shipment._create_custody_event(
+                'pickup_scan',
+                to_custodian='de',
+                actor_de=de,
+                scanned_code=scanned_code or shipment.name,
+                note=note,
+            )
+            vals = {
+                'state': 'picked',
+                'picked_on': fields.Datetime.now(),
+                'custodian_type': 'de',
+                'custodian_de_id': de.id if de else False,
+                'current_hub_id': False,
+                'estimated_delivery_date': fields.Date.today(),
+            }
+            if de and not shipment.delivery_executive_id:
+                vals['delivery_executive_id'] = de.id
+            shipment.write(vals)
+            shipment._lock_route()
+        return True
+
+    def action_drop_at_hub(self, hub=None, actor_de=None, scanned_code=None, note=None):
+        """DE marks package dropped at a hub.
+
+        Custody remains with the DE until hub_receive — hub manager scan is
+        the source of truth that transfers custodian_type to hub.
+        """
+        for shipment in self:
+            if shipment.custodian_type != 'de':
+                raise UserError(
+                    _("Shipment %s must be in DE custody to drop at hub (current: %s).")
+                    % (shipment.name, shipment.custodian_type)
+                )
+            if shipment.state not in ('picked', 'in_transit', 'at_source_hub', 'at_central_hub', 'at_destination_hub'):
+                raise UserError(
+                    _("Shipment %s cannot be dropped at hub from state '%s'.")
+                    % (shipment.name, shipment.state)
+                )
+            target_hub = hub or shipment.source_hub_id or shipment.current_hub_id
+            if not target_hub:
+                raise UserError(_("No hub specified for drop of shipment %s.") % shipment.name)
+            de = actor_de or shipment.custodian_de_id or shipment.delivery_executive_id
+            shipment._create_custody_event(
+                'dropped_at_hub',
+                to_custodian='de',
+                hub=target_hub,
+                actor_de=de,
+                scanned_code=scanned_code or shipment.name,
+                note=note or _("Dropped at hub; awaiting hub receive scan."),
+            )
+            # Stay in DE custody; optionally move toward in_transit if leaving seller area
+            vals = {
+                'current_hub_id': target_hub.id,
+            }
+            if shipment.state == 'picked' and shipment.source_hub_id and target_hub == shipment.source_hub_id:
+                # Still picked until hub receives; leave state as picked/in_transit
+                vals['state'] = 'in_transit'
+            elif shipment.state == 'picked':
+                vals['state'] = 'in_transit'
+            shipment.write(vals)
+            shipment._lock_route()
+        return True
+
+    def action_hub_receive(self, hub=None, scanned_code=None, note=None):
+        """Hub manager receive scan — source of truth for hub custody."""
+        for shipment in self:
+            target_hub = hub or shipment.current_hub_id or shipment.source_hub_id
+            if not target_hub:
+                raise UserError(_("Hub is required to receive shipment %s.") % shipment.name)
+            if shipment.state in ('delivered', 'cancelled', 'cancel', 'returned'):
+                raise UserError(
+                    _("Shipment %s cannot be received at hub in state '%s'.")
+                    % (shipment.name, shipment.state)
+                )
+
+            # Determine hub-stop state from planned route hubs
+            if target_hub == shipment.source_hub_id and target_hub == shipment.destination_hub_id:
+                new_state = 'at_source_hub'
+            elif target_hub == shipment.source_hub_id:
+                new_state = 'at_source_hub'
+            elif target_hub == shipment.destination_hub_id:
+                new_state = 'at_destination_hub'
+            elif target_hub.hub_type == 'main':
+                # Optional physical pass-through at Thrissur — log presence without forcing route
+                new_state = 'at_central_hub'
+            else:
+                new_state = 'at_source_hub'
+
+            shipment._create_custody_event(
+                'hub_receive',
+                to_custodian='hub',
+                hub=target_hub,
+                scanned_code=scanned_code or shipment.name,
+                note=note,
+            )
+            shipment.write({
+                'state': new_state,
+                'custodian_type': 'hub',
+                'custodian_de_id': False,
+                'current_hub_id': target_hub.id,
+                'delivery_executive_id': False,  # clear assigned DE until redispatch
+            })
+            shipment._lock_route()
+        return True
+
+    def action_hub_dispatch(self, delivery_executive, hub=None, scanned_code=None, note=None, for_delivery=True):
+        """Hub assigns a DE and releases custody (dispatch / out for delivery or transfer)."""
+        if not delivery_executive:
+            raise UserError(_("A delivery executive is required to dispatch."))
+        for shipment in self:
+            if shipment.custodian_type != 'hub':
+                raise UserError(
+                    _("Shipment %s must be in hub custody to dispatch (current: %s).")
+                    % (shipment.name, shipment.custodian_type)
+                )
+            target_hub = hub or shipment.current_hub_id
+            if not target_hub:
+                raise UserError(_("Current hub is missing on shipment %s.") % shipment.name)
+
+            # Same-district last mile or dest-hub last mile → out_for_delivery;
+            # otherwise in_transit for hub-to-hub movement.
+            if for_delivery or target_hub == shipment.destination_hub_id:
+                new_state = 'out_for_delivery'
+                event_type = 'out_for_delivery'
+            else:
+                new_state = 'in_transit'
+                event_type = 'hub_dispatch'
+
+            shipment._create_custody_event(
+                event_type,
+                to_custodian='de',
+                hub=target_hub,
+                actor_de=delivery_executive,
+                scanned_code=scanned_code or shipment.name,
+                note=note,
+            )
+            shipment.write({
+                'state': new_state,
+                'custodian_type': 'de',
+                'custodian_de_id': delivery_executive.id,
+                'delivery_executive_id': delivery_executive.id,
+                'current_hub_id': target_hub.id if new_state == 'in_transit' else False,
+            })
+            shipment._lock_route()
+        return True
+
+    def action_central_pass_through(self, hub=None, scanned_code=None, note=None):
+        """Optional lightweight Thrissur pass-through event (does not force route)."""
+        main_hub = hub or self.env['logistics.hub'].get_main_hub()
+        if not main_hub:
+            raise UserError(_("No Main Hub (Thrissur) is configured."))
+        for shipment in self:
+            shipment._create_custody_event(
+                'central_pass_through',
+                to_custodian=shipment.custodian_type,
+                hub=main_hub,
+                scanned_code=scanned_code or shipment.name,
+                note=note or _("Physical pass-through at main hub recorded."),
+            )
+            # Optionally reflect physical presence without changing planned route
+            if shipment.custodian_type == 'hub':
+                shipment.write({
+                    'state': 'at_central_hub',
+                    'current_hub_id': main_hub.id,
+                })
+        return True
+
+    def action_mark_delivered(self, actor_de=None, scanned_code=None, note=None, delivery_remarks=None):
+        """DE marks delivered — only allowed from out_for_delivery."""
+        for shipment in self:
+            if shipment.state != 'out_for_delivery':
+                raise UserError(
+                    _("Shipment %s can only be marked delivered when Out for Delivery "
+                      "(current state: %s).")
+                    % (shipment.name, shipment.state)
+                )
+            de = actor_de or shipment.custodian_de_id or shipment.delivery_executive_id
+            shipment._create_custody_event(
+                'delivered',
+                to_custodian='customer',
+                actor_de=de,
+                scanned_code=scanned_code or shipment.name,
+                note=note or delivery_remarks,
+            )
+            vals = {
+                'state': 'delivered',
+                'custodian_type': 'customer',
+                'custodian_de_id': False,
+                'current_hub_id': False,
+                'actual_delivery_date': fields.Datetime.now(),
+                'delivered_on': fields.Datetime.now(),
+            }
+            if delivery_remarks is not None:
+                vals['delivery_remarks'] = delivery_remarks
+            shipment.write(vals)
+        return True
 
     company_id = fields.Many2one('res.company', string='Company', required=True, default=lambda self: self.env.company)
 

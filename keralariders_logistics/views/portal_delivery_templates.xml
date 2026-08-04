@@ -214,14 +214,54 @@
                             <p>
                                 <strong>Weight:</strong> <span t-field="shipment.total_weight"/> kg<br/>
                                 <strong>Description:</strong> <span t-field="shipment.item_description"/><br/>
-                                <strong>Payment Type:</strong> 
+                                <strong>Payment Type:</strong>
                                 <span t-if="shipment.order_payment_type == 'cod'" class="text-danger fw-bold">COD (Collect <span t-field="shipment.cod_amount"/>)</span>
-                                <span t-else="" class="text-success fw-bold">Prepaid</span>
+                                <span t-else="" class="text-success fw-bold">Prepaid</span><br/>
+                                <strong>Custody:</strong> <span t-field="shipment.custodian_type"/><br/>
+                                <strong>Current Hub:</strong> <span t-field="shipment.current_hub_id"/>
                             </p>
                         </div>
                     </div>
 
-                    <t t-if="shipment.state in ['pickup_requested', 'picked', 'in_transit']">
+                    <t t-if="shipment.state in ['pickup_requested', 'order_added']">
+                        <hr/>
+                        <h4 class="mb-3 text-primary">Confirm Pickup</h4>
+                        <form t-attf-action="/my/delivery/#{shipment.id}/mark_picked" method="post">
+                            <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                            <input type="hidden" name="scanned_code" t-att-value="shipment.name"/>
+                            <button type="submit" class="btn btn-lg btn-primary w-100 fw-bold shadow-sm"
+                                    onclick="return confirm('Confirm pickup scan for this shipment?');">
+                                <i class="fa fa-hand-paper-o"/> MARK AS PICKED
+                            </button>
+                        </form>
+                    </t>
+
+                    <t t-if="shipment.custodian_type == 'de' and shipment.state in ['picked', 'in_transit']">
+                        <hr/>
+                        <h4 class="mb-3 text-warning">Drop at Hub</h4>
+                        <p class="text-muted small">Marks package as dropped. Hub manager receive scan is required to transfer custody to the hub.</p>
+                        <form t-attf-action="/my/delivery/#{shipment.id}/drop_at_hub" method="post" class="row g-2 align-items-end">
+                            <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                            <div class="col-md-8">
+                                <label class="form-label">Hub</label>
+                                <select name="hub_id" class="form-select" required="1">
+                                    <t t-foreach="hubs" t-as="hub">
+                                        <option t-att-value="hub.id"
+                                                t-att-selected="shipment.source_hub_id and hub.id == shipment.source_hub_id.id">
+                                            <t t-esc="hub.name"/>
+                                        </option>
+                                    </t>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <button type="submit" class="btn btn-warning w-100">
+                                    <i class="fa fa-building"/> Drop at Hub
+                                </button>
+                            </div>
+                        </form>
+                    </t>
+
+                    <t t-if="shipment.state == 'out_for_delivery'">
                         <hr/>
                         <h4 class="mb-3 text-primary">Mark as Delivered</h4>
                         <form t-attf-action="/my/delivery/#{shipment.id}/mark_delivered" method="post">

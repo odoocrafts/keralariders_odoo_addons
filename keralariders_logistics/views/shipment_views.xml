@@ -69,6 +69,14 @@
                         string="At Destination Hub"
                         domain="[('state', '=', 'at_destination_hub')]"/>
 
+                <filter name="out_for_delivery"
+                        string="Out for Delivery"
+                        domain="[('state', '=', 'out_for_delivery')]"/>
+
+                <filter name="at_hub"
+                        string="In Hub Custody"
+                        domain="[('custodian_type', '=', 'hub')]"/>
+
                 <filter name="delivered"
                         string="Delivered"
                         domain="[('state', '=', 'delivered')]"/>
@@ -134,6 +142,14 @@
                             name="group_from_district"
                             context="{'group_by':'shipping_from_district_id'}"/>
 
+                    <filter string="Current Hub"
+                            name="group_current_hub"
+                            context="{'group_by':'current_hub_id'}"/>
+
+                    <filter string="Custodian"
+                            name="group_custodian"
+                            context="{'group_by':'custodian_type'}"/>
+
                     <filter string="To District"
                             name="group_to_district"
                             context="{'group_by':'shipping_to_district_id'}"/>
@@ -187,6 +203,14 @@
             <form string="Shipment">
                 <header>
                     <button name="%(keralariders_logistics.action_report_shipment)d" string="Print AWB" type="action" class="btn-primary"/>
+                    <button name="action_mark_picked" type="object" string="Mark Picked"
+                            invisible="state not in ('pickup_requested', 'order_added')"
+                            groups="keralariders_logistics.group_logistics_admin,keralariders_logistics.group_logistics_executive"
+                            class="btn-secondary"/>
+                    <button name="action_hub_receive" type="object" string="Hub Receive"
+                            invisible="custodian_type == 'hub'"
+                            groups="keralariders_logistics.group_logistics_admin,keralariders_logistics.group_logistics_hub_manager"
+                            class="btn-secondary"/>
                     <field name="state" widget="statusbar" options="{'clickable':1}" groups="keralariders_logistics.group_logistics_admin"/>
                     <field name="state" widget="statusbar" options="{'clickable':1}" invisible="1"/>
 
@@ -287,6 +311,20 @@
                             <field name="destination_hub_id" string="Destination Hub" readonly="1" force_save="1"/>
                         </group>
                     </group>
+                    <group string="Custody">
+                        <group>
+                            <field name="custodian_type"/>
+                            <field name="custodian_de_id"/>
+                            <field name="current_hub_id"/>
+                            <field name="active_leg_id"/>
+                        </group>
+                        <group>
+                            <field name="route_locked"/>
+                            <field name="event_count"/>
+                            <field name="picked_on" readonly="1"/>
+                            <field name="delivered_on" readonly="1"/>
+                        </group>
+                    </group>
 
                     <group>
                         <group string="Shipping From (Seller)">
@@ -324,15 +362,11 @@
                                     type="object"
                                     class="btn btn-primary btn-sm mb-2"
                                     icon="fa-refresh"
-                                    string="Recompute Estimated Route"/>
+                                    string="Recompute Estimated Route"
+                                    groups="keralariders_logistics.group_logistics_admin"/>
                             <field name="estimated_route_html"/>
                         </page>
-                        <page string="Estimated Route" invisible="0">
-                            <button name="action_recompute_estimated_route"
-                                    type="object"
-                                    class="btn btn-primary btn-sm mb-2"
-                                    icon="fa-refresh"
-                                    string="Recompute Estimated Route"/>
+                        <page string="Route Legs">
                             <field name="estimated_route_ids">
                                 <list>
                                     <field name="sequence"/>
@@ -342,6 +376,20 @@
                                     <field name="executive1_id"/>
                                     <field name="executive2_id"/>
                                     <field name="operation_type"/>
+                                </list>
+                            </field>
+                        </page>
+                        <page string="Custody Events">
+                            <field name="event_ids">
+                                <list create="0" edit="0" delete="0">
+                                    <field name="event_time"/>
+                                    <field name="event_type"/>
+                                    <field name="hub_id"/>
+                                    <field name="actor_de_id"/>
+                                    <field name="from_custodian_type"/>
+                                    <field name="to_custodian_type"/>
+                                    <field name="scanned_code" optional="hide"/>
+                                    <field name="note"/>
                                 </list>
                             </field>
                         </page>

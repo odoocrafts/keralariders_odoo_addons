@@ -36,6 +36,8 @@ class DeliveryExecutive(models.Model):
             raise UserError("Delivery Executive must have an email address to grant portal access.")
             
         portal_group = self.env.ref('base.group_portal')
+        exec_group = self.env.ref('keralariders_logistics.group_logistics_executive')
+        hub_mgr_group = self.env.ref('keralariders_logistics.group_logistics_hub_manager')
         
         if not self.user_id:
             if self.env['res.users'].sudo().search([('login', '=', self.email)]):
@@ -45,17 +47,26 @@ class DeliveryExecutive(models.Model):
                 'name': self.name,
                 'login': self.email,
                 'email': self.email,
-                'group_ids': [(4, portal_group.id)]
+                'group_ids': [(4, portal_group.id), (4, exec_group.id)],
             })
             self.user_id = user.id
             user.action_reset_password()
             message = "Portal access granted and invitation email sent!"
         else:
+            groups_to_add = []
             if portal_group not in self.user_id.group_ids:
-                self.user_id.sudo().write({'group_ids': [(4, portal_group.id)]})
+                groups_to_add.append((4, portal_group.id))
+            if exec_group not in self.user_id.group_ids:
+                groups_to_add.append((4, exec_group.id))
+            if groups_to_add:
+                self.user_id.sudo().write({'group_ids': groups_to_add})
                 message = "Portal access granted!"
             else:
                 message = "Executive already has portal access."
+
+        # Hub managers get the hub manager group when flagged
+        if self.is_manager and self.user_id and hub_mgr_group not in self.user_id.group_ids:
+            self.user_id.sudo().write({'group_ids': [(4, hub_mgr_group.id)]})
                 
         return {
             'type': 'ir.actions.client',

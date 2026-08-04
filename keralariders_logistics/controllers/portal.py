@@ -47,8 +47,23 @@ class LogisticsPortal(CustomerPortal):
         values['is_delivery_executive'] = bool(delivery_executive)
         
         if delivery_executive:
-            assigned_shipment_count = request.env['logistics.shipment'].sudo().search_count([('delivery_executive_id', '=', delivery_executive.id), ('state', '!=', 'delivered')])
+            assigned_shipment_count = request.env['logistics.shipment'].sudo().search_count([
+                '|',
+                ('delivery_executive_id', '=', delivery_executive.id),
+                ('custodian_de_id', '=', delivery_executive.id),
+                ('state', 'not in', ('delivered', 'cancelled', 'cancel')),
+            ])
             values['assigned_shipment_count'] = str(assigned_shipment_count) if assigned_shipment_count > 0 else '0 '
+
+        managed_hubs = request.env['logistics.hub'].sudo().search([('manager_ids', 'in', request.env.user.ids)])
+        values['is_hub_manager'] = bool(managed_hubs)
+        if managed_hubs:
+            inventory_count = request.env['logistics.shipment'].sudo().search_count([
+                ('custodian_type', '=', 'hub'),
+                ('current_hub_id', 'in', managed_hubs.ids),
+            ])
+            values['hub_inventory_count'] = str(inventory_count) if inventory_count > 0 else '0 '
+            values['managed_hub_count'] = str(len(managed_hubs))
         
         return values
         
@@ -554,7 +569,12 @@ class LogisticsPortal(CustomerPortal):
             return request.redirect('/my')
             
         Shipment = request.env['logistics.shipment'].sudo()
-        domain = [('delivery_executive_id', '=', delivery_executive.id), ('state', '!=', 'delivered')]
+        domain = [
+            '|',
+            ('delivery_executive_id', '=', delivery_executive.id),
+            ('custodian_de_id', '=', delivery_executive.id),
+            ('state', 'not in', ('delivered', 'cancelled', 'cancel')),
+        ]
         
         searchbar_sortings = {
             'date': {'label': _('Newest'), 'order': 'create_date desc, id desc'},
@@ -596,14 +616,60 @@ class LogisticsPortal(CustomerPortal):
         shipment = request.env['logistics.shipment'].sudo().search([('id', '=', shipment_id)], limit=1)
         if not shipment:
             return request.redirect('/my/deliveries')
+
+        hubs = request.env['logistics.hub'].sudo().search([('active', '=', True)])
             
         values = {
             'shipment': shipment,
             'page_name': 'deliveries',
+            'hubs': hubs,
+            'delivery_executive': delivery_executive,
             'error': request.session.pop('error', None),
             'success': request.session.pop('success', None),
         }
         return request.render("keralariders_logistics.portal_my_delivery_detail", values)
+
+    @http.route(['/my/delivery/<int:shipment_id>/mark_picked'], type='http', auth="user", website=True, methods=['POST'])
+    def portal_my_delivery_mark_picked(self, shipment_id=None, **post):
+        delivery_executive = request.env['logistics.delivery.executive'].sudo().search([('user_id', '=', request.env.user.id)], limit=1)
+        if not delivery_executive:
+            return request.redirect('/my')
+        shipment = request.env['logistics.shipment'].sudo().browse(shipment_id)
+        if not shipment.exists():
+            request.session['error'] = "Shipment not found."
+            return request.redirect('/my/deliveries')
+        try:
+            shipment.action_mark_picked(
+                actor_de=delivery_executive,
+                scanned_code=post.get('scanned_code') or shipment.name,
+            )
+            request.session['success'] = f"Shipment {shipment.name} marked as picked."
+        except UserError as e:
+            request.session['error'] = str(e)
+        return request.redirect(f'/my/delivery/{shipment.id}')
+
+    @http.route(['/my/delivery/<int:shipment_id>/drop_at_hub'], type='http', auth="user", website=True, methods=['POST'])
+    def portal_my_delivery_drop_at_hub(self, shipment_id=None, **post):
+        delivery_executive = request.env['logistics.delivery.executive'].sudo().search([('user_id', '=', request.env.user.id)], limit=1)
+        if not delivery_executive:
+            return request.redirect('/my')
+        shipment = request.env['logistics.shipment'].sudo().browse(shipment_id)
+        if not shipment.exists():
+            request.session['error'] = "Shipment not found."
+            return request.redirect('/my/deliveries')
+        hub_id = int(post.get('hub_id') or 0)
+        hub = request.env['logistics.hub'].sudo().browse(hub_id) if hub_id else shipment.source_hub_id
+        try:
+            shipment.action_drop_at_hub(
+                hub=hub,
+                actor_de=delivery_executive,
+                scanned_code=post.get('scanned_code') or shipment.name,
+                note=post.get('note'),
+            )
+            request.session['success'] = f"Shipment {shipment.name} marked dropped at {hub.name}. Awaiting hub receive."
+        except UserError as e:
+            request.session['error'] = str(e)
+        return request.redirect(f'/my/delivery/{shipment.id}')
 
     @http.route(['/my/delivery/<int:shipment_id>/mark_delivered'], type='http', auth="user", website=True, methods=['POST'])
     def portal_my_delivery_mark_delivered(self, shipment_id=None, **post):
@@ -621,20 +687,19 @@ class LogisticsPortal(CustomerPortal):
             return request.redirect(f'/my/delivery/{shipment.id}')
 
         try:
-            vals = {'state': 'delivered', 'actual_delivery_date': fields.Datetime.now()}
             payment_method = None
             if shipment.order_payment_type == 'cod':
                 payment_method = post.get('cod_payment_method')
-                if payment_method in ['cash', 'upi']:
-                    vals['cod_payment_method'] = payment_method
-                else:
+                if payment_method not in ['cash', 'upi']:
                     request.session['error'] = "Please select a valid COD payment method."
                     return request.redirect(f'/my/delivery/{shipment.id}')
-            # Delivery remarks
-            delivery_remarks = post.get('delivery_remarks')
-            vals['delivery_remarks'] = delivery_remarks or ''
-            
-            shipment.sudo().write(vals)
+                shipment.sudo().write({'cod_payment_method': payment_method})
+
+            delivery_remarks = post.get('delivery_remarks') or ''
+            shipment.action_mark_delivered(
+                actor_de=delivery_executive,
+                delivery_remarks=delivery_remarks,
+            )
             if shipment.order_payment_type == 'cod':
                 shipment.sudo().action_create_payment_cod_from_portal(payment_method=payment_method)
 
@@ -643,6 +708,125 @@ class LogisticsPortal(CustomerPortal):
         except Exception as e:
             request.session['error'] = str(e)
             return request.redirect(f'/my/delivery/{shipment.id}')
+
+    # -------------------------------------------------------------------------
+    # Hub Manager Portal
+    # -------------------------------------------------------------------------
+    def _get_managed_hubs(self):
+        return request.env['logistics.hub'].sudo().search([
+            ('manager_ids', 'in', request.env.user.ids),
+            ('active', '=', True),
+        ])
+
+    @http.route(['/my/hub', '/my/hub/'], type='http', auth="user", website=True)
+    def portal_my_hub_home(self, **kw):
+        hubs = self._get_managed_hubs()
+        if not hubs:
+            return request.redirect('/my')
+        Shipment = request.env['logistics.shipment'].sudo()
+        inventory_count = Shipment.search_count([
+            ('custodian_type', '=', 'hub'),
+            ('current_hub_id', 'in', hubs.ids),
+        ])
+        awaiting_receive = Shipment.search_count([
+            ('current_hub_id', 'in', hubs.ids),
+            ('custodian_type', '=', 'de'),
+            ('state', 'in', ('picked', 'in_transit')),
+        ])
+        values = {
+            'page_name': 'hub',
+            'hubs': hubs,
+            'inventory_count': inventory_count,
+            'awaiting_receive': awaiting_receive,
+            'error': request.session.pop('error', None),
+            'success': request.session.pop('success', None),
+        }
+        return request.render("keralariders_logistics.portal_my_hub_home", values)
+
+    @http.route(['/my/hub/inventory', '/my/hub/inventory/page/<int:page>'], type='http', auth="user", website=True)
+    def portal_my_hub_inventory(self, page=1, **kw):
+        hubs = self._get_managed_hubs()
+        if not hubs:
+            return request.redirect('/my')
+        Shipment = request.env['logistics.shipment'].sudo()
+        domain = [
+            ('custodian_type', '=', 'hub'),
+            ('current_hub_id', 'in', hubs.ids),
+        ]
+        shipment_count = Shipment.search_count(domain)
+        pager = portal_pager(
+            url="/my/hub/inventory",
+            total=shipment_count,
+            page=page,
+            step=self._items_per_page,
+        )
+        shipments = Shipment.search(domain, order='write_date desc', limit=self._items_per_page, offset=pager['offset'])
+        executives = request.env['logistics.delivery.executive'].sudo().search([('active', '=', True)])
+        values = {
+            'page_name': 'hub_inventory',
+            'hubs': hubs,
+            'shipments': shipments,
+            'executives': executives,
+            'pager': pager,
+            'default_url': '/my/hub/inventory',
+            'error': request.session.pop('error', None),
+            'success': request.session.pop('success', None),
+        }
+        return request.render("keralariders_logistics.portal_my_hub_inventory", values)
+
+    @http.route(['/my/hub/receive'], type='http', auth="user", website=True, methods=['GET', 'POST'])
+    def portal_my_hub_receive(self, **post):
+        hubs = self._get_managed_hubs()
+        if not hubs:
+            return request.redirect('/my')
+        if request.httprequest.method == 'POST':
+            awb = (post.get('awb') or '').strip()
+            hub_id = int(post.get('hub_id') or 0)
+            hub = hubs.filtered(lambda h: h.id == hub_id)[:1] or hubs[:1]
+            shipment = request.env['logistics.shipment'].sudo().search([('name', '=', awb)], limit=1)
+            if not shipment:
+                request.session['error'] = f"No shipment found for AWB '{awb}'."
+                return request.redirect('/my/hub/receive')
+            try:
+                shipment.action_hub_receive(hub=hub, scanned_code=awb)
+                request.session['success'] = f"Received {shipment.name} at {hub.name}."
+                return request.redirect('/my/hub/inventory')
+            except UserError as e:
+                request.session['error'] = str(e)
+                return request.redirect('/my/hub/receive')
+        values = {
+            'page_name': 'hub_receive',
+            'hubs': hubs,
+            'error': request.session.pop('error', None),
+            'success': request.session.pop('success', None),
+        }
+        return request.render("keralariders_logistics.portal_my_hub_receive", values)
+
+    @http.route(['/my/hub/dispatch/<int:shipment_id>'], type='http', auth="user", website=True, methods=['POST'])
+    def portal_my_hub_dispatch(self, shipment_id=None, **post):
+        hubs = self._get_managed_hubs()
+        if not hubs:
+            return request.redirect('/my')
+        shipment = request.env['logistics.shipment'].sudo().browse(shipment_id)
+        if not shipment.exists() or shipment.current_hub_id not in hubs:
+            request.session['error'] = "Shipment not in your hub inventory."
+            return request.redirect('/my/hub/inventory')
+        de_id = int(post.get('delivery_executive_id') or 0)
+        de = request.env['logistics.delivery.executive'].sudo().browse(de_id)
+        if not de.exists():
+            request.session['error'] = "Please select a delivery executive."
+            return request.redirect('/my/hub/inventory')
+        for_delivery = post.get('for_delivery', '1') == '1'
+        try:
+            shipment.action_hub_dispatch(
+                delivery_executive=de,
+                hub=shipment.current_hub_id,
+                for_delivery=for_delivery,
+            )
+            request.session['success'] = f"Dispatched {shipment.name} to {de.name}."
+        except UserError as e:
+            request.session['error'] = str(e)
+        return request.redirect('/my/hub/inventory')
 
     @http.route(['/my/cod_settlements', '/my/cod_settlements/page/<int:page>'], type='http', auth="user", website=True)
     def portal_my_cod_settlements(self, page=1, **kw):

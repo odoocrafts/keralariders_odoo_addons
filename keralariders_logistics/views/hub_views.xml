@@ -35,7 +35,10 @@
         <field name="arch" type="xml">
             <list string="Hubs">
                 <field name="name"/>
+                <field name="code"/>
                 <field name="district_id"/>
+                <field name="hub_type"/>
+                <field name="active"/>
             </list>
         </field>
     </record>
@@ -45,11 +48,30 @@
         <field name="model">logistics.hub</field>
         <field name="arch" type="xml">
             <form string="Hubs">
+                <header>
+                    <button name="action_assign_district_pincodes" type="object"
+                            string="Assign District Pincodes" class="btn-secondary"/>
+                    <button name="action_grant_managers_portal_access" type="object"
+                            string="Grant Managers Portal Access" class="btn-secondary"/>
+                </header>
                 <sheet>
+                    <div class="oe_button_box" name="button_box">
+                        <button name="action_view_inventory" type="object" class="oe_stat_button" icon="fa-cubes">
+                            <field name="inventory_count" widget="statinfo" string="Inventory"/>
+                        </button>
+                    </div>
+                    <widget name="web_ribbon" title="Archived" bg_color="text-bg-danger" invisible="active"/>
                     <group>
                         <group>
                             <field name="name"/>
+                            <field name="code"/>
                             <field name="district_id" options="{'no_create': 1}"/>
+                            <field name="hub_type"/>
+                            <field name="active"/>
+                            <field name="pincodes_count"/>
+                        </group>
+                        <group>
+                            <field name="manager_ids" widget="many2many_tags" options="{'no_create': 1}"/>
                         </group>
                     </group>
                     <notebook>
@@ -58,6 +80,7 @@
                                 <list create="0" edit="0" editable="bottom">
                                     <field name="name"/>
                                     <field name="district_id"/>
+                                    <field name="district_name"/>
                                 </list>
                             </field>
                         </page>
@@ -76,32 +99,31 @@
                 <field name="district_id"/>
                 <field name="pincode_ids"/>
                 <field name="pincodes_count"/>
+                <field name="hub_type"/>
+                <field name="inventory_count"/>
 
                 <templates>
                     <t t-name="card">
                         <div class="oe_kanban_global_click">
-
                             <div class="fw-bold fs-5">
                                 <field name="name"/>
                             </div>
-
                             <div class="text-muted mb-2">
                                 <i class="fa fa-map-marker me-1"/>
                                 <field name="district_id"/>
                             </div>
-
-                            <!-- <div class="mt-2">
-                                <span class="badge bg-primary">
-                                    <field name="pincode_ids" widget="many2many_tags"/>
-                                </span>
-                            </div> -->
-
+                            <div class="mb-1">
+                                <span class="badge text-bg-primary" invisible="hub_type != 'main'">Main Hub</span>
+                                <span class="badge text-bg-secondary" invisible="hub_type != 'district'">District</span>
+                            </div>
                             <div class="text-end mt-3">
-                                <span class="badge rounded-pill bg-info text-white">
+                                <span class="badge rounded-pill bg-info text-white me-1">
                                     <field name="pincodes_count"/> Pincodes
                                 </span>
+                                <span class="badge rounded-pill bg-success text-white">
+                                    <field name="inventory_count"/> In Hub
+                                </span>
                             </div>
-
                         </div>
                     </t>
                 </templates>
@@ -114,31 +136,23 @@
         <field name="model">logistics.hub</field>
         <field name="arch" type="xml">
             <search string="Search Hubs">
-
                 <field name="name"
                     string="Hub"
                     filter_domain="[
-                        '|',
+                        '|', '|',
                         ('name', 'ilike', self),
+                        ('code', 'ilike', self),
                         ('district_id.name', 'ilike', self)
                     ]"/>
-
-
-                <field name="pincode_ids"
-                    string="Assigned Pincodes"/>
-
+                <field name="pincode_ids" string="Assigned Pincodes"/>
                 <field name="district_id"/>
-
+                <filter name="main_hub" string="Main Hub" domain="[('hub_type', '=', 'main')]"/>
+                <filter name="active_hubs" string="Active" domain="[('active', '=', True)]"/>
                 <separator/>
-
                 <group>
-
-                    <filter string="District"
-                            name="group_district"
-                            context="{'group_by': 'district_id'}"/>
-
+                    <filter string="District" name="group_district" context="{'group_by': 'district_id'}"/>
+                    <filter string="Hub Type" name="group_hub_type" context="{'group_by': 'hub_type'}"/>
                 </group>
-
             </search>
         </field>
     </record>
@@ -150,15 +164,77 @@
         <field name="view_id" ref="view_logistics_hub_kanban"/>
     </record>
 
-
     <record id="action_logistics_pincode" model="ir.actions.act_window">
         <field name="name">Pincodes</field>
         <field name="res_model">logistics.pincode</field>
         <field name="view_mode">list</field>
     </record>
 
+    <record id="action_hub_inventory" model="ir.actions.act_window">
+        <field name="name">Hub Inventory</field>
+        <field name="res_model">logistics.shipment</field>
+        <field name="view_mode">list,form</field>
+        <field name="domain">[('custodian_type', '=', 'hub')]</field>
+        <field name="context">{'search_default_at_hub': 1}</field>
+    </record>
+
+    <record id="action_shipment_events" model="ir.actions.act_window">
+        <field name="name">Custody Events</field>
+        <field name="res_model">logistics.shipment.event</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+    <record id="view_shipment_event_list" model="ir.ui.view">
+        <field name="name">logistics.shipment.event.list</field>
+        <field name="model">logistics.shipment.event</field>
+        <field name="arch" type="xml">
+            <list string="Custody Events" create="0">
+                <field name="event_time"/>
+                <field name="shipment_id"/>
+                <field name="event_type"/>
+                <field name="hub_id"/>
+                <field name="actor_de_id"/>
+                <field name="from_custodian_type"/>
+                <field name="to_custodian_type"/>
+                <field name="scanned_code" optional="hide"/>
+                <field name="note" optional="hide"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_shipment_event_form" model="ir.ui.view">
+        <field name="name">logistics.shipment.event.form</field>
+        <field name="model">logistics.shipment.event</field>
+        <field name="arch" type="xml">
+            <form string="Custody Event" create="0" edit="0">
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="shipment_id"/>
+                            <field name="event_type"/>
+                            <field name="event_time"/>
+                            <field name="scanned_code"/>
+                        </group>
+                        <group>
+                            <field name="hub_id"/>
+                            <field name="actor_user_id"/>
+                            <field name="actor_de_id"/>
+                            <field name="from_custodian_type"/>
+                            <field name="to_custodian_type"/>
+                        </group>
+                    </group>
+                    <group>
+                        <field name="note"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
     <menuitem id="menu_logistics_hub_root" parent="menu_logistics_root" sequence="90" name="Hubs &amp; Pincodes"/>
     <menuitem id="menu_logistics_hub" parent="menu_logistics_hub_root" sequence="1" name="Hubs" action="action_logistics_hub"/>
     <menuitem id="menu_logistics_pincode" parent="menu_logistics_hub_root" sequence="2" name="Pincodes" action="action_logistics_pincode"/>
+    <menuitem id="menu_hub_inventory" parent="menu_logistics_hub_root" sequence="3" name="Hub Inventory" action="action_hub_inventory"/>
+    <menuitem id="menu_shipment_events" parent="menu_logistics_hub_root" sequence="4" name="Custody Events" action="action_shipment_events"/>
 
 </odoo>

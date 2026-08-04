@@ -6,7 +6,9 @@
         <field name="arch" type="xml">
             <form string="Assign Delivery Executive">
                 <group>
+                    <field name="role_filter"/>
                     <field name="delivery_executive_id"/>
+                    <field name="shipment_ids" invisible="1"/>
                 </group>
                 <footer>
                     <button string="Assign" name="action_assign" type="object" class="btn-primary"/>

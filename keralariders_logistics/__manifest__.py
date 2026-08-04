@@ -1,6 +1,6 @@
 {
     'name': 'Kerala Riders Logistics',
-    'version': '1.0',
+    'version': '1.1',
     'category': 'Operations/Logistics',
     'summary': 'Last-mile delivery management platform for Kerala Riders',
     'description': """
@@ -13,9 +13,10 @@ Features:
 - Seller/Vendor management with wallet system
 - Bulk shipment upload via Excel
 - Delivery executive management
+- Hub custody and district hub network (14 Kerala hubs)
 - Real-time shipment tracking with public tracking URL
 - COD tracking and management
-- Seller portal for self-service
+- Seller / DE / Hub Manager portals
 - Comprehensive reporting
     """,
     'author': 'Odoocrafts',
@@ -27,6 +28,8 @@ Features:
         'security/ir.model.access.csv',
         'data/districts.xml',
         'data/logistics.pincode.csv',
+        'data/hubs.xml',
+        'data/hub_pincode_assign.xml',
         'data/sequence.xml',
         'data/delivery_charges.xml',
         'views/seller_views.xml',
@@ -46,9 +49,11 @@ Features:
         'views/portal_templates.xml',
         'views/wizard_assign_delivery_executive.xml',
         'views/portal_delivery_templates.xml',
+        'views/portal_hub_templates.xml',
         'views/brand_overrides.xml',
         'report/shipment_layout.xml',
     ],
+    'post_init_hook': '_post_init_assign_hub_pincodes',
     'images': ['static/description/icon.png'],
     'installable': True,
     'application': True,

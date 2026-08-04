@@ -85,10 +85,7 @@ class Order(models.Model):
         for order in self:
             if order.state != 'pickup_requested':
                 raise UserError("Only order requested for Pickup can be marked as Picked Up.")
-            order.shipment_ids.write({
-                'state': 'picked',
-                'estimated_delivery_date': fields.Date.today(),
-            })
+            order.shipment_ids.action_mark_picked()
             order.state = 'picked'
 
     def action_reset_draft(self):
