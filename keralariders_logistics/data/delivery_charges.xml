@@ -1,4 +1,4 @@
-<odoo noupdate="1">
+<odoo noupdate="0">
 
     <record id="default_delivery_package" model="logistics.delivery.package">
         <field name="name">Default</field>
