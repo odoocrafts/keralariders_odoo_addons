@@ -1,44 +1,63 @@
 <odoo noupdate="1">
 
+    <record id="default_delivery_package" model="logistics.delivery.package">
+        <field name="name">Default</field>
+        <field name="is_default">True</field>
+    </record>
+
     <record id="delivery_charge_1" model="logistics.delivery.charges">
+        <field name="package_id" ref="default_delivery_package"/>
         <field name="minimum_weight">0.000</field>
-        <field name="maximum_weight">0.500</field>
-        <field name="same_district_amount">40</field>
-        <field name="different_district_amount">55</field>
+        <field name="maximum_weight">0.250</field>
+        <field name="same_district_amount">25</field>
+        <field name="different_district_amount">32</field>
     </record>
 
     <record id="delivery_charge_2" model="logistics.delivery.charges">
-        <field name="minimum_weight">0.500</field>
-        <field name="maximum_weight">1.000</field>
-        <field name="same_district_amount">50</field>
-        <field name="different_district_amount">70</field>
+        <field name="package_id" ref="default_delivery_package"/>
+        <field name="minimum_weight">0.250</field>
+        <field name="maximum_weight">0.500</field>
+        <field name="same_district_amount">37</field>
+        <field name="different_district_amount">42</field>
     </record>
 
     <record id="delivery_charge_3" model="logistics.delivery.charges">
-        <field name="minimum_weight">1.000</field>
-        <field name="maximum_weight">1.500</field>
-        <field name="same_district_amount">55</field>
-        <field name="different_district_amount">85</field>
+        <field name="package_id" ref="default_delivery_package"/>
+        <field name="minimum_weight">0.500</field>
+        <field name="maximum_weight">1.000</field>
+        <field name="same_district_amount">47</field>
+        <field name="different_district_amount">52</field>
     </record>
 
     <record id="delivery_charge_4" model="logistics.delivery.charges">
-        <field name="minimum_weight">1.500</field>
-        <field name="maximum_weight">2.000</field>
-        <field name="same_district_amount">65</field>
-        <field name="different_district_amount">110</field>
+        <field name="package_id" ref="default_delivery_package"/>
+        <field name="minimum_weight">1.000</field>
+        <field name="maximum_weight">1.500</field>
+        <field name="same_district_amount">58</field>
+        <field name="different_district_amount">68</field>
     </record>
 
     <record id="delivery_charge_5" model="logistics.delivery.charges">
-        <field name="minimum_weight">2.000</field>
-        <field name="maximum_weight">2.500</field>
-        <field name="same_district_amount">80</field>
-        <field name="different_district_amount">125</field>
+        <field name="package_id" ref="default_delivery_package"/>
+        <field name="minimum_weight">1.500</field>
+        <field name="maximum_weight">2.000</field>
+        <field name="same_district_amount">70</field>
+        <field name="different_district_amount">90</field>
     </record>
 
     <record id="delivery_charge_6" model="logistics.delivery.charges">
-        <field name="minimum_weight">2.500</field>
+        <field name="package_id" ref="default_delivery_package"/>
+        <field name="minimum_weight">2.000</field>
         <field name="maximum_weight">3.000</field>
         <field name="same_district_amount">90</field>
+        <field name="different_district_amount">110</field>
+    </record>
+
+    <record id="delivery_charge_7" model="logistics.delivery.charges">
+        <field name="package_id" ref="default_delivery_package"/>
+        <field name="minimum_weight">3.000</field>
+        <field name="maximum_weight">4.000</field>
+        <field name="same_district_amount">125</field>
         <field name="different_district_amount">140</field>
     </record>
 

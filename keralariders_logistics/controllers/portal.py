@@ -37,6 +37,11 @@ class LogisticsPortal(CustomerPortal):
             values['cod_balance'] = f"{symbol} {cod_balance_val:,.2f}"
                 
             values['charge_calculator'] = ' '
+            if seller.delivery_package_id:
+                values['delivery_package_name'] = seller.delivery_package_id.name
+            else:
+                default_package = request.env['logistics.delivery.package'].sudo().search([('is_default', '=', True)], limit=1)
+                values['delivery_package_name'] = default_package.name if default_package else "Default"
 
         delivery_executive = request.env['logistics.delivery.executive'].sudo().search([('user_id', '=', request.env.user.id)], limit=1)
         values['is_delivery_executive'] = bool(delivery_executive)
@@ -530,7 +535,13 @@ class LogisticsPortal(CustomerPortal):
             dest_district_id = int(post.get('dest_district_id'))
             
             same_district = (origin_district_id == dest_district_id)
-            charge = request.env['logistics.delivery.charges'].sudo().calculate_delivery_charge(weight, same_district)
+            package_id = None
+            if request.session.uid:
+                seller = request.env['logistics.seller'].sudo().search([('user_id', '=', request.session.uid)], limit=1)
+                if seller and seller.delivery_package_id:
+                    package_id = seller.delivery_package_id.id
+                    
+            charge = request.env['logistics.delivery.charges'].sudo().calculate_delivery_charge(weight, same_district, package_id=package_id)
             
             return request.redirect(f'/my/calculator?result={charge}')
         except Exception as e:

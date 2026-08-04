@@ -34,6 +34,7 @@ Features:
         'views/wallet_recharge_views.xml',
         'views/delivery_executive_views.xml',
         'views/shipment_views.xml',
+        'views/delivery_package_views.xml',
         'views/delivery_charges_views.xml',
         'views/order_views.xml',
         "views/account_views.xml",

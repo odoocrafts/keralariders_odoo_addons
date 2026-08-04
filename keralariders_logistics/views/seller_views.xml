@@ -93,8 +93,10 @@
                             <!-- <field name="name" string="Name" /> -->
                             <field name="email" />
                             <field name="phone" />
+                            <field name="fssai_number" />
+                            <field name="pan_number" />
+                            <field name="delivery_package_id" />
                             <field name="user_id" invisible="not user_id"/>
-
                         </group>
                         <group string="Address Information">
                             <field name="street" />

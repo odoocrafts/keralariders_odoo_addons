@@ -2,17 +2,35 @@ from odoo import api, fields, models, _
 from odoo.exceptions import ValidationError
 import math
 
+class DeliveryPackage(models.Model):
+    _name = "logistics.delivery.package"
+    _description = "Delivery Package"
+    
+    name = fields.Char(string="Name", required=True)
+    is_default = fields.Boolean(string="Is Default", default=False)
+    charge_ids = fields.One2many("logistics.delivery.charges", "package_id", string="Charge Slabs")
+    
+    @api.constrains("is_default")
+    def _check_default_package(self):
+        for rec in self:
+            if rec.is_default:
+                default_packages = self.search([("is_default", "=", True), ("id", "!=", rec.id)])
+                if default_packages:
+                    raise ValidationError(_("Only one package can be set as default!"))
+
 
 class DeliveryCharges(models.Model):
     _name = "logistics.delivery.charges"
     _description = "Delivery Charge Slab"
-    _order = "minimum_weight"
+    _order = "package_id, minimum_weight"
 
     name = fields.Char(
         string="Name",
         compute="_compute_name",
         store=True,
     )
+    
+    package_id = fields.Many2one("logistics.delivery.package", string="Delivery Package", required=True)
 
     @api.depends("minimum_weight", "maximum_weight")
     def _compute_name(self):
@@ -77,11 +95,12 @@ class DeliveryCharges(models.Model):
                     _("Different district amount cannot be negative.")
                 )
 
-    @api.constrains("minimum_weight", "maximum_weight")
+    @api.constrains("minimum_weight", "maximum_weight", "package_id")
     def _check_overlapping_slabs(self):
         for rec in self:
             overlap = self.search([
                 ("id", "!=", rec.id),
+                ("package_id", "=", rec.package_id.id),
                 ("minimum_weight", "<", rec.maximum_weight),
                 ("maximum_weight", ">", rec.minimum_weight),
             ], limit=1)
@@ -89,7 +108,7 @@ class DeliveryCharges(models.Model):
             if overlap:
                 raise ValidationError(
                     _(
-                        "Weight slabs cannot overlap.\n\n"
+                        "Weight slabs cannot overlap within the same package.\n\n"
                         "%s - %s kg overlaps with %s - %s kg."
                     )
                     % (
@@ -108,35 +127,24 @@ class DeliveryCharges(models.Model):
         gst_percent=18.0,
         additional_charge=25.0,
         additional_slab=0.5,
+        package_id=None
     ):
         """
         Calculate delivery charge.
-
-        Parameters
-        ----------
-        weight : float
-            Weight in kilograms.
-
-        same_district : bool
-            Whether source and destination districts are same.
-
-        gst_percent : float
-            GST percentage to apply.
-
-        additional_charge : float
-            Charge for each additional slab above the last slab.
-
-        additional_slab : float
-            Additional slab size in kg (default 500 g).
         """
-
         if weight <= 0:
             return 0.0
 
-        slabs = self.search([], order="minimum_weight")
+        if package_id:
+            slabs = self.search([("package_id", "=", package_id)], order="minimum_weight")
+        else:
+            default_package = self.env["logistics.delivery.package"].search([("is_default", "=", True)], limit=1)
+            if not default_package:
+                raise ValidationError(_("No default delivery package configured."))
+            slabs = self.search([("package_id", "=", default_package.id)], order="minimum_weight")
 
         if not slabs:
-            raise ValidationError(_("No delivery charge slabs configured."))
+            raise ValidationError(_("No delivery charge slabs configured for this package."))
 
         # Find matching slab
         for slab in slabs:

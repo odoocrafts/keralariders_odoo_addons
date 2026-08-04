@@ -52,7 +52,7 @@
                     <t t-set="url" t-value="'/my/calculator'"/>
                     <t t-set="count_text" t-value="' '"/>
                     <t t-set="icon" t-value="'/keralariders_logistics/static/src/img/calculator.svg'"/>
-                    <t t-set="text">Estimate shipping costs</t>
+                    <t t-set="text" t-value="'Estimate shipping costs (' + delivery_package_name + ' Rates)'"/>
                 </t>
             </t>
         </xpath>

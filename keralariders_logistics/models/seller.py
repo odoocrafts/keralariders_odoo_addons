@@ -122,6 +122,11 @@ class Seller(models.Model):
         partners.unlink()
         return res
     
+    pan_number = fields.Char(string='PAN Number', tracking=True)
+    fssai_number = fields.Char(string='FSSAI Number', tracking=True)
+
+    delivery_package_id = fields.Many2one('logistics.delivery.package', string="Delivery Package", help="Special pricing package for this seller. Leave empty to use the default rates.")
+
     currency_id = fields.Many2one('res.currency', string='Currency', default=lambda self: self.env.company.currency_id.id)
     wallet_ids = fields.One2many('logistics.wallet', 'seller_id', string='Wallets')
     wallet_count = fields.Integer(string='Wallet Count', compute='_compute_wallet_count')
