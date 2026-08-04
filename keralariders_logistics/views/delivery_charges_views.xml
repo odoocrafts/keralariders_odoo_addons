@@ -63,12 +63,13 @@
         <field name="search_view_id" ref="view_delivery_charges_search"/>
     </record>
 
-    <!-- Menu -->
+    <!-- Menu (hidden: charges are managed via Delivery Package form) -->
     <menuitem
         id="menu_delivery_charges"
         name="Delivery Charges"
         parent="menu_logistics_root"
         action="action_delivery_charges"
-        sequence="60"/>
+        sequence="60"
+        active="False"/>
 
 </odoo>
