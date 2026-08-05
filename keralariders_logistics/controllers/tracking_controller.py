@@ -46,8 +46,7 @@ class TrackingController(http.Controller):
                     return request.redirect(f'/my/delivery/{shipment.id}/claim')
                 return request.redirect(f'/my/delivery/{shipment.id}?view=1')
 
-        state_dict = dict(shipment._fields['state'].selection)
-        shipment_state_str = state_dict.get(shipment.state, shipment.state)
+        shipment_state_str = shipment.get_tracking_status_label()
         payment_labels = dict(shipment._fields['order_payment_type'].selection)
         delivery_display = shipment.get_tracking_delivery_display()
         tracking_events = shipment.get_tracking_timeline(newest_first=False)

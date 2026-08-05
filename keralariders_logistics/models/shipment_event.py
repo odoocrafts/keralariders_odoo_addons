@@ -26,7 +26,7 @@ class ShipmentEvent(models.Model):
         ('out_for_delivery', 'Out for Delivery'),
         ('delivered', 'Delivered'),
         ('return_requested', 'Return Requested'),
-        ('returned', 'Returned to Seller'),
+        ('returned', 'Returned to Sender'),
         ('status_override', 'Status Override'),
         ('note', 'Note'),
     ], string='Event Type', required=True, index=True)
@@ -63,8 +63,11 @@ class ShipmentEvent(models.Model):
             awb = rec.shipment_id.name if rec.shipment_id else ''
             rec.name = f"{label} — {awb}" + (f" @ {hub}" if hub else '')
 
-    def get_timeline_detail(self):
-        """Short human-readable detail line for public/portal tracking."""
+    def get_timeline_detail(self, public=False):
+        """Short human-readable detail line for public/portal tracking.
+
+        When public=True, omit billing / wallet jargon from notes (legacy events).
+        """
         self.ensure_one()
         parts = []
         if self.hub_id:
@@ -72,5 +75,9 @@ class ShipmentEvent(models.Model):
         if self.actor_de_id:
             parts.append(_("by %s") % self.actor_de_id.name)
         if self.note:
-            parts.append(self.note)
+            note = self.note.strip()
+            if public and self.shipment_id:
+                note = self.shipment_id._sanitize_public_timeline_detail(note)
+            if note:
+                parts.append(note)
         return ' · '.join(parts) if parts else False

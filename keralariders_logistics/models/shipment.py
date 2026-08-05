@@ -167,9 +167,52 @@ class Shipment(models.Model):
         default=False,
         copy=False,
         tracking=True,
-        help='When set, the package is on a free reverse path: '
-             'customer pickup → hubs → seller. No wallet deduction.',
+        help='When set, the package is on a reverse path: '
+             'customer pickup → hubs → seller.',
     )
+
+    # Customer-facing timeline labels (avoid internal ops / billing jargon).
+    _PUBLIC_TIMELINE_LABELS = {
+        'order_added': 'Order Placed',
+        'pickup_requested': 'Pickup Requested',
+        'pickup_scan': 'Picked Up',
+        'dropped_at_hub': 'Dropped at Hub',
+        'hub_receive': 'Received at Hub',
+        'hub_dispatch': 'Dispatched from Hub',
+        'depart_hub': 'Departed Hub',
+        'de_self_assign': 'Assigned for Delivery',
+        'leg_assign': 'Assigned',
+        'central_pass_through': 'Passed via Hub',
+        'skip_hub_local': 'Out for Local Delivery',
+        'out_for_delivery': 'Out for Delivery',
+        'delivered': 'Delivered',
+        'return_requested': 'Return requested',
+        'returned': 'Returned to sender',
+        'cancelled': 'Cancelled',
+        'status_override': 'Status Updated',
+        'note': 'Update',
+    }
+    _PUBLIC_RETURN_TIMELINE_LABELS = {
+        'pickup_scan': 'Picked up for return',
+        'out_for_delivery': 'Out for delivery to sender',
+        'returned': 'Returned to sender',
+        'return_requested': 'Return requested',
+    }
+    _PUBLIC_STATUS_LABELS = {
+        'order_added': 'Order Placed',
+        'pickup_requested': 'Pickup Requested',
+        'picked': 'Picked Up',
+        'in_transit': 'In Transit',
+        'at_source_hub': 'At Source Hub',
+        'at_central_hub': 'At Central Hub',
+        'at_destination_hub': 'At Destination Hub',
+        'out_for_delivery': 'Out for Delivery',
+        'delivered': 'Delivered',
+        'cancelled': 'Cancelled',
+        'return_requested': 'Return requested',
+        'return_picked': 'Picked up for return',
+        'returned': 'Returned to sender',
+    }
 
     def _format_tracking_datetime(self, value):
         """Format a datetime (or date) for public tracking display."""
@@ -183,6 +226,64 @@ class Shipment(models.Model):
             return value.strftime('%d %b %Y')
         local_dt = fields.Datetime.context_timestamp(self, value)
         return local_dt.strftime('%d %b %Y, %I:%M %p')
+
+    def get_tracking_status_label(self):
+        """Customer-facing status badge/panel label for /track."""
+        self.ensure_one()
+        label = self._PUBLIC_STATUS_LABELS.get(self.state)
+        if label:
+            if self.is_return_journey and self.state == 'out_for_delivery':
+                return _('Out for delivery to sender')
+            return _(label)
+        return dict(self._fields['state'].selection).get(self.state, self.state)
+
+    def _public_timeline_label(self, event_type, is_return=None):
+        """Neutral customer-facing label for a timeline event type."""
+        if is_return is None:
+            is_return = self.is_return_journey
+        if is_return and event_type in self._PUBLIC_RETURN_TIMELINE_LABELS:
+            return _(self._PUBLIC_RETURN_TIMELINE_LABELS[event_type])
+        if event_type in self._PUBLIC_TIMELINE_LABELS:
+            return _(self._PUBLIC_TIMELINE_LABELS[event_type])
+        labels = dict(self.env['logistics.shipment.event']._fields['event_type'].selection)
+        return labels.get(event_type, event_type)
+
+    def _sanitize_public_timeline_detail(self, detail):
+        """Strip billing / internal return jargon from notes shown on /track.
+
+        Rewrites or drops legacy notes that mention wallet, free return billing,
+        or seller-initiated charge language so existing AWBs look clean.
+        """
+        if not detail:
+            return ''
+        text = detail.strip()
+        if not text:
+            return ''
+        lower = text.lower()
+        billing_markers = (
+            'wallet',
+            'no charge',
+            'free —',
+            'free -',
+            'free return',
+            '(free',
+            'no wallet',
+            'seller-initiated',
+            'hub custody',
+        )
+        if any(marker in lower for marker in billing_markers):
+            # Drop the whole fragment when it is billing/ops copy.
+            # Keep non-billing parts of merged " · " detail lines.
+            parts = [p.strip() for p in text.split(' · ') if p.strip()]
+            kept = []
+            for part in parts:
+                part_lower = part.lower()
+                if any(marker in part_lower for marker in billing_markers):
+                    continue
+                # Also drop leftover internal scan jargon if it was only a label dump
+                kept.append(part)
+            return ' · '.join(kept)
+        return text
 
     def get_tracking_origin_label(self):
         """Human-readable origin: district/state, else source hub, else pincode."""
@@ -216,6 +317,28 @@ class Shipment(models.Model):
         """Label + value for the delivery date panel (actual vs estimated)."""
         self.ensure_one()
         delivered_at = self.delivered_on or self.actual_delivery_date
+
+        if self.state == 'returned':
+            return {
+                'label': _('Returned on'),
+                'value': self._format_tracking_datetime(delivered_at) if delivered_at else _('Returned'),
+                'is_delivered': True,
+            }
+
+        # Mid return journey: do not show the original outbound "Delivered on".
+        if self.is_return_journey and self.state not in ('delivered', 'returned'):
+            if self.estimated_delivery_date:
+                return {
+                    'label': _('Estimated return'),
+                    'value': self.estimated_delivery_date.strftime('%d %b %Y'),
+                    'is_delivered': False,
+                }
+            return {
+                'label': _('Return in progress'),
+                'value': False,
+                'is_delivered': False,
+            }
+
         if self.state == 'delivered' or delivered_at:
             return {
                 'label': _('Delivered on'),
@@ -344,10 +467,10 @@ class Shipment(models.Model):
         delivered_at = self.delivered_on or self.actual_delivery_date
         if self.state == 'returned':
             entries.append({
-                'label': _('Returned to Seller'),
+                'label': _('Returned to sender'),
                 'time': delivered_at or self.write_date,
                 'time_display': self._format_tracking_datetime(delivered_at or self.write_date),
-                'detail': _('Free return'),
+                'detail': '',
                 'event_type': 'returned',
             })
         elif self.state == 'delivered' or (delivered_at and not self.is_return_journey):
@@ -463,26 +586,62 @@ class Shipment(models.Model):
         Prefer real custody events; otherwise synthesize from known dates/state.
         Default order is chronological (oldest → newest).
         Consecutive same-minute items are collapsed into one history entry.
+        Labels and details are customer-facing (no wallet / free-return billing copy).
         """
         self.ensure_one()
         if self.event_ids:
-            labels = dict(self.env['logistics.shipment.event']._fields['event_type'].selection)
             events = self.event_ids.sorted(
                 key=lambda e: (e.event_time, e.id),
             )
+            return_start = False
+            return_req = self.event_ids.filtered(
+                lambda e: e.event_type == 'return_requested'
+            ).sorted(lambda e: (e.event_time, e.id))[:1]
+            if return_req:
+                return_start = return_req.event_time
             entries = []
             for event in events:
+                is_return_event = bool(
+                    event.event_type in ('return_requested', 'returned')
+                    or (return_start and event.event_time >= return_start)
+                    or (
+                        self.is_return_journey
+                        and not return_start
+                        and event.event_type in (
+                            'pickup_scan', 'out_for_delivery', 'hub_receive',
+                            'hub_dispatch', 'depart_hub', 'dropped_at_hub',
+                            'de_self_assign', 'skip_hub_local',
+                        )
+                    )
+                )
+                detail = event.get_timeline_detail(public=True) or ''
                 entries.append({
-                    'label': labels.get(event.event_type, event.event_type),
+                    'label': self._public_timeline_label(
+                        event.event_type, is_return=is_return_event
+                    ),
                     'time': event.event_time,
                     'time_display': self._format_tracking_datetime(event.event_time),
-                    'detail': event.get_timeline_detail() or '',
+                    'detail': self._sanitize_public_timeline_detail(detail),
                     'event_type': event.event_type,
                 })
         else:
             entries = self._synthesize_tracking_timeline()
+            for entry in entries:
+                entry['label'] = self._public_timeline_label(
+                    entry.get('event_type'),
+                    is_return=self.is_return_journey and entry.get('event_type') in (
+                        'return_requested', 'returned', 'pickup_scan', 'out_for_delivery',
+                    ),
+                )
+                entry['detail'] = self._sanitize_public_timeline_detail(
+                    entry.get('detail') or ''
+                )
 
         entries = self._collapse_same_minute_timeline(entries)
+        for entry in entries:
+            entry['detail'] = self._sanitize_public_timeline_detail(
+                entry.get('detail') or ''
+            )
 
         if newest_first:
             entries = list(reversed(entries))
@@ -677,8 +836,7 @@ class Shipment(models.Model):
             shipment._create_custody_event(
                 'return_requested',
                 to_custodian='customer',
-                note=_("Free return requested by seller. Pickup from customer, "
-                       "hub custody, then delivery back to seller. No wallet charge."),
+                note=False,
                 leg=pickup_leg,
             )
             shipment._write_with_state({
@@ -726,7 +884,7 @@ class Shipment(models.Model):
 
             pickup_note = note
             if return_ok and not pickup_note:
-                pickup_note = _("Return pickup from customer (free — no wallet charge).")
+                pickup_note = False
             shipment._create_custody_event(
                 'pickup_scan',
                 to_custodian='de',
@@ -1089,7 +1247,7 @@ class Shipment(models.Model):
             is_return = shipment.is_return_journey
             event_note = note or delivery_remarks
             if is_return and not event_note:
-                event_note = _("Returned to seller (free — no wallet charge).")
+                event_note = False
             shipment._create_custody_event(
                 'returned' if is_return else 'delivered',
                 to_custodian='seller' if is_return else 'customer',
