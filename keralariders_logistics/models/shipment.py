@@ -339,11 +339,96 @@ class Shipment(models.Model):
 
         return entries
 
+    # Advancement rank for collapsing same-minute clusters (higher = more advanced).
+    _TIMELINE_EVENT_RANK = {
+        'order_added': 10,
+        'pickup_requested': 20,
+        'pickup_scan': 30,
+        'dropped_at_hub': 40,
+        'hub_receive': 50,
+        'central_pass_through': 55,
+        'hub_dispatch': 60,
+        'depart_hub': 65,
+        'leg_assign': 70,
+        'de_self_assign': 75,
+        'out_for_delivery': 80,
+        'delivered': 90,
+        'cancelled': 95,
+        'status_override': 50,
+        'note': 5,
+    }
+
+    def _timeline_minute_key(self, value):
+        """Local (year, month, day, hour, minute) for same-minute clustering."""
+        if not value:
+            return None
+        if isinstance(value, str):
+            value = fields.Datetime.from_string(value)
+        if not hasattr(value, 'hour'):
+            return (value.year, value.month, value.day, 0, 0)
+        local_dt = fields.Datetime.context_timestamp(self, value)
+        return (local_dt.year, local_dt.month, local_dt.day, local_dt.hour, local_dt.minute)
+
+    def _merge_timeline_cluster(self, cluster):
+        """Collapse a same-minute cluster into one entry.
+
+        Title = most advanced status; earlier labels + hub/actor notes go in detail.
+        """
+        if len(cluster) == 1:
+            return cluster[0]
+
+        def _rank(entry):
+            return self._TIMELINE_EVENT_RANK.get(entry.get('event_type'), 50)
+
+        def _time_sort_key(entry):
+            return entry.get('time') or fields.Datetime.from_string('1970-01-01 00:00:00')
+
+        primary = max(cluster, key=lambda e: (_rank(e), _time_sort_key(e)))
+        earlier_labels = [
+            e.get('label') for e in cluster
+            if e is not primary and e.get('label')
+        ]
+        detail_parts = []
+        if earlier_labels:
+            detail_parts.append(' · '.join(earlier_labels))
+        for e in cluster:
+            detail = (e.get('detail') or '').strip()
+            if detail and detail not in detail_parts:
+                detail_parts.append(detail)
+
+        merged = dict(primary)
+        merged['detail'] = ' · '.join(detail_parts) if detail_parts else ''
+        # Prefer the latest timestamp in the cluster for display consistency
+        latest = max(cluster, key=_time_sort_key)
+        if latest.get('time'):
+            merged['time'] = latest['time']
+            merged['time_display'] = self._format_tracking_datetime(latest['time'])
+        return merged
+
+    def _collapse_same_minute_timeline(self, entries):
+        """Merge consecutive timeline items that share the same local minute."""
+        if not entries or len(entries) < 2:
+            return entries
+
+        collapsed = []
+        cluster = [entries[0]]
+        for entry in entries[1:]:
+            prev_key = self._timeline_minute_key(cluster[-1].get('time'))
+            curr_key = self._timeline_minute_key(entry.get('time'))
+            if prev_key is not None and curr_key is not None and prev_key == curr_key:
+                cluster.append(entry)
+            else:
+                collapsed.append(self._merge_timeline_cluster(cluster))
+                cluster = [entry]
+        collapsed.append(self._merge_timeline_cluster(cluster))
+        return collapsed
+
     def get_tracking_timeline(self, newest_first=False):
         """Timeline entries for public track / DE portal.
 
         Prefer real custody events; otherwise synthesize from known dates/state.
         Default order is chronological (oldest → newest).
+        Consecutive same-minute items are collapsed into one history entry.
         """
         self.ensure_one()
         if self.event_ids:
@@ -362,6 +447,8 @@ class Shipment(models.Model):
                 })
         else:
             entries = self._synthesize_tracking_timeline()
+
+        entries = self._collapse_same_minute_timeline(entries)
 
         if newest_first:
             entries = list(reversed(entries))
