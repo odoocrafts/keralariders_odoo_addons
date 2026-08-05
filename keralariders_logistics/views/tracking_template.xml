@@ -162,56 +162,6 @@
                         border-radius: 0.75rem;
                         padding: 1rem 1.1rem;
                     }
-                    .kx-progress {
-                        list-style: none;
-                        padding: 0;
-                        margin: 0;
-                        position: relative;
-                    }
-                    .kx-progress::before {
-                        content: '';
-                        position: absolute;
-                        left: 11px;
-                        top: 8px;
-                        bottom: 8px;
-                        width: 2px;
-                        background: #e5e7eb;
-                    }
-                    .kx-progress-step {
-                        position: relative;
-                        padding-left: 2.25rem;
-                        padding-bottom: 1rem;
-                    }
-                    .kx-progress-step:last-child { padding-bottom: 0; }
-                    .kx-progress-dot {
-                        position: absolute;
-                        left: 4px;
-                        top: 4px;
-                        width: 16px;
-                        height: 16px;
-                        border-radius: 50%;
-                        background: #fff;
-                        border: 2px solid #d1d5db;
-                        z-index: 1;
-                    }
-                    .kx-progress-step.is-done .kx-progress-dot {
-                        background: #059669;
-                        border-color: #059669;
-                    }
-                    .kx-progress-step.is-current .kx-progress-dot {
-                        background: #1f2937;
-                        border-color: #1f2937;
-                        box-shadow: 0 0 0 3px rgba(31, 41, 55, 0.2);
-                    }
-                    .kx-progress-label {
-                        font-weight: 600;
-                        color: #9ca3af;
-                        font-size: 0.95rem;
-                    }
-                    .kx-progress-step.is-done .kx-progress-label,
-                    .kx-progress-step.is-current .kx-progress-label {
-                        color: #111827;
-                    }
                     .kx-event-list {
                         list-style: none;
                         padding: 0;
@@ -321,20 +271,7 @@
                                     </t>
                                 </div>
 
-                                <!-- Journey progress -->
-                                <t t-if="progress_steps and shipment.state not in ('cancelled', 'return_requested', 'return_picked', 'returned')">
-                                    <h5 class="mb-3" style="font-weight:700;">Journey</h5>
-                                    <ol class="kx-progress mb-4">
-                                        <t t-foreach="progress_steps" t-as="step">
-                                            <li t-attf-class="kx-progress-step is-#{step['status']}">
-                                                <span class="kx-progress-dot"/>
-                                                <span class="kx-progress-label"><t t-esc="step['label']"/></span>
-                                            </li>
-                                        </t>
-                                    </ol>
-                                </t>
-
-                                <!-- Event timeline -->
+                                <!-- Event timeline (Tracking History) -->
                                 <t t-call="keralariders_logistics.shipment_tracking_timeline">
                                     <t t-set="timeline_events" t-value="tracking_events"/>
                                 </t>
