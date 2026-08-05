@@ -77,6 +77,10 @@
                         string="In Hub Custody"
                         domain="[('custodian_type', '=', 'hub')]"/>
 
+                <filter name="unassigned_active_leg"
+                        string="Active Leg Unassigned"
+                        domain="[('active_leg_id.assigned_de_id', '=', False), ('active_leg_id.state', 'in', ['planned', 'assigned'])]"/>
+
                 <filter name="delivered"
                         string="Delivered"
                         domain="[('state', '=', 'delivered')]"/>
@@ -371,11 +375,19 @@
                                 <list>
                                     <field name="sequence"/>
                                     <field name="name"/>
+                                    <field name="operation_type"/>
+                                    <field name="state"/>
+                                    <field name="assigned_de_id"/>
                                     <field name="from_hub_id"/>
                                     <field name="to_hub_id"/>
-                                    <field name="executive1_id"/>
-                                    <field name="executive2_id"/>
-                                    <field name="operation_type"/>
+                                    <field name="executive1_id" string="Suggested DE" optional="show"/>
+                                    <field name="executive2_id" string="Suggested DE 2" optional="hide"/>
+                                    <field name="started_at" optional="hide"/>
+                                    <field name="completed_at" optional="hide"/>
+                                    <button name="action_clear_assignee" type="object" string="Clear Assignee"
+                                            icon="fa-user-times"
+                                            invisible="not assigned_de_id or state in ('done', 'skipped', 'in_progress')"
+                                            groups="keralariders_logistics.group_logistics_admin,keralariders_logistics.group_logistics_hub_manager"/>
                                 </list>
                             </field>
                         </page>

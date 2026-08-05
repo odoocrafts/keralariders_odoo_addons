@@ -147,13 +147,18 @@
                                                 <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
                                                 <select name="delivery_executive_id" class="form-select form-select-sm" required="1" style="min-width:140px;">
                                                     <option value="">Select DE</option>
-                                                    <t t-foreach="executives" t-as="de">
-                                                        <option t-att-value="de.id"><t t-esc="de.name"/></option>
+                                                    <t t-set="eligible_des" t-value="shipment_executives.get(shipment.id, executives)"/>
+                                                    <t t-foreach="eligible_des" t-as="de">
+                                                        <option t-att-value="de.id"
+                                                                t-att-selected="shipment.active_leg_id and shipment.active_leg_id.assigned_de_id and de.id == shipment.active_leg_id.assigned_de_id.id">
+                                                            <t t-esc="de.name"/>
+                                                        </option>
                                                     </t>
                                                 </select>
+                                                <t t-set="default_for_delivery" t-value="'1' if (not shipment.active_leg_id or shipment.active_leg_id.operation_type == 'delivery') else '0'"/>
                                                 <select name="for_delivery" class="form-select form-select-sm" style="min-width:120px;">
-                                                    <option value="1">Out for delivery</option>
-                                                    <option value="0">Hub transfer</option>
+                                                    <option value="1" t-att-selected="default_for_delivery == '1'">Out for delivery</option>
+                                                    <option value="0" t-att-selected="default_for_delivery == '0'">Hub transfer</option>
                                                 </select>
                                                 <button type="submit" class="btn btn-primary btn-sm">Dispatch</button>
                                             </form>

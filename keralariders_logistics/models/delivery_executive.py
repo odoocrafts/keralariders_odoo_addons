@@ -96,15 +96,41 @@ class DeliveryExecutive(models.Model):
     pending_shipments_count = fields.Integer(compute="_compute_shipments_count")
 
     def get_shipments_data(self):
-        all_shipments = self.env['logistics.shipment'].search([('delivery_executive_id', '=', self.id)])
-        delivered_shipments = all_shipments.filtered(lambda rec: rec.state in ('delivered', 'return_requested', 'return_picked', 'returned'))
+        domain = self._my_tasks_domain()
+        all_shipments = self.env['logistics.shipment'].search(domain + [('state', 'not in', ('cancelled', 'cancel'))])
+        # Also include delivered for counts (broader than open tasks)
+        delivered_extra = self.env['logistics.shipment'].search([
+            ('delivery_executive_id', '=', self.id),
+            ('state', 'in', ('delivered', 'return_requested', 'return_picked', 'returned')),
+        ])
+        all_shipments |= delivered_extra
+        delivered_shipments = all_shipments.filtered(
+            lambda rec: rec.state in ('delivered', 'return_requested', 'return_picked', 'returned')
+        )
         pending_shipments = (all_shipments - delivered_shipments).filtered(lambda rec: rec.state != 'cancelled')
         return all_shipments, delivered_shipments, pending_shipments
+
+    def _my_tasks_domain(self):
+        """Shipments assigned to this DE at shipment or leg level."""
+        self.ensure_one()
+        return [
+            '|', '|', '|',
+            ('delivery_executive_id', '=', self.id),
+            ('custodian_de_id', '=', self.id),
+            ('active_leg_id.assigned_de_id', '=', self.id),
+            ('estimated_route_ids.assigned_de_id', '=', self.id),
+        ]
+
+    def is_eligible_for_operation(self, operation_type):
+        """Role check shared with shipment assignment."""
+        self.ensure_one()
+        return self.env['logistics.shipment']._de_eligible_for_operation(self, operation_type)
 
     def _compute_shipments_count(self):
         for rec in self:
             all_shipments, delivered_shipments, pending_shipments = rec.get_shipments_data()
             rec.delivered_shipments_count = len(delivered_shipments)
+            rec.total_shipments_count = len(all_shipments)
             rec.pending_shipments_count = len(pending_shipments)
 
     def action_view_delivered_shipments(self):

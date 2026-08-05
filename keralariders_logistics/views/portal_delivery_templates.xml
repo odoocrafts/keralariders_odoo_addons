@@ -6,11 +6,11 @@
         <xpath expr="//div[hasclass('o_portal_docs')]" position="inside">
             <t t-if="is_delivery_executive">
                 <t t-call="keralariders_logistics.logistics_portal_card">
-                    <t t-set="title">My Deliveries</t>
+                    <t t-set="title">My Tasks</t>
                     <t t-set="url" t-value="'/my/deliveries'"/>
                     <t t-set="count_text" t-value="assigned_shipment_count if assigned_shipment_count else '0'"/>
                     <t t-set="icon" t-value="'/keralariders_logistics/static/src/img/shipment.svg'"/>
-                    <t t-set="text">Manage your assigned deliveries</t>
+                    <t t-set="text">Assigned legs &amp; deliveries — scan QR to claim</t>
                 </t>
             </t>
         </xpath>
@@ -182,8 +182,12 @@
         <t t-call="portal.portal_layout">
             <t t-set="breadcrumbs_searchbar" t-value="True"/>
             <t t-call="portal.portal_searchbar">
-                <t t-set="title">Assigned Deliveries</t>
-                <div class="form-inline ms-auto">
+                <t t-set="title">My Tasks</t>
+                <div class="form-inline ms-auto d-flex gap-2">
+                    <form action="/track" method="get" class="d-flex gap-1">
+                        <input type="text" name="id" class="form-control form-control-sm" placeholder="Enter AWB" style="min-width:140px;"/>
+                        <button type="submit" class="btn btn-outline-primary btn-sm">Open</button>
+                    </form>
                     <button type="button" class="btn btn-primary btn-scan-qr">
                         <i class="fa fa-camera"/> Scan AWB
                     </button>
@@ -355,6 +359,53 @@
                             </button>
                         </form>
                     </t>
+                </div>
+            </div>
+        </t>
+    </template>
+
+    <!-- Self-assign / Claim at hub -->
+    <template id="portal_my_delivery_claim" name="Claim Shipment">
+        <t t-call="portal.portal_layout">
+            <div class="card shadow-sm mb-4" style="max-width:640px;margin:0 auto;">
+                <div class="card-header bg-primary text-white py-3">
+                    <h4 class="mb-0"><i class="fa fa-hand-rock-o me-2"/> Claim Package — <t t-esc="shipment.name"/></h4>
+                </div>
+                <div class="card-body">
+                    <t t-if="error">
+                        <div class="alert alert-danger" role="alert"><t t-esc="error"/></div>
+                    </t>
+                    <t t-if="success">
+                        <div class="alert alert-success" role="alert"><t t-esc="success"/></div>
+                    </t>
+
+                    <p class="mb-3">This package is in hub custody and ready for the next hop. Claiming transfers custody to you.</p>
+
+                    <div class="mb-3 p-3 border rounded bg-light">
+                        <p class="mb-1"><strong>Hub:</strong> <t t-esc="shipment.current_hub_id.name"/></p>
+                        <p class="mb-1"><strong>Status:</strong>
+                            <t t-esc="dict(shipment.fields_get(allfields=['state'])['state']['selection'])[shipment.state]"/>
+                        </p>
+                        <p class="mb-1"><strong>To:</strong> <t t-esc="shipment.shipping_to_name"/> —
+                            <t t-esc="shipment.shipping_to_zip"/>
+                        </p>
+                        <t t-if="leg">
+                            <p class="mb-1"><strong>Next leg:</strong> <t t-esc="leg.name"/></p>
+                            <p class="mb-0"><strong>Operation:</strong>
+                                <span class="badge text-bg-info"><t t-esc="leg.operation_type"/></span>
+                            </p>
+                        </t>
+                    </div>
+
+                    <form t-attf-action="/my/delivery/#{shipment.id}/claim" method="post">
+                        <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                        <input type="hidden" name="scanned_code" t-att-value="shipment.name"/>
+                        <button type="submit" class="btn btn-lg btn-success w-100 fw-bold shadow-sm mb-2"
+                                onclick="return confirm('Claim this package and take custody?');">
+                            <i class="fa fa-check"/> Claim &amp; Take Custody
+                        </button>
+                    </form>
+                    <a t-attf-href="/my/delivery/#{shipment.id}?view=1" class="btn btn-link w-100">View details instead</a>
                 </div>
             </div>
         </t>

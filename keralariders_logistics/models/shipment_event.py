@@ -18,6 +18,8 @@ class ShipmentEvent(models.Model):
         ('dropped_at_hub', 'Dropped at Hub'),
         ('hub_receive', 'Hub Receive'),
         ('hub_dispatch', 'Hub Dispatch'),
+        ('de_self_assign', 'DE Self-Assign'),
+        ('leg_assign', 'Leg Assign'),
         ('central_pass_through', 'Central Pass-Through'),
         ('out_for_delivery', 'Out for Delivery'),
         ('delivered', 'Delivered'),

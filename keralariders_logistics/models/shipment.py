@@ -48,7 +48,9 @@ class Shipment(models.Model):
                 vals['name'] = self.env['ir.sequence'].sudo().next_by_code('logistics.shipment') or _('New')
             # Initial custody: package starts with the seller until DE pickup.
             vals.setdefault('custodian_type', 'seller')
-        return super(Shipment, self).create(vals_list)
+        shipments = super(Shipment, self).create(vals_list)
+        shipments.filtered(lambda s: s.estimated_route_ids and not s.active_leg_id)._sync_active_leg()
+        return shipments
 
     # -------------------------------------------------------------------------
     # Custody
@@ -103,6 +105,157 @@ class Shipment(models.Model):
                 'note': note,
             })
 
+    # -------------------------------------------------------------------------
+    # Route leg helpers (Phase 2)
+    # -------------------------------------------------------------------------
+    def _get_next_actionable_leg(self):
+        """First leg still in planned / assigned / in_progress."""
+        self.ensure_one()
+        return self.estimated_route_ids.sorted('sequence').filtered(
+            lambda l: l.state in ('planned', 'assigned', 'in_progress')
+        )[:1]
+
+    def _get_claimable_leg(self, de=None):
+        """Active/next leg that can be claimed at a hub (unassigned, or assigned to this DE)."""
+        self.ensure_one()
+        leg = self.active_leg_id
+        if not leg or leg.state in ('done', 'skipped'):
+            leg = self._get_next_actionable_leg()
+        if not leg or leg.state not in ('planned', 'assigned'):
+            return self.env['logistics.shipment.estimated.route']
+        if not leg.assigned_de_id:
+            return leg
+        if de and leg.assigned_de_id == de:
+            return leg
+        # Already assigned to someone else — not claimable
+        return self.env['logistics.shipment.estimated.route']
+
+    def _sync_active_leg(self):
+        """Point active_leg_id at the next actionable leg (or False)."""
+        for shipment in self:
+            next_leg = shipment._get_next_actionable_leg()
+            if shipment.active_leg_id != next_leg:
+                shipment.active_leg_id = next_leg.id if next_leg else False
+
+    @api.model
+    def _de_eligible_for_operation(self, de, operation_type):
+        """Role check: if any role flag is set, enforce; if none set, allow all."""
+        if not de:
+            return False
+        has_any_role = de.is_pickup or de.is_driver or de.is_delivery or de.is_manager
+        if not has_any_role:
+            return True
+        if operation_type == 'pickup':
+            return bool(de.is_pickup)
+        if operation_type == 'hub_transfer':
+            return bool(de.is_driver)
+        if operation_type == 'delivery':
+            return bool(de.is_delivery)
+        return False
+
+    def _de_eligible_for_leg(self, de, leg):
+        self.ensure_one()
+        if not de or not leg:
+            return False
+        return self._de_eligible_for_operation(de, leg.operation_type)
+
+    def _assign_leg_de(self, leg, de, start=False):
+        """Assign DE to a leg and optionally start it."""
+        self.ensure_one()
+        if not leg or not de:
+            raise UserError(_("Leg and delivery executive are required for assignment."))
+        if not self._de_eligible_for_leg(de, leg):
+            raise UserError(
+                _("Delivery executive %s is not eligible for %s legs.")
+                % (de.name, leg.operation_type)
+            )
+        if leg.assigned_de_id and leg.assigned_de_id != de and leg.state not in ('planned',):
+            raise UserError(
+                _("Leg '%s' is already assigned to %s.")
+                % (leg.name, leg.assigned_de_id.name)
+            )
+        vals = {
+            'assigned_de_id': de.id,
+            'state': 'in_progress' if start else 'assigned',
+        }
+        if start:
+            vals['started_at'] = fields.Datetime.now()
+        leg.write(vals)
+        self.active_leg_id = leg.id
+        return leg
+
+    def _start_leg(self, leg, de=None):
+        self.ensure_one()
+        if not leg:
+            return
+        vals = {
+            'state': 'in_progress',
+            'started_at': leg.started_at or fields.Datetime.now(),
+        }
+        if de:
+            vals['assigned_de_id'] = de.id
+        leg.write(vals)
+        self.active_leg_id = leg.id
+
+    def _complete_leg(self, leg=None):
+        """Mark leg done and advance active_leg_id."""
+        self.ensure_one()
+        leg = leg or self.active_leg_id
+        if leg and leg.state != 'done':
+            leg.write({
+                'state': 'done',
+                'completed_at': fields.Datetime.now(),
+            })
+        self._sync_active_leg()
+
+    def can_de_self_assign(self, de):
+        """Whether DE may claim this shipment via QR/self-assign at a hub."""
+        self.ensure_one()
+        if not de or not de.active:
+            return False
+        if self.custodian_type != 'hub' or not self.current_hub_id:
+            return False
+        if self.state in ('delivered', 'cancelled', 'cancel', 'returned'):
+            return False
+        leg = self._get_claimable_leg(de)
+        if not leg:
+            return False
+        # Only hub_transfer / delivery are claimed from hub inventory
+        if leg.operation_type == 'pickup':
+            return False
+        # Leg from_hub should match current hub when set
+        if leg.from_hub_id and leg.from_hub_id != self.current_hub_id:
+            return False
+        return self._de_eligible_for_leg(de, leg)
+
+    def action_de_self_assign(self, de, scanned_code=None, note=None):
+        """DE claims package at hub for the next hop; transfers custody via hub dispatch."""
+        if not de:
+            raise UserError(_("A delivery executive is required to self-assign."))
+        for shipment in self:
+            if not shipment.can_de_self_assign(de):
+                raise UserError(
+                    _("You are not eligible to self-assign shipment %s.")
+                    % shipment.name
+                )
+            leg = shipment._get_claimable_leg(de)
+            if not leg:
+                raise UserError(_("No claimable route leg on shipment %s.") % shipment.name)
+
+            shipment._assign_leg_de(leg, de, start=True)
+            for_delivery = leg.operation_type == 'delivery'
+            # Reuse hub dispatch custody transition; log as de_self_assign
+            shipment.action_hub_dispatch(
+                delivery_executive=de,
+                hub=shipment.current_hub_id,
+                scanned_code=scanned_code or shipment.name,
+                note=note or _("DE self-assigned via QR/claim."),
+                for_delivery=for_delivery,
+                skip_leg_assign=True,
+                event_type_override='de_self_assign',
+            )
+        return True
+
     def action_mark_picked(self, actor_de=None, scanned_code=None, note=None):
         """DE confirms pickup from seller. Custody → DE."""
         for shipment in self:
@@ -112,12 +265,34 @@ class Shipment(models.Model):
                     % (shipment.name, shipment.state)
                 )
             de = actor_de or shipment.delivery_executive_id or shipment.custodian_de_id
+            shipment._sync_active_leg()
+            pickup_leg = shipment.active_leg_id
+            if pickup_leg and pickup_leg.operation_type != 'pickup':
+                pickup_leg = shipment.estimated_route_ids.filtered(
+                    lambda l: l.operation_type == 'pickup' and l.state != 'done'
+                )[:1]
+            if de and pickup_leg:
+                if pickup_leg.assigned_de_id and pickup_leg.assigned_de_id != de:
+                    raise UserError(
+                        _("Pickup leg is assigned to %s.")
+                        % pickup_leg.assigned_de_id.name
+                    )
+                if not shipment._de_eligible_for_leg(de, pickup_leg):
+                    raise UserError(
+                        _("Delivery executive %s is not eligible for pickup.")
+                        % de.name
+                    )
+                shipment._assign_leg_de(pickup_leg, de, start=True)
+            elif pickup_leg and de:
+                shipment._start_leg(pickup_leg, de=de)
+
             shipment._create_custody_event(
                 'pickup_scan',
                 to_custodian='de',
                 actor_de=de,
                 scanned_code=scanned_code or shipment.name,
                 note=note,
+                leg=pickup_leg,
             )
             vals = {
                 'state': 'picked',
@@ -129,6 +304,8 @@ class Shipment(models.Model):
             }
             if de and not shipment.delivery_executive_id:
                 vals['delivery_executive_id'] = de.id
+            if pickup_leg:
+                vals['active_leg_id'] = pickup_leg.id
             shipment.write(vals)
             shipment._lock_route()
         return True
@@ -200,6 +377,17 @@ class Shipment(models.Model):
             else:
                 new_state = 'at_source_hub'
 
+            # Complete the inbound leg (pickup arriving at source, or hub_transfer arriving at dest)
+            inbound_leg = shipment.active_leg_id
+            if inbound_leg and inbound_leg.operation_type in ('pickup', 'hub_transfer'):
+                if inbound_leg.to_hub_id and inbound_leg.to_hub_id != target_hub:
+                    # Arriving at unexpected hub — still complete if in progress
+                    pass
+                if inbound_leg.state in ('planned', 'assigned', 'in_progress'):
+                    shipment._complete_leg(inbound_leg)
+            else:
+                shipment._sync_active_leg()
+
             shipment._create_custody_event(
                 'hub_receive',
                 to_custodian='hub',
@@ -214,10 +402,12 @@ class Shipment(models.Model):
                 'current_hub_id': target_hub.id,
                 'delivery_executive_id': False,  # clear assigned DE until redispatch
             })
+            shipment._sync_active_leg()
             shipment._lock_route()
         return True
 
-    def action_hub_dispatch(self, delivery_executive, hub=None, scanned_code=None, note=None, for_delivery=True):
+    def action_hub_dispatch(self, delivery_executive, hub=None, scanned_code=None, note=None,
+                            for_delivery=True, skip_leg_assign=False, event_type_override=None):
         """Hub assigns a DE and releases custody (dispatch / out for delivery or transfer)."""
         if not delivery_executive:
             raise UserError(_("A delivery executive is required to dispatch."))
@@ -231,14 +421,45 @@ class Shipment(models.Model):
             if not target_hub:
                 raise UserError(_("Current hub is missing on shipment %s.") % shipment.name)
 
+            shipment._sync_active_leg()
+            leg = shipment.active_leg_id
+            if leg and leg.operation_type == 'pickup':
+                # Should not dispatch pickup from hub; advance if stale
+                shipment._sync_active_leg()
+                leg = shipment.active_leg_id
+
+            if not skip_leg_assign and leg:
+                if leg.assigned_de_id and leg.assigned_de_id != delivery_executive:
+                    raise UserError(
+                        _("Leg '%s' is already assigned to %s. Clear assignee first.")
+                        % (leg.name, leg.assigned_de_id.name)
+                    )
+                if not shipment._de_eligible_for_leg(delivery_executive, leg):
+                    raise UserError(
+                        _("Delivery executive %s is not eligible for %s legs.")
+                        % (delivery_executive.name, leg.operation_type)
+                    )
+                shipment._assign_leg_de(leg, delivery_executive, start=True)
+                for_delivery = leg.operation_type == 'delivery'
+            elif not skip_leg_assign and not leg:
+                # No planned legs — fall back to for_delivery flag
+                pass
+            elif skip_leg_assign and leg:
+                for_delivery = leg.operation_type == 'delivery'
+
             # Same-district last mile or dest-hub last mile → out_for_delivery;
             # otherwise in_transit for hub-to-hub movement.
-            if for_delivery or target_hub == shipment.destination_hub_id:
+            if for_delivery or (leg and leg.operation_type == 'delivery') or (
+                not leg and target_hub == shipment.destination_hub_id
+            ):
                 new_state = 'out_for_delivery'
                 event_type = 'out_for_delivery'
             else:
                 new_state = 'in_transit'
                 event_type = 'hub_dispatch'
+
+            if event_type_override:
+                event_type = event_type_override
 
             shipment._create_custody_event(
                 event_type,
@@ -247,6 +468,7 @@ class Shipment(models.Model):
                 actor_de=delivery_executive,
                 scanned_code=scanned_code or shipment.name,
                 note=note,
+                leg=leg,
             )
             shipment.write({
                 'state': new_state,
@@ -254,6 +476,7 @@ class Shipment(models.Model):
                 'custodian_de_id': delivery_executive.id,
                 'delivery_executive_id': delivery_executive.id,
                 'current_hub_id': target_hub.id if new_state == 'in_transit' else False,
+                'active_leg_id': leg.id if leg else (shipment.active_leg_id.id if shipment.active_leg_id else False),
             })
             shipment._lock_route()
         return True
@@ -289,13 +512,21 @@ class Shipment(models.Model):
                     % (shipment.name, shipment.state)
                 )
             de = actor_de or shipment.custodian_de_id or shipment.delivery_executive_id
+            delivery_leg = shipment.active_leg_id
+            if delivery_leg and delivery_leg.operation_type != 'delivery':
+                delivery_leg = shipment.estimated_route_ids.filtered(
+                    lambda l: l.operation_type == 'delivery' and l.state != 'done'
+                )[:1]
             shipment._create_custody_event(
                 'delivered',
                 to_custodian='customer',
                 actor_de=de,
                 scanned_code=scanned_code or shipment.name,
                 note=note or delivery_remarks,
+                leg=delivery_leg,
             )
+            if delivery_leg:
+                shipment._complete_leg(delivery_leg)
             vals = {
                 'state': 'delivered',
                 'custodian_type': 'customer',
@@ -303,6 +534,7 @@ class Shipment(models.Model):
                 'current_hub_id': False,
                 'actual_delivery_date': fields.Datetime.now(),
                 'delivered_on': fields.Datetime.now(),
+                'active_leg_id': False,
             }
             if delivery_remarks is not None:
                 vals['delivery_remarks'] = delivery_remarks

@@ -1,5 +1,5 @@
 from markupsafe import Markup
-from odoo import models, fields, api
+from odoo import models, fields, api, _
 from odoo.exceptions import UserError
 
 
@@ -66,6 +66,7 @@ class ShipmentInherit(models.Model):
                         'to_hub_id': source_hub.id,
                         'executive1_id': pickup_exec.id if pickup_exec else False,
                         'operation_type': 'pickup',
+                        'state': 'planned',
                     }),
                     (0, 0, {
                         'sequence': 2,
@@ -76,6 +77,7 @@ class ShipmentInherit(models.Model):
                         'to_hub_id': False,
                         'executive1_id': delivery_exec.id if delivery_exec else False,
                         'operation_type': 'delivery',
+                        'state': 'planned',
                     }),
                 ]
             else:
@@ -90,6 +92,7 @@ class ShipmentInherit(models.Model):
                         'to_hub_id': source_hub.id,
                         'executive1_id': pickup_exec.id if pickup_exec else False,
                         'operation_type': 'pickup',
+                        'state': 'planned',
                     }),
                     (0, 0, {
                         'sequence': 2,
@@ -99,6 +102,7 @@ class ShipmentInherit(models.Model):
                         'from_hub_id': source_hub.id,
                         'to_hub_id': final_hub.id,
                         'operation_type': 'hub_transfer',
+                        'state': 'planned',
                     }),
                     (0, 0, {
                         'sequence': 3,
@@ -109,6 +113,7 @@ class ShipmentInherit(models.Model):
                         'to_hub_id': False,
                         'executive1_id': delivery_exec.id if delivery_exec else False,
                         'operation_type': 'delivery',
+                        'state': 'planned',
                     }),
                 ]
 
@@ -229,8 +234,9 @@ class ShipmentInherit(models.Model):
                                 ">{to_icon} {to_name}</span>
                             </div>
                             <div style="display:flex;gap:12px;margin-top:12px;flex-wrap:wrap;">
-                                {"<span style='background:#8b5cf6;color:white;padding:6px 10px;border-radius:4px;font-weight:600;font-size:12px;'>" + route.executive1_id.name + "</span>" if route.executive1_id else ""}
-                                {"<span style='background:#ec4899;color:white;padding:6px 10px;border-radius:4px;font-weight:600;font-size:12px;'>" + route.executive2_id.name + "</span>" if route.executive2_id else ""}
+                                <span style="background:#64748b;color:white;padding:6px 10px;border-radius:4px;font-weight:600;font-size:12px;">{route.state or 'planned'}</span>
+                                {"<span style='background:#0f766e;color:white;padding:6px 10px;border-radius:4px;font-weight:600;font-size:12px;'>Assigned: " + route.assigned_de_id.name + "</span>" if route.assigned_de_id else ""}
+                                {"<span style='background:#8b5cf6;color:white;padding:6px 10px;border-radius:4px;font-weight:600;font-size:12px;'>Suggested: " + route.executive1_id.name + "</span>" if route.executive1_id and not route.assigned_de_id else ""}
                             </div>
                         </div>
                     </div>
@@ -253,6 +259,7 @@ class ShipmentInherit(models.Model):
             # Clear stored lines then recompute
             rec.estimated_route_ids = [(5, 0, 0)]
             rec._compute_estimated_route_ids()
+            rec._sync_active_leg()
 
 
 class ShipmentEstimatedRoute(models.Model):
@@ -261,7 +268,7 @@ class ShipmentEstimatedRoute(models.Model):
     _order = "sequence asc, create_date asc"
 
     sequence = fields.Integer()
-    shipment_id = fields.Many2one('logistics.shipment', ondelete='cascade')
+    shipment_id = fields.Many2one('logistics.shipment', ondelete='cascade', index=True)
     name = fields.Char(string="Route")
     source_location_name = fields.Char()
     destination_location_name = fields.Char()
@@ -274,7 +281,41 @@ class ShipmentEstimatedRoute(models.Model):
         ('pickup', 'Pickup'),
         ('hub_transfer', 'Hub Transfer'),
         ('delivery', 'Delivery'),
-    ], string="Operation Type", default='pickup')
+    ], string="Operation Type", default='pickup', index=True)
 
-    executive1_id = fields.Many2one('logistics.delivery.executive', string="Executive 1")
-    executive2_id = fields.Many2one('logistics.delivery.executive', string="Executive 2")
+    state = fields.Selection([
+        ('planned', 'Planned'),
+        ('assigned', 'Assigned'),
+        ('in_progress', 'In Progress'),
+        ('done', 'Done'),
+        ('skipped', 'Skipped'),
+    ], string="Leg State", default='planned', required=True, index=True)
+
+    # Actual operational assignee (preferred over executive1/2 suggestions)
+    assigned_de_id = fields.Many2one(
+        'logistics.delivery.executive',
+        string="Assigned DE",
+        index=True,
+        help="Delivery executive currently assigned to execute this leg.",
+    )
+    started_at = fields.Datetime(string="Started At")
+    completed_at = fields.Datetime(string="Completed At")
+
+    # Suggested executives from route planning (not operational assignee)
+    executive1_id = fields.Many2one('logistics.delivery.executive', string="Suggested DE")
+    executive2_id = fields.Many2one('logistics.delivery.executive', string="Suggested DE 2")
+
+    def action_clear_assignee(self):
+        """Clear leg assignee so another DE can be assigned / self-assign."""
+        for leg in self:
+            if leg.state in ('done', 'skipped', 'in_progress'):
+                raise UserError(
+                    _("Cannot clear assignee on leg '%s' in state '%s'.")
+                    % (leg.name, leg.state)
+                )
+            leg.write({
+                'assigned_de_id': False,
+                'state': 'planned',
+                'started_at': False,
+            })
+        return True

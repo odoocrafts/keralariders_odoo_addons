@@ -1,4 +1,4 @@
-from odoo import models, fields, api
+from odoo import models, fields, api, _
 from odoo.exceptions import UserError
 
 
@@ -44,12 +44,44 @@ class AssignDeliveryExecutiveWizard(models.TransientModel):
 
     def action_assign(self):
         for shipment in self.shipment_ids:
-            if shipment.delivery_executive_id:
+            shipment._sync_active_leg()
+            leg = shipment.active_leg_id or shipment._get_next_actionable_leg()
+            if not leg:
+                # Fallback: shipment-level assign only (no route legs yet)
+                if shipment.delivery_executive_id and shipment.delivery_executive_id != self.delivery_executive_id:
+                    raise UserError(
+                        _("Shipment %s is already assigned to %s.")
+                        % (shipment.name, shipment.delivery_executive_id.name)
+                    )
+                shipment.delivery_executive_id = self.delivery_executive_id.id
+                if shipment.custodian_type in ('seller', 'de') and shipment.state not in ('delivered', 'cancelled', 'cancel'):
+                    shipment.custodian_de_id = self.delivery_executive_id.id
+                continue
+
+            if leg.assigned_de_id and leg.assigned_de_id != self.delivery_executive_id and leg.state != 'planned':
                 raise UserError(
-                    f"Shipment {shipment.name} is already assigned to "
-                    f"{shipment.delivery_executive_id.name}. Please select only unassigned shipments."
+                    _("Shipment %s leg '%s' is already assigned to %s. Clear the assignee first.")
+                    % (shipment.name, leg.name, leg.assigned_de_id.name)
                 )
+            if not shipment._de_eligible_for_leg(self.delivery_executive_id, leg):
+                raise UserError(
+                    _("Delivery executive %s is not eligible for %s on shipment %s.")
+                    % (self.delivery_executive_id.name, leg.operation_type, shipment.name)
+                )
+
+            # Assign on active leg without taking custody (hub dispatch / pickup still required)
+            start = False
+            shipment._assign_leg_de(leg, self.delivery_executive_id, start=start)
             shipment.delivery_executive_id = self.delivery_executive_id.id
             if shipment.custodian_type in ('seller', 'de') and shipment.state not in ('delivered', 'cancelled', 'cancel'):
                 shipment.custodian_de_id = self.delivery_executive_id.id
+            shipment._create_custody_event(
+                'leg_assign',
+                to_custodian=shipment.custodian_type,
+                actor_de=self.delivery_executive_id,
+                note=_("Assigned to %s for %s leg.") % (
+                    self.delivery_executive_id.name, leg.operation_type
+                ),
+                leg=leg,
+            )
         return {'type': 'ir.actions.act_window_close'}

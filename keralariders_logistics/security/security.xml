@@ -106,7 +106,27 @@
         <record id="logistics_shipment_de_rule" model="ir.rule">
             <field name="name">DE Shipment Rule</field>
             <field name="model_id" ref="model_logistics_shipment"/>
-            <field name="domain_force">['|', ('delivery_executive_id.user_id', '=', user.id), ('custodian_de_id.user_id', '=', user.id)]</field>
+            <field name="domain_force">['|', '|', '|',
+                ('delivery_executive_id.user_id', '=', user.id),
+                ('custodian_de_id.user_id', '=', user.id),
+                ('estimated_route_ids.assigned_de_id.user_id', '=', user.id),
+                ('active_leg_id.assigned_de_id.user_id', '=', user.id)]</field>
+            <field name="groups" eval="[(4, ref('group_logistics_executive'))]"/>
+            <field name="perm_read" eval="True"/>
+            <field name="perm_write" eval="True"/>
+            <field name="perm_create" eval="False"/>
+            <field name="perm_unlink" eval="False"/>
+        </record>
+
+        <!-- DE can read hub-custody packages with unassigned next leg (self-assign candidates) -->
+        <record id="logistics_shipment_de_self_assign_rule" model="ir.rule">
+            <field name="name">DE Self-Assign Candidate Shipments</field>
+            <field name="model_id" ref="model_logistics_shipment"/>
+            <field name="domain_force">[
+                ('custodian_type', '=', 'hub'),
+                ('active_leg_id.assigned_de_id', '=', False),
+                ('active_leg_id.state', 'in', ['planned', 'assigned']),
+                ('active_leg_id.operation_type', 'in', ['hub_transfer', 'delivery'])]</field>
             <field name="groups" eval="[(4, ref('group_logistics_executive'))]"/>
             <field name="perm_read" eval="True"/>
             <field name="perm_write" eval="True"/>
@@ -166,7 +186,10 @@
         <record id="logistics_shipment_event_de_rule" model="ir.rule">
             <field name="name">DE Shipment Event Rule</field>
             <field name="model_id" ref="model_logistics_shipment_event"/>
-            <field name="domain_force">['|', ('shipment_id.delivery_executive_id.user_id', '=', user.id), ('shipment_id.custodian_de_id.user_id', '=', user.id)]</field>
+            <field name="domain_force">['|', '|',
+                ('shipment_id.delivery_executive_id.user_id', '=', user.id),
+                ('shipment_id.custodian_de_id.user_id', '=', user.id),
+                ('shipment_id.estimated_route_ids.assigned_de_id.user_id', '=', user.id)]</field>
             <field name="groups" eval="[(4, ref('group_logistics_executive'))]"/>
             <field name="perm_read" eval="True"/>
             <field name="perm_write" eval="True"/>

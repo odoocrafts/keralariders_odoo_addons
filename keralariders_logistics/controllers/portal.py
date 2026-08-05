@@ -47,12 +47,10 @@ class LogisticsPortal(CustomerPortal):
         values['is_delivery_executive'] = bool(delivery_executive)
         
         if delivery_executive:
-            assigned_shipment_count = request.env['logistics.shipment'].sudo().search_count([
-                '|',
-                ('delivery_executive_id', '=', delivery_executive.id),
-                ('custodian_de_id', '=', delivery_executive.id),
+            domain = delivery_executive._my_tasks_domain() + [
                 ('state', 'not in', ('delivered', 'cancelled', 'cancel')),
-            ])
+            ]
+            assigned_shipment_count = request.env['logistics.shipment'].sudo().search_count(domain)
             values['assigned_shipment_count'] = str(assigned_shipment_count) if assigned_shipment_count > 0 else '0 '
 
         managed_hubs = request.env['logistics.hub'].sudo().search([('manager_ids', 'in', request.env.user.ids)])
@@ -569,10 +567,7 @@ class LogisticsPortal(CustomerPortal):
             return request.redirect('/my')
             
         Shipment = request.env['logistics.shipment'].sudo()
-        domain = [
-            '|',
-            ('delivery_executive_id', '=', delivery_executive.id),
-            ('custodian_de_id', '=', delivery_executive.id),
+        domain = delivery_executive._my_tasks_domain() + [
             ('state', 'not in', ('delivered', 'cancelled', 'cancel')),
         ]
         
@@ -617,6 +612,10 @@ class LogisticsPortal(CustomerPortal):
         if not shipment:
             return request.redirect('/my/deliveries')
 
+        # Prefer claim page when DE is eligible to self-assign
+        if shipment.can_de_self_assign(delivery_executive) and not kw.get('view'):
+            return request.redirect(f'/my/delivery/{shipment.id}/claim')
+
         hubs = request.env['logistics.hub'].sudo().search([('active', '=', True)])
             
         values = {
@@ -624,10 +623,52 @@ class LogisticsPortal(CustomerPortal):
             'page_name': 'deliveries',
             'hubs': hubs,
             'delivery_executive': delivery_executive,
+            'can_self_assign': shipment.can_de_self_assign(delivery_executive),
             'error': request.session.pop('error', None),
             'success': request.session.pop('success', None),
         }
         return request.render("keralariders_logistics.portal_my_delivery_detail", values)
+
+    @http.route(['/my/delivery/<int:shipment_id>/claim'], type='http', auth="user", website=True, methods=['GET', 'POST'])
+    def portal_my_delivery_claim(self, shipment_id=None, **post):
+        delivery_executive = request.env['logistics.delivery.executive'].sudo().search(
+            [('user_id', '=', request.env.user.id)], limit=1
+        )
+        if not delivery_executive:
+            return request.redirect('/my')
+        shipment = request.env['logistics.shipment'].sudo().browse(shipment_id)
+        if not shipment.exists():
+            request.session['error'] = "Shipment not found."
+            return request.redirect('/my/deliveries')
+
+        if request.httprequest.method == 'POST':
+            try:
+                shipment.action_de_self_assign(
+                    de=delivery_executive,
+                    scanned_code=post.get('scanned_code') or shipment.name,
+                    note=post.get('note'),
+                )
+                request.session['success'] = f"Claimed {shipment.name}. Package is now in your custody."
+                return request.redirect(f'/my/delivery/{shipment.id}')
+            except UserError as e:
+                request.session['error'] = str(e)
+                return request.redirect(f'/my/delivery/{shipment.id}/claim')
+
+        if not shipment.can_de_self_assign(delivery_executive):
+            request.session['error'] = "You are not eligible to claim this shipment."
+            return request.redirect(f'/my/delivery/{shipment.id}?view=1')
+
+        shipment._sync_active_leg()
+        leg = shipment._get_claimable_leg(delivery_executive)
+        values = {
+            'shipment': shipment,
+            'leg': leg,
+            'page_name': 'deliveries',
+            'delivery_executive': delivery_executive,
+            'error': request.session.pop('error', None),
+            'success': request.session.pop('success', None),
+        }
+        return request.render("keralariders_logistics.portal_my_delivery_claim", values)
 
     @http.route(['/my/delivery/<int:shipment_id>/mark_picked'], type='http', auth="user", website=True, methods=['POST'])
     def portal_my_delivery_mark_picked(self, shipment_id=None, **post):
@@ -761,12 +802,27 @@ class LogisticsPortal(CustomerPortal):
             step=self._items_per_page,
         )
         shipments = Shipment.search(domain, order='write_date desc', limit=self._items_per_page, offset=pager['offset'])
-        executives = request.env['logistics.delivery.executive'].sudo().search([('active', '=', True)])
+        all_executives = request.env['logistics.delivery.executive'].sudo().search([('active', '=', True)])
+        # Per-shipment eligible DEs by active leg role (fallback: all)
+        shipment_executives = {}
+        for shipment in shipments:
+            shipment._sync_active_leg()
+            leg = shipment.active_leg_id
+            if leg and leg.operation_type == 'pickup':
+                eligible = all_executives.filtered(lambda d: shipment._de_eligible_for_operation(d, 'pickup'))
+            elif leg and leg.operation_type == 'hub_transfer':
+                eligible = all_executives.filtered(lambda d: shipment._de_eligible_for_operation(d, 'hub_transfer'))
+            elif leg and leg.operation_type == 'delivery':
+                eligible = all_executives.filtered(lambda d: shipment._de_eligible_for_operation(d, 'delivery'))
+            else:
+                eligible = all_executives
+            shipment_executives[shipment.id] = eligible or all_executives
         values = {
             'page_name': 'hub_inventory',
             'hubs': hubs,
             'shipments': shipments,
-            'executives': executives,
+            'executives': all_executives,
+            'shipment_executives': shipment_executives,
             'pager': pager,
             'default_url': '/my/hub/inventory',
             'error': request.session.pop('error', None),
