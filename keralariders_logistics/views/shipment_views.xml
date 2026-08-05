@@ -220,6 +220,11 @@
                             groups="keralariders_logistics.group_logistics_admin"
                             class="btn-secondary"
                             confirm="Record optional physical pass-through at Thrissur Main Hub? Package stays In Transit."/>
+                    <button name="action_skip_hub_local_delivery" type="object" string="Deliver Locally (Skip Hub)"
+                            invisible="state != 'picked' or custodian_type != 'de'"
+                            groups="keralariders_logistics.group_logistics_admin,keralariders_logistics.group_logistics_executive"
+                            class="btn-secondary"
+                            confirm="Same-district local delivery — skip hub inventory and go Out for Delivery?"/>
                     <button name="action_cancel_shipment" type="object" string="Cancel Shipment"
                             invisible="state in ('delivered', 'cancelled', 'returned')"
                             groups="keralariders_logistics.group_logistics_admin"

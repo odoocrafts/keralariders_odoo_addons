@@ -76,7 +76,7 @@ class Order(models.Model):
                 shipment.action_add_wallet_transaction()
             
             # Update all shipments
-            order.shipment_ids.write({
+            order.shipment_ids.with_context(allow_shipment_state_write=True).write({
                 'state': 'pickup_requested',
                 'pickup_requested_on': fields.Datetime.now()
             })
@@ -90,7 +90,7 @@ class Order(models.Model):
 
     def action_reset_draft(self):
         for order in self:
-            order.shipment_ids.write({
+            order.shipment_ids.with_context(allow_shipment_state_write=True).write({
                 'state': 'order_added',
             })
             order.state = 'draft'
@@ -99,7 +99,7 @@ class Order(models.Model):
         for order in self:
             for shipment in order.shipment_ids:
                 shipment.delete_wallet_transaction()
-            order.shipment_ids.write({
+            order.shipment_ids.with_context(allow_shipment_state_write=True).write({
                 'state': 'cancelled'
             })
             order.state = 'cancelled'

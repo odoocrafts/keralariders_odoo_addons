@@ -52,6 +52,15 @@ class LogisticsPortal(CustomerPortal):
             ]
             assigned_shipment_count = request.env['logistics.shipment'].sudo().search_count(domain)
             values['assigned_shipment_count'] = str(assigned_shipment_count) if assigned_shipment_count > 0 else '0 '
+            Transfer = request.env['logistics.account.transfer'].sudo()
+            undeposited = 0
+            if delivery_executive.default_cash_account_id:
+                undeposited = Transfer.search_count([
+                    ('transfer_type', '=', 'cod_payment'),
+                    ('to_account_id', '=', delivery_executive.default_cash_account_id.id),
+                    ('hub_deposit_transfer_id', '=', False),
+                ])
+            values['cod_undeposited_count'] = str(undeposited) if undeposited else '0 '
 
         managed_hubs = request.env['logistics.hub'].sudo().search([('manager_ids', 'in', request.env.user.ids)])
         values['is_hub_manager'] = bool(managed_hubs)
@@ -62,6 +71,14 @@ class LogisticsPortal(CustomerPortal):
             ])
             values['hub_inventory_count'] = str(inventory_count) if inventory_count > 0 else '0 '
             values['managed_hub_count'] = str(len(managed_hubs))
+            Transfer = request.env['logistics.account.transfer'].sudo()
+            hub_accounts = managed_hubs.mapped('cash_account_id')
+            unbanked = Transfer.search_count([
+                ('transfer_type', '=', 'hub_deposit'),
+                ('to_account_id', 'in', hub_accounts.ids),
+                ('hub_banking_transfer_id', '=', False),
+            ]) if hub_accounts else 0
+            values['hub_cod_unbanked_count'] = str(unbanked) if unbanked else '0 '
         
         return values
         
@@ -521,7 +538,7 @@ class LogisticsPortal(CustomerPortal):
             
         try:
             # Update state (Free of charge)
-            shipment.sudo().write({
+            shipment.sudo().with_context(allow_shipment_state_write=True).write({
                 'state': 'return_requested'
             })
             request.session['success'] = f"Return pickup requested successfully for {shipment.name}. This is free of charge."
@@ -640,6 +657,7 @@ class LogisticsPortal(CustomerPortal):
             'preferred_drop_hub': preferred_drop_hub,
             'can_depart_hub': shipment.can_depart_from_hub(delivery_executive),
             'can_pass_through': shipment.can_record_central_pass_through(delivery_executive),
+            'can_skip_hub': shipment.can_skip_hub_local_delivery(delivery_executive),
             'is_hub_transfer': bool(active_leg and active_leg.operation_type == 'hub_transfer'),
             'tracking_events': tracking_events,
             'error': request.session.pop('error', None),
@@ -771,8 +789,19 @@ class LogisticsPortal(CustomerPortal):
             request.session['error'] = "Shipment not found."
             return request.redirect('/my/deliveries')
         try:
+            scanned = (post.get('scanned_code') or '').strip()
+            if scanned:
+                # Accept AWB, tracking URL, or raw token that contains the AWB
+                awb = shipment.name
+                if awb not in scanned and scanned != awb:
+                    # Allow if last path segment equals AWB
+                    tail = scanned.rstrip('/').split('/')[-1]
+                    if tail != awb and 'id=' + awb not in scanned:
+                        raise UserError(
+                            f"Scanned code does not match shipment {awb}. Please scan the correct AWB."
+                        )
             shipment.action_central_pass_through(
-                scanned_code=post.get('scanned_code') or shipment.name,
+                scanned_code=scanned or shipment.name,
                 note=post.get('note'),
                 actor_de=delivery_executive,
             )
@@ -780,6 +809,86 @@ class LogisticsPortal(CustomerPortal):
         except UserError as e:
             request.session['error'] = str(e)
         return request.redirect(f'/my/delivery/{shipment.id}')
+
+    @http.route(['/my/delivery/<int:shipment_id>/skip_hub'], type='http', auth="user", website=True, methods=['POST'])
+    def portal_my_delivery_skip_hub(self, shipment_id=None, **post):
+        delivery_executive = request.env['logistics.delivery.executive'].sudo().search(
+            [('user_id', '=', request.env.user.id)], limit=1
+        )
+        if not delivery_executive:
+            return request.redirect('/my')
+        shipment = request.env['logistics.shipment'].sudo().browse(shipment_id)
+        if not shipment.exists():
+            request.session['error'] = "Shipment not found."
+            return request.redirect('/my/deliveries')
+        try:
+            shipment.action_skip_hub_local_delivery(
+                actor_de=delivery_executive,
+                scanned_code=post.get('scanned_code') or shipment.name,
+                note=post.get('note'),
+            )
+            request.session['success'] = (
+                f"Shipment {shipment.name} is now out for local delivery (hub skipped)."
+            )
+        except UserError as e:
+            request.session['error'] = str(e)
+        return request.redirect(f'/my/delivery/{shipment.id}')
+
+    @http.route(['/my/cod_deposit'], type='http', auth="user", website=True, methods=['GET', 'POST'])
+    def portal_my_cod_deposit(self, **post):
+        """DE deposits COD cash holdings at a hub (DE cash → Hub cash)."""
+        delivery_executive = request.env['logistics.delivery.executive'].sudo().search(
+            [('user_id', '=', request.env.user.id)], limit=1
+        )
+        if not delivery_executive:
+            return request.redirect('/my')
+        Transfer = request.env['logistics.account.transfer'].sudo()
+        cash_account = delivery_executive.default_cash_account_id
+        undeposited = Transfer.browse()
+        if cash_account:
+            undeposited = Transfer.search([
+                ('transfer_type', '=', 'cod_payment'),
+                ('to_account_id', '=', cash_account.id),
+                ('hub_deposit_transfer_id', '=', False),
+            ], order='transfer_date desc, id desc')
+
+        hubs = request.env['logistics.hub'].sudo().search([('active', '=', True), ('hub_type', '=', 'district')])
+
+        if request.httprequest.method == 'POST':
+            try:
+                hub_id = int(post.get('hub_id') or 0)
+                hub = request.env['logistics.hub'].sudo().browse(hub_id)
+                if not hub.exists():
+                    raise UserError("Please select a valid hub.")
+                selected_ids = request.httprequest.form.getlist('payment_ids')
+                payments = Transfer.browse([int(i) for i in selected_ids if i]).exists()
+                if not payments:
+                    payments = undeposited
+                transfer = Transfer.action_create_hub_deposit(
+                    de=delivery_executive,
+                    hub=hub,
+                    payment_transfers=payments,
+                    note=post.get('note'),
+                )
+                request.session['success'] = (
+                    f"Deposited {transfer.amount:.2f} at {hub.name} ({transfer.name})."
+                )
+                return request.redirect('/my/cod_deposit')
+            except (UserError, ValueError) as e:
+                request.session['error'] = str(e)
+                return request.redirect('/my/cod_deposit')
+
+        values = {
+            'page_name': 'cod_deposit',
+            'delivery_executive': delivery_executive,
+            'cash_account': cash_account,
+            'undeposited': undeposited,
+            'undeposited_total': sum(undeposited.mapped('amount')),
+            'hubs': hubs,
+            'error': request.session.pop('error', None),
+            'success': request.session.pop('success', None),
+        }
+        return request.render("keralariders_logistics.portal_my_cod_deposit", values)
 
     @http.route(['/my/delivery/<int:shipment_id>/mark_delivered'], type='http', auth="user", website=True, methods=['POST'])
     def portal_my_delivery_mark_delivered(self, shipment_id=None, **post):
@@ -852,6 +961,55 @@ class LogisticsPortal(CustomerPortal):
             'success': request.session.pop('success', None),
         }
         return request.render("keralariders_logistics.portal_my_hub_home", values)
+
+    @http.route(['/my/hub/cod', '/my/hub/cod/'], type='http', auth="user", website=True, methods=['GET', 'POST'])
+    def portal_my_hub_cod(self, **post):
+        """Hub manager: review DE deposits and bank cash to company."""
+        hubs = self._get_managed_hubs()
+        if not hubs:
+            return request.redirect('/my')
+        Transfer = request.env['logistics.account.transfer'].sudo()
+
+        if request.httprequest.method == 'POST':
+            try:
+                hub_id = int(post.get('hub_id') or 0)
+                hub = hubs.filtered(lambda h: h.id == hub_id)[:1]
+                if not hub:
+                    raise UserError("Please select one of your managed hubs.")
+                selected_ids = request.httprequest.form.getlist('deposit_ids')
+                deposits = Transfer.browse([int(i) for i in selected_ids if i]).exists()
+                transfer = Transfer.action_create_hub_banking(
+                    hub=hub,
+                    deposit_transfers=deposits if deposits else None,
+                    note=post.get('note'),
+                )
+                request.session['success'] = (
+                    f"Banked {transfer.amount:.2f} from {hub.name} to company ({transfer.name})."
+                )
+                return request.redirect('/my/hub/cod')
+            except (UserError, ValueError) as e:
+                request.session['error'] = str(e)
+                return request.redirect('/my/hub/cod')
+
+        # Ensure cash accounts exist
+        for hub in hubs:
+            hub.get_or_create_cash_account()
+        hub_accounts = hubs.mapped('cash_account_id')
+        deposits = Transfer.search([
+            ('transfer_type', '=', 'hub_deposit'),
+            ('to_account_id', 'in', hub_accounts.ids),
+        ], order='transfer_date desc, id desc', limit=100)
+        unbanked = deposits.filtered(lambda d: not d.hub_banking_transfer_id)
+        values = {
+            'page_name': 'hub_cod',
+            'hubs': hubs,
+            'deposits': deposits,
+            'unbanked': unbanked,
+            'unbanked_total': sum(unbanked.mapped('amount')),
+            'error': request.session.pop('error', None),
+            'success': request.session.pop('success', None),
+        }
+        return request.render("keralariders_logistics.portal_my_hub_cod", values)
 
     @http.route(['/my/hub/inventory', '/my/hub/inventory/page/<int:page>'], type='http', auth="user", website=True)
     def portal_my_hub_inventory(self, page=1, **kw):

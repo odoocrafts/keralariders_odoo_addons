@@ -27,10 +27,41 @@ class Hub(models.Model):
     pincode_ids = fields.Many2many('logistics.pincode', string="Assigned Pincodes")
     pincodes_count = fields.Integer(string="Pincodes Count", compute="_compute_pincodes_count")
     inventory_count = fields.Integer(string="Inventory Count", compute="_compute_inventory_count")
+    cash_account_id = fields.Many2one(
+        'logistics.account',
+        string="Hub Cash Account",
+        help="COD cash holdings deposited by delivery executives at this hub.",
+    )
 
     _sql_constraints = [
         ('unique_district_hub', 'unique(district_id)', 'Only one hub is allowed per district.'),
     ]
+
+    def get_or_create_cash_account(self):
+        """Return hub cash ledger account, creating it on first use."""
+        self.ensure_one()
+        if self.cash_account_id:
+            return self.cash_account_id
+        account = self.env['logistics.account'].search([
+            ('hub_id', '=', self.id),
+            ('account_type', '=', 'hub'),
+        ], limit=1)
+        if not account:
+            account = self.env['logistics.account'].create({
+                'name': f'{self.name} Hub Cash',
+                'account_type': 'hub',
+                'hub_id': self.id,
+                'reference': _('Auto-created hub COD cash account'),
+            })
+        self.cash_account_id = account.id
+        return account
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        hubs = super().create(vals_list)
+        for hub in hubs:
+            hub.get_or_create_cash_account()
+        return hubs
 
     @api.constrains('hub_type')
     def _check_one_main_hub(self):

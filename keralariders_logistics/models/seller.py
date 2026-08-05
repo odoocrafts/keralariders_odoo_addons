@@ -1,4 +1,4 @@
-from odoo import models, fields, api
+from odoo import models, fields, api, _
 
 class Seller(models.Model):
     _name = 'logistics.seller'
@@ -68,7 +68,29 @@ class Seller(models.Model):
                 'seller_id': rec.id,
             }
             self.env['logistics.wallet'].create(wallet_vals)
+
+            # Seller settlement ledger account for COD clearance
+            if not rec.seller_account_id:
+                rec.seller_account_id = self.env['logistics.account'].sudo().create({
+                    'name': f'{rec.name} Seller',
+                    'account_type': 'seller',
+                    'seller_id': rec.id,
+                    'reference': 'Auto-created seller COD settlement account',
+                }).id
         return recs
+
+    def action_clear_cod_to_seller(self):
+        """Admin helper: clear banked COD payments from company → this seller."""
+        self.ensure_one()
+        transfer = self.env['logistics.account.transfer'].action_create_cod_clearance(seller=self)
+        return {
+            'type': 'ir.actions.act_window',
+            'name': _('COD Clearance'),
+            'res_model': 'logistics.account.transfer',
+            'res_id': transfer.id,
+            'view_mode': 'form',
+            'target': 'current',
+        }
 
     def action_grant_portal_access(self):
         self.ensure_one()
@@ -124,6 +146,19 @@ class Seller(models.Model):
     
     pan_number = fields.Char(string='PAN Number', tracking=True)
     fssai_number = fields.Char(string='FSSAI Number', tracking=True)
+
+    # Bank details for COD settlement (match PAN/FSSAI style — seller-local Char fields)
+    bank_account_name = fields.Char(string='Bank Account Name', tracking=True)
+    bank_account_number = fields.Char(string='Bank Account Number', tracking=True)
+    bank_ifsc = fields.Char(string='IFSC Code', tracking=True)
+    bank_name = fields.Char(string='Bank Name', tracking=True)
+    bank_branch = fields.Char(string='Bank Branch', tracking=True)
+
+    seller_account_id = fields.Many2one(
+        'logistics.account',
+        string='Seller COD Account',
+        help='Ledger account used for Company → Seller COD clearance.',
+    )
 
     delivery_package_id = fields.Many2one('logistics.delivery.package', string="Delivery Package", help="Special pricing package for this seller. Leave empty to use the default rates.")
 

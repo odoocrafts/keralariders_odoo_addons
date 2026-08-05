@@ -12,6 +12,10 @@
                         <setting id="logistics_upi" string="Logistics UPI ID" help="UPI ID for seller wallet recharges">
                             <field name="logistics_upi_id"/>
                         </setting>
+                        <setting id="company_cod_account" string="Company COD Account"
+                                 help="Receives hub banking deposits and is the source for seller COD clearance">
+                            <field name="company_cod_account_id" options="{'no_create': False}"/>
+                        </setting>
                     </block>
                 </app>
             </xpath>

@@ -48,6 +48,14 @@
                         string="Seller Accounts"
                         domain="[('account_type', '=', 'seller')]"/>
 
+                <filter name="hub"
+                        string="Hub Cash Accounts"
+                        domain="[('account_type', '=', 'hub')]"/>
+
+                <filter name="company"
+                        string="Company Accounts"
+                        domain="[('account_type', '=', 'company')]"/>
+
                 <separator/>
 
                 <!-- Related Records -->
@@ -101,6 +109,8 @@
                     <group string="Account Information">
                         <field name="name"/>
                         <field name="account_type"/>
+                        <field name="hub_id" invisible="account_type != 'hub'"/>
+                        <field name="seller_id" invisible="account_type != 'seller'"/>
                         <field name="reference"/>
                         <field name="balance" widget="monetary" decoration-success="balance > 0" decoration-danger="balance &lt; 0"/>
                     </group>
@@ -235,7 +245,10 @@
                             <field name="amount" string="Amount" sum="Amount"/>
                             <field name="reference"/>
                             <field name="related_seller_id"/>
-                            <field name="shipment_id" invisible="transfer_type == 'cod_clearance'"/>
+                            <field name="hub_id" invisible="transfer_type not in ('hub_deposit', 'hub_banking')"/>
+                            <field name="shipment_id" invisible="transfer_type in ('cod_clearance', 'hub_deposit', 'hub_banking')"/>
+                            <field name="hub_deposit_transfer_id" invisible="not hub_deposit_transfer_id" readonly="1" force_save="1"/>
+                            <field name="hub_banking_transfer_id" invisible="not hub_banking_transfer_id" readonly="1" force_save="1"/>
                             <field name="cod_clearance_transfer_id" invisible="not cod_clearance_transfer_id" readonly="1" force_save="1"/>
                             <field name="currency_id" invisible="1"/>
                         </group>
@@ -245,8 +258,17 @@
                             <field name="transaction_ids" force_save="1">
                             </field>
                         </page>
+                        <page string="Deposited COD Payments" invisible='transfer_type != "hub_deposit"'>
+                            <field name="hub_deposit_payment_transfer_ids" force_save="1"
+                                     domain="[('hub_deposit_transfer_id', '=', False), ('id', '!=', id), ('transfer_type', '=', 'cod_payment'), ('to_account_id', '=', from_account_id)]"/>
+                        </page>
+                        <page string="Banked Hub Deposits" invisible='transfer_type != "hub_banking"'>
+                            <field name="hub_banking_deposit_transfer_ids" force_save="1"
+                                     domain="[('hub_banking_transfer_id', '=', False), ('id', '!=', id), ('transfer_type', '=', 'hub_deposit'), ('to_account_id', '=', from_account_id)]"/>
+                        </page>
                         <page string="Cleared COD Transfers" invisible='transfer_type != "cod_clearance"'>
-                            <field name="cod_clearance_payment_transfer_ids" force_save="1" domain="[('cod_clearance_transfer_id', '=', False), ('id', '!=', id), ('transfer_type', '=', 'cod_payment'), ('to_account_id', '=', from_account_id)]"></field>
+                            <field name="cod_clearance_payment_transfer_ids" force_save="1"
+                                     domain="[('cod_clearance_transfer_id', '=', False), ('id', '!=', id), ('transfer_type', '=', 'cod_payment')]"/>
                         </page>
                     </notebook>
                 </sheet>
@@ -609,6 +631,26 @@
         <field name="search_view_id" ref="view_logistics_account_transfer_search"/>
     </record>
 
+    <record id="action_logistics_account_transfer_hub_deposit" model="ir.actions.act_window">
+        <field name="name">Hub Deposit Transfers</field>
+        <field name="res_model">logistics.account.transfer</field>
+        <field name="view_mode">list,kanban,form</field>
+        <field name="view_id" ref="view_logistics_account_transfer_tree"/>
+        <field name="domain">[('transfer_type', '=', 'hub_deposit')]</field>
+        <field name="context">{'default_transfer_type': 'hub_deposit'}</field>
+        <field name="search_view_id" ref="view_logistics_account_transfer_search"/>
+    </record>
+
+    <record id="action_logistics_account_transfer_hub_banking" model="ir.actions.act_window">
+        <field name="name">Hub Banking Transfers</field>
+        <field name="res_model">logistics.account.transfer</field>
+        <field name="view_mode">list,kanban,form</field>
+        <field name="view_id" ref="view_logistics_account_transfer_tree"/>
+        <field name="domain">[('transfer_type', '=', 'hub_banking')]</field>
+        <field name="context">{'default_transfer_type': 'hub_banking'}</field>
+        <field name="search_view_id" ref="view_logistics_account_transfer_search"/>
+    </record>
+
     <record id="action_logistics_account_transfer_other" model="ir.actions.act_window">
         <field name="name">Other Transfers</field>
         <field name="res_model">logistics.account.transfer</field>
@@ -655,6 +697,18 @@
                 parent="menu_logistics_account_transfers"
                 sequence="20"
                 action="action_logistics_account_transfer_cod_clearance"
+    />
+    <menuitem id="menu_logistics_account_transfer_hub_deposit"
+                name="Hub Deposit Transfers"
+                parent="menu_logistics_account_transfers"
+                sequence="25"
+                action="action_logistics_account_transfer_hub_deposit"
+    />
+    <menuitem id="menu_logistics_account_transfer_hub_banking"
+                name="Hub Banking Transfers"
+                parent="menu_logistics_account_transfers"
+                sequence="26"
+                action="action_logistics_account_transfer_hub_banking"
     />
     <menuitem id="menu_logistics_account_transfer_other"
                 name="Other Transfers"

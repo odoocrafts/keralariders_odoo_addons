@@ -22,6 +22,7 @@ class ShipmentEvent(models.Model):
         ('de_self_assign', 'DE Self-Assign'),
         ('leg_assign', 'Leg Assign'),
         ('central_pass_through', 'Passed via Thrissur Hub'),
+        ('skip_hub_local', 'Local Delivery (Skip Hub)'),
         ('out_for_delivery', 'Out for Delivery'),
         ('delivered', 'Delivered'),
         ('status_override', 'Status Override'),

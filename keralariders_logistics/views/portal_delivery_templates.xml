@@ -12,6 +12,13 @@
                     <t t-set="icon" t-value="'/keralariders_logistics/static/src/img/shipment.svg'"/>
                     <t t-set="text">Assigned legs &amp; deliveries — scan QR to claim</t>
                 </t>
+                <t t-call="keralariders_logistics.logistics_portal_card">
+                    <t t-set="title">COD Hub Deposit</t>
+                    <t t-set="url" t-value="'/my/cod_deposit'"/>
+                    <t t-set="count_text" t-value="cod_undeposited_count if cod_undeposited_count else '0'"/>
+                    <t t-set="icon" t-value="'/keralariders_logistics/static/src/img/shipment.svg'"/>
+                    <t t-set="text">Deposit COD cash at a hub</t>
+                </t>
             </t>
         </xpath>
         <xpath expr="//div[hasclass('o_portal_docs')]" position="after">
@@ -52,6 +59,7 @@
                 if(btnScanList.length > 0) {
                     let html5QrCode = null;
                     let scanTargetSelector = null;
+                    let scanAutoSubmit = false;
 
                     function extractAwb(decodedText) {
                         if (!decodedText) {
@@ -102,6 +110,10 @@
                                 input.dispatchEvent(new Event('change', {bubbles: true}));
                                 hideQrModal();
                                 var form = input.closest('form');
+                                if (scanAutoSubmit &amp;&amp; form) {
+                                    form.submit();
+                                    return;
+                                }
                                 var submitBtn = form ? form.querySelector('button[type="submit"]') : null;
                                 if (submitBtn) {
                                     submitBtn.focus();
@@ -124,6 +136,7 @@
                         btnScan.addEventListener('click', function(e) {
                             e.preventDefault();
                             scanTargetSelector = btnScan.getAttribute('data-scan-target') || null;
+                            scanAutoSubmit = btnScan.getAttribute('data-scan-auto-submit') === '1';
                             if (typeof $ !== 'undefined') {
                                 $('#qrScannerModal').modal('show');
                             } else if (typeof bootstrap !== 'undefined') {
@@ -310,6 +323,26 @@
                         </form>
                     </t>
 
+                    <!-- Same-district skip-hub: after pickup go directly OFD -->
+                    <t t-if="can_skip_hub">
+                        <hr/>
+                        <h4 class="mb-3 text-success">
+                            <i class="fa fa-bolt"/> Local Delivery (Same District)
+                        </h4>
+                        <p class="text-muted small mb-3">
+                            Source and destination share the same hub. You can skip hub inventory
+                            and go directly out for delivery.
+                        </p>
+                        <form t-attf-action="/my/delivery/#{shipment.id}/skip_hub" method="post">
+                            <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                            <input type="hidden" name="scanned_code" t-att-value="shipment.name"/>
+                            <button type="submit" class="btn btn-lg btn-success w-100 fw-bold shadow-sm"
+                                    onclick="return confirm('Deliver locally and skip hub inventory?');">
+                                <i class="fa fa-motorcycle"/> Deliver Locally (Skip Hub)
+                            </button>
+                        </form>
+                    </t>
+
                     <!-- Hub-transfer actions while DE holds the package -->
                     <t t-if="shipment.custodian_type == 'de' and is_hub_transfer and shipment.state in ['picked', 'in_transit', 'at_central_hub']">
                         <hr/>
@@ -334,12 +367,16 @@
                         </t>
 
                         <t t-if="can_pass_through">
-                            <form t-attf-action="/my/delivery/#{shipment.id}/pass_through" method="post" class="mb-3">
+                            <h5 class="mb-2 text-secondary">Thrissur Pass-Through</h5>
+                            <p class="text-muted small">Scan the AWB QR to record optional physical pass-through at the main hub. Package stays In Transit.</p>
+                            <form t-attf-action="/my/delivery/#{shipment.id}/pass_through" method="post" class="mb-3" id="pass_through_form">
                                 <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
-                                <input type="hidden" name="scanned_code" t-att-value="shipment.name"/>
-                                <button type="submit" class="btn btn-outline-secondary w-100"
-                                        onclick="return confirm('Record optional Thrissur pass-through? Package stays In Transit.');">
-                                    <i class="fa fa-map-marker"/> Record Thrissur Pass-Through
+                                <input type="hidden" name="scanned_code" id="pass_through_scanned_code" value=""/>
+                                <button type="button"
+                                        class="btn btn-outline-secondary w-100 btn-scan-qr"
+                                        data-scan-target="#pass_through_scanned_code"
+                                        data-scan-auto-submit="1">
+                                    <i class="fa fa-qrcode"/> Scan AWB &amp; Record Thrissur Pass-Through
                                 </button>
                             </form>
                         </t>
@@ -438,6 +475,7 @@
                     </t>
                 </div>
             </div>
+            <t t-call="keralariders_logistics.portal_qr_scanner_modal"/>
         </t>
     </template>
 
@@ -496,6 +534,86 @@
                     </form>
                     <a t-attf-href="/my/delivery/#{shipment.id}?view=1" class="btn btn-link w-100">View details instead</a>
                 </div>
+            </div>
+        </t>
+    </template>
+
+    <template id="portal_my_cod_deposit" name="COD Hub Deposit">
+        <t t-call="portal.portal_layout">
+            <div class="container py-3" style="max-width: 720px;">
+                <a href="/my" class="btn btn-link ps-0 mb-2"><i class="fa fa-arrow-left"/> Back</a>
+                <h3 class="mb-3">Deposit COD Cash at Hub</h3>
+                <p class="text-muted">
+                    Transfer COD cash from your DE cash account to the selected hub.
+                    Hub managers later bank these deposits to the company account.
+                </p>
+                <t t-if="error">
+                    <div class="alert alert-danger"><t t-esc="error"/></div>
+                </t>
+                <t t-if="success">
+                    <div class="alert alert-success"><t t-esc="success"/></div>
+                </t>
+                <div class="alert alert-info">
+                    Cash account:
+                    <strong><t t-esc="cash_account.name if cash_account else 'Not configured'"/></strong>
+                    · Undeposited total:
+                    <strong><t t-esc="'%.2f' % undeposited_total"/></strong>
+                </div>
+                <t t-if="not undeposited">
+                    <p class="alert alert-secondary">No undeposited COD cash payments in your account.</p>
+                </t>
+                <t t-else="">
+                    <form action="/my/cod_deposit" method="post" class="card shadow-sm p-4">
+                        <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                        <div class="mb-3">
+                            <label class="form-label">Deposit at Hub</label>
+                            <select name="hub_id" class="form-select" required="1">
+                                <t t-foreach="hubs" t-as="hub">
+                                    <option t-att-value="hub.id"><t t-esc="hub.name"/></option>
+                                </t>
+                            </select>
+                        </div>
+                        <div class="table-responsive mb-3">
+                            <table class="table table-sm align-middle">
+                                <thead>
+                                    <tr>
+                                        <th></th>
+                                        <th>Ref</th>
+                                        <th>Date</th>
+                                        <th>AWB / Seller</th>
+                                        <th class="text-end">Amount</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <t t-foreach="undeposited" t-as="pay">
+                                        <tr>
+                                            <td>
+                                                <input type="checkbox" name="payment_ids" t-att-value="pay.id" checked="1"/>
+                                            </td>
+                                            <td><t t-esc="pay.name"/></td>
+                                            <td><t t-esc="pay.transfer_date"/></td>
+                                            <td>
+                                                <t t-esc="pay.shipment_id.name or ''"/>
+                                                <t t-if="pay.related_seller_id">
+                                                    <br/><small class="text-muted"><t t-esc="pay.related_seller_id.name"/></small>
+                                                </t>
+                                            </td>
+                                            <td class="text-end"><t t-esc="'%.2f' % pay.amount"/></td>
+                                        </tr>
+                                    </t>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Note (optional)</label>
+                            <input type="text" name="note" class="form-control" placeholder="Deposit slip / remarks"/>
+                        </div>
+                        <button type="submit" class="btn btn-primary w-100"
+                                onclick="return confirm('Confirm COD cash deposit at the selected hub?');">
+                            <i class="fa fa-building"/> Deposit Selected at Hub
+                        </button>
+                    </form>
+                </t>
             </div>
         </t>
     </template>

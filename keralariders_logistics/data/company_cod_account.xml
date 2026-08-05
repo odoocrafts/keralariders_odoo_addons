@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo noupdate="1">
+    <!-- Default company settlement account for COD hub banking → seller clearance -->
+    <record id="account_company_cod_settlement" model="logistics.account">
+        <field name="name">Company COD Settlement</field>
+        <field name="account_type">company</field>
+        <field name="reference">Default company account for hub banking and seller COD clearance</field>
+    </record>
+</odoo>

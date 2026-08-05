@@ -34,6 +34,11 @@ class SellerSignup(http.Controller):
             city = post.get('city')
             zip_code = post.get('zip')
             tax_id = post.get('tax_id')
+            bank_account_name = post.get('bank_account_name')
+            bank_account_number = post.get('bank_account_number')
+            bank_ifsc = post.get('bank_ifsc')
+            bank_name = post.get('bank_name')
+            bank_branch = post.get('bank_branch')
             avatar_base64 = post.get('avatar_base64')
             
             if not all([name, email, phone, password, confirm_password, street, city, zip_code]):
@@ -92,6 +97,11 @@ class SellerSignup(http.Controller):
                 'city': city,
                 'zip': zip_code,
                 'tax_id': tax_id,
+                'bank_account_name': bank_account_name,
+                'bank_account_number': bank_account_number,
+                'bank_ifsc': bank_ifsc,
+                'bank_name': bank_name,
+                'bank_branch': bank_branch,
                 'district_id': district_id,
                 'state_id': state_id,
                 'partner_id': user.partner_id.id

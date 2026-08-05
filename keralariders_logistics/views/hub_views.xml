@@ -71,6 +71,7 @@
                             <field name="hub_type"/>
                             <field name="active"/>
                             <field name="pincodes_count"/>
+                            <field name="cash_account_id" options="{'no_create': True}"/>
                         </group>
                     </group>
                     <notebook>

@@ -1,6 +1,6 @@
 {
     'name': 'Kerala Riders Logistics',
-    'version': '1.3',
+    'version': '1.4',
     'category': 'Operations/Logistics',
     'summary': 'Last-mile delivery management platform for Kerala Riders',
     'description': """
@@ -10,13 +10,14 @@ A web-based logistics management platform for Kerala Riders to manage
 last-mile delivery operations for vendors across Kerala.
 
 Features:
-- Seller/Vendor management with wallet system
+- Seller/Vendor management with wallet system and bank details
 - Bulk shipment upload via Excel
 - Delivery executive management
 - Hub custody and district hub network (14 Kerala hubs)
+- COD cash path: DE → Hub → Company → Seller
 - Real-time shipment tracking with public tracking URL
-- COD tracking and management
 - Seller / DE / Hub Manager portals
+- Same-district skip-hub local delivery
 - Comprehensive reporting
     """,
     'author': 'Odoocrafts',
@@ -32,6 +33,7 @@ Features:
         'data/hub_pincode_assign.xml',
         'data/sequence.xml',
         'data/delivery_charges.xml',
+        'data/company_cod_account.xml',
         'views/seller_views.xml',
         'views/wallet_views.xml',
         'views/wallet_recharge_views.xml',

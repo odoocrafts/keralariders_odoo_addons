@@ -11,6 +11,13 @@
                     <t t-set="icon" t-value="'/keralariders_logistics/static/src/img/shipment.svg'"/>
                     <t t-set="text">Hub inventory, receive &amp; dispatch</t>
                 </t>
+                <t t-call="keralariders_logistics.logistics_portal_card">
+                    <t t-set="title">Hub COD Banking</t>
+                    <t t-set="url" t-value="'/my/hub/cod'"/>
+                    <t t-set="count_text" t-value="hub_cod_unbanked_count if hub_cod_unbanked_count else '0'"/>
+                    <t t-set="icon" t-value="'/keralariders_logistics/static/src/img/shipment.svg'"/>
+                    <t t-set="text">Confirm deposits &amp; bank to company</t>
+                </t>
             </t>
         </xpath>
     </template>
@@ -58,7 +65,116 @@
                             </div>
                         </div>
                     </div>
+                    <div class="col-md-4">
+                        <div class="card shadow-sm h-100">
+                            <div class="card-body">
+                                <h5 class="card-title">COD Banking</h5>
+                                <p class="text-muted">Bank hub COD cash to company</p>
+                                <a href="/my/hub/cod" class="btn btn-warning btn-sm">Manage COD cash</a>
+                            </div>
+                        </div>
+                    </div>
                 </div>
+            </div>
+        </t>
+    </template>
+
+    <template id="portal_my_hub_cod" name="Hub COD Banking">
+        <t t-call="portal.portal_layout">
+            <div class="container py-3">
+                <a href="/my/hub" class="btn btn-link ps-0 mb-2"><i class="fa fa-arrow-left"/> Back</a>
+                <h3 class="mb-3">Hub COD Cash → Company</h3>
+                <t t-if="error">
+                    <div class="alert alert-danger"><t t-esc="error"/></div>
+                </t>
+                <t t-if="success">
+                    <div class="alert alert-success"><t t-esc="success"/></div>
+                </t>
+                <div class="alert alert-info">
+                    Unbanked deposits total: <strong><t t-esc="'%.2f' % unbanked_total"/></strong>
+                </div>
+                <t t-if="not unbanked">
+                    <p class="alert alert-secondary">No unbanked hub deposits right now.</p>
+                </t>
+                <t t-else="">
+                    <form action="/my/hub/cod" method="post" class="card shadow-sm p-4">
+                        <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                        <div class="mb-3">
+                            <label class="form-label">Hub</label>
+                            <select name="hub_id" class="form-select" required="1">
+                                <t t-foreach="hubs" t-as="hub">
+                                    <option t-att-value="hub.id"><t t-esc="hub.name"/></option>
+                                </t>
+                            </select>
+                        </div>
+                        <div class="table-responsive mb-3">
+                            <table class="table table-sm align-middle">
+                                <thead>
+                                    <tr>
+                                        <th></th>
+                                        <th>Ref</th>
+                                        <th>Date</th>
+                                        <th>Amount</th>
+                                        <th>Hub</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <t t-foreach="unbanked" t-as="dep">
+                                        <tr>
+                                            <td>
+                                                <input type="checkbox" name="deposit_ids" t-att-value="dep.id" checked="1"/>
+                                            </td>
+                                            <td><t t-esc="dep.name"/></td>
+                                            <td><t t-esc="dep.transfer_date"/></td>
+                                            <td><t t-esc="'%.2f' % dep.amount"/></td>
+                                            <td><t t-esc="dep.hub_id.name or dep.to_account_id.name"/></td>
+                                        </tr>
+                                    </t>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Note (optional)</label>
+                            <input type="text" name="note" class="form-control" placeholder="Banking slip / reference"/>
+                        </div>
+                        <button type="submit" class="btn btn-warning w-100"
+                                onclick="return confirm('Confirm banking selected deposits to company account?');">
+                            <i class="fa fa-university"/> Bank Selected to Company
+                        </button>
+                    </form>
+                </t>
+                <t t-if="deposits">
+                    <h5 class="mt-4">Recent hub deposits</h5>
+                    <div class="table-responsive">
+                        <table class="table table-hover table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Ref</th>
+                                    <th>Date</th>
+                                    <th>Amount</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <t t-foreach="deposits" t-as="dep">
+                                    <tr>
+                                        <td><t t-esc="dep.name"/></td>
+                                        <td><t t-esc="dep.transfer_date"/></td>
+                                        <td><t t-esc="'%.2f' % dep.amount"/></td>
+                                        <td>
+                                            <t t-if="dep.hub_banking_transfer_id">
+                                                <span class="badge text-bg-success">Banked</span>
+                                            </t>
+                                            <t t-else="">
+                                                <span class="badge text-bg-warning">At hub</span>
+                                            </t>
+                                        </td>
+                                    </tr>
+                                </t>
+                            </tbody>
+                        </table>
+                    </div>
+                </t>
             </div>
         </t>
     </template>

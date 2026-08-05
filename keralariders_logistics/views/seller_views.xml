@@ -26,6 +26,9 @@
                 <header>
                     <button name="action_grant_portal_access" type="object" string="Grant Portal Access" class="btn-primary" invisible="not partner_id"/>
                     <button name="action_update_password" type="object" string="Update Password" class="btn-primary" invisible="not user_id"/>
+                    <button name="action_clear_cod_to_seller" type="object" string="Clear COD to Seller"
+                            class="btn-secondary" groups="keralariders_logistics.group_logistics_admin"
+                            confirm="Clear banked COD payments from Company account to this seller?"/>
                 </header>
                 <sheet>
                     <div class="oe_button_box" name="button_box">
@@ -97,6 +100,7 @@
                             <field name="pan_number" />
                             <field name="delivery_package_id" />
                             <field name="user_id" invisible="not user_id"/>
+                            <field name="seller_account_id" options="{'no_create': True}"/>
                         </group>
                         <group string="Address Information">
                             <field name="street" />
@@ -107,6 +111,13 @@
                             <field name="country_id" options="{'no_create': True}" />
                             <field name="state_id" options="{'no_create': True}" />
                             <field name="tax_id" />
+                        </group>
+                        <group string="Bank Details (COD Settlement)">
+                            <field name="bank_account_name"/>
+                            <field name="bank_account_number"/>
+                            <field name="bank_ifsc"/>
+                            <field name="bank_name"/>
+                            <field name="bank_branch"/>
                         </group>
 
                     </group>

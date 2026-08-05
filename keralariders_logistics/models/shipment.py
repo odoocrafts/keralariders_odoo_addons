@@ -64,7 +64,20 @@ class Shipment(models.Model):
     def write(self, vals):
         if vals.get('state') == 'cancel':
             vals = dict(vals, state='cancelled')
+        # Harden: non-admins cannot freely write state via RPC/UI; use transition methods.
+        if 'state' in vals and not self.env.context.get('allow_shipment_state_write'):
+            is_admin = self.env.user.has_group('keralariders_logistics.group_logistics_admin')
+            if not is_admin:
+                raise UserError(_(
+                    "Shipment status can only be changed via the dedicated action buttons "
+                    "(pickup, hub receive, dispatch, deliver, etc.). "
+                    "Contact a Logistics Administrator for overrides."
+                ))
         return super().write(vals)
+
+    def _write_with_state(self, vals):
+        """Internal helper for transition methods that may update state."""
+        return self.with_context(allow_shipment_state_write=True).write(vals)
 
     # -------------------------------------------------------------------------
     # Custody
@@ -655,7 +668,7 @@ class Shipment(models.Model):
                 vals['delivery_executive_id'] = de.id
             if pickup_leg:
                 vals['active_leg_id'] = pickup_leg.id
-            shipment.write(vals)
+            shipment._write_with_state(vals)
             shipment._lock_route()
         return True
 
@@ -705,7 +718,7 @@ class Shipment(models.Model):
                 vals['state'] = 'in_transit'
             elif shipment.state == 'picked':
                 vals['state'] = 'in_transit'
-            shipment.write(vals)
+            shipment._write_with_state(vals)
             shipment._lock_route()
         return True
 
@@ -752,7 +765,7 @@ class Shipment(models.Model):
                 scanned_code=scanned_code or shipment.name,
                 note=note,
             )
-            shipment.write({
+            shipment._write_with_state({
                 'state': new_state,
                 'custodian_type': 'hub',
                 'custodian_de_id': False,
@@ -827,7 +840,7 @@ class Shipment(models.Model):
                 note=note,
                 leg=leg,
             )
-            shipment.write({
+            shipment._write_with_state({
                 'state': new_state,
                 'custodian_type': 'de',
                 'custodian_de_id': delivery_executive.id,
@@ -890,7 +903,7 @@ class Shipment(models.Model):
                 note=note or _("Departed %s for hub transfer.") % (left_hub.name if left_hub else _('hub')),
                 leg=shipment.active_leg_id,
             )
-            shipment.write({
+            shipment._write_with_state({
                 'state': 'in_transit',
                 'current_hub_id': False,
             })
@@ -952,7 +965,7 @@ class Shipment(models.Model):
             )
             # Keep in_transit; location is on the event (hub_id), not as hub inventory presence
             if shipment.state != 'in_transit' and shipment.custodian_type == 'de':
-                shipment.write({'state': 'in_transit'})
+                shipment._write_with_state({'state': 'in_transit'})
             shipment._lock_route()
         return True
 
@@ -971,7 +984,7 @@ class Shipment(models.Model):
                 to_custodian=shipment.custodian_type,
                 note=_("Cancelled by %s.") % self.env.user.name,
             )
-            shipment.write({
+            shipment._write_with_state({
                 'state': 'cancelled',
             })
         return True
@@ -1012,7 +1025,78 @@ class Shipment(models.Model):
             }
             if delivery_remarks is not None:
                 vals['delivery_remarks'] = delivery_remarks
-            shipment.write(vals)
+            shipment._write_with_state(vals)
+        return True
+
+    def can_skip_hub_local_delivery(self, de=None):
+        """Same-district (same source/dest hub) packages can go OFD after pickup without hub inventory."""
+        self.ensure_one()
+        if self.state != 'picked' or self.custodian_type != 'de':
+            return False
+        if de and self.custodian_de_id and self.custodian_de_id != de:
+            return False
+        source = self.source_hub_id
+        dest = self.destination_hub_id
+        if not source or not dest or source != dest:
+            return False
+        # Cross-district always requires hubs
+        if self.shipping_from_district_id and self.shipping_to_district_id:
+            if self.shipping_from_district_id != self.shipping_to_district_id:
+                return False
+        return True
+
+    def action_skip_hub_local_delivery(self, actor_de=None, scanned_code=None, note=None):
+        """Same-district shortcut: after pickup, go directly out for delivery (skip hub inventory).
+
+        Completes the pickup leg, marks any non-delivery leftover legs as skipped,
+        starts the delivery leg, and sets custody/state to out_for_delivery.
+        """
+        for shipment in self:
+            de = actor_de or shipment.custodian_de_id or shipment.delivery_executive_id
+            if not shipment.can_skip_hub_local_delivery(de):
+                raise UserError(
+                    _("Shipment %s is not eligible for local delivery skip-hub "
+                      "(requires same-district / same hub, picked, DE custody).")
+                    % shipment.name
+                )
+            shipment._sync_active_leg()
+            pickup_leg = shipment.estimated_route_ids.filtered(
+                lambda l: l.operation_type == 'pickup' and l.state != 'done'
+            )[:1]
+            delivery_leg = shipment.estimated_route_ids.filtered(
+                lambda l: l.operation_type == 'delivery' and l.state not in ('done', 'skipped')
+            )[:1]
+            if pickup_leg:
+                if pickup_leg.state in ('planned', 'assigned', 'in_progress'):
+                    shipment._complete_leg(pickup_leg)
+            # Skip any non-delivery legs still open (should be none on same-hub routes)
+            for leg in shipment.estimated_route_ids.filtered(
+                lambda l: l.operation_type != 'delivery' and l.state not in ('done', 'skipped')
+            ):
+                leg.write({
+                    'state': 'skipped',
+                    'completed_at': fields.Datetime.now(),
+                })
+            if delivery_leg:
+                shipment._assign_leg_de(delivery_leg, de, start=True)
+            shipment._create_custody_event(
+                'skip_hub_local',
+                to_custodian='de',
+                hub=shipment.source_hub_id,
+                actor_de=de,
+                scanned_code=scanned_code or shipment.name,
+                note=note or _("Local same-district delivery — hub inventory skipped."),
+                leg=delivery_leg,
+            )
+            shipment._write_with_state({
+                'state': 'out_for_delivery',
+                'custodian_type': 'de',
+                'custodian_de_id': de.id if de else False,
+                'delivery_executive_id': de.id if de else shipment.delivery_executive_id.id,
+                'current_hub_id': False,
+                'active_leg_id': delivery_leg.id if delivery_leg else False,
+            })
+            shipment._lock_route()
         return True
 
     company_id = fields.Many2one('res.company', string='Company', required=True, default=lambda self: self.env.company)
