@@ -427,6 +427,6 @@
     </record>
 
     <!-- Menu Item -->
-    <menuitem id="menu_shipment" name="Shipments" action="action_shipment" parent="menu_logistics_root" sequence="2"/>
+    <menuitem id="menu_shipment" name="Shipments" action="action_shipment" parent="menu_logistics_operations" sequence="2"/>
 
 </odoo>

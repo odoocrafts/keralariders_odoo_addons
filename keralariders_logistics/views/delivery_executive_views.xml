@@ -232,8 +232,8 @@
 
     <menuitem id="menu_logistics_delivery_executive"
                 name="Delivery Executives"
-                parent="menu_logistics_root"
+                parent="menu_logistics_partners"
                 action="action_delivery_executive"
-                sequence="40"
+                sequence="2"
     />
 </odoo>

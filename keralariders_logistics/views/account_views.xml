@@ -630,8 +630,8 @@
 
     <menuitem id="menu_logistics_account"
                 name="Bank/Cash Accounts"
-                parent="menu_logistics_root"
-                sequence="70"
+                parent="menu_logistics_finance"
+                sequence="20"
     />
     <menuitem id="menu_logistics_account_account"
                 name="Accounts"
@@ -641,8 +641,8 @@
     />
     <menuitem id="menu_logistics_account_transfers"
                 name="Account Transfers"
-                parent="menu_logistics_root"
-                sequence="60"
+                parent="menu_logistics_finance"
+                sequence="30"
     />
     <menuitem id="menu_logistics_account_transfer_cod_payment"
                 name="COD Payment Transfers"

@@ -271,5 +271,11 @@
 
     <menuitem id="menu_logistics_root" name="Logistics Management" web_icon="keralariders_logistics,static/description/icon.png" sequence="0"/>
 
-    <menuitem id="menu_logistics_seller_root" parent="menu_logistics_root" name="Sellers" action="action_logistics_seller"/>
+    <!-- Top-level menu groups -->
+    <menuitem id="menu_logistics_operations" name="Operations" parent="menu_logistics_root" sequence="10"/>
+    <menuitem id="menu_logistics_partners" name="Partners" parent="menu_logistics_root" sequence="30"/>
+    <menuitem id="menu_logistics_finance" name="Finance" parent="menu_logistics_root" sequence="40"/>
+    <menuitem id="menu_logistics_configuration" name="Configuration" parent="menu_logistics_root" sequence="50"/>
+
+    <menuitem id="menu_logistics_seller_root" parent="menu_logistics_partners" name="Sellers" action="action_logistics_seller" sequence="1"/>
 </odoo>

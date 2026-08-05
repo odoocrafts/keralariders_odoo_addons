@@ -241,7 +241,7 @@
         </field>
     </record>
 
-    <menuitem id="menu_logistics_hub_root" parent="menu_logistics_root" sequence="90" name="Hubs &amp; Pincodes"/>
+    <menuitem id="menu_logistics_hub_root" parent="menu_logistics_root" sequence="20" name="Network"/>
     <menuitem id="menu_logistics_hub" parent="menu_logistics_hub_root" sequence="1" name="Hubs" action="action_logistics_hub"/>
     <menuitem id="menu_logistics_pincode" parent="menu_logistics_hub_root" sequence="2" name="Pincodes" action="action_logistics_pincode"/>
     <menuitem id="menu_hub_inventory" parent="menu_logistics_hub_root" sequence="3" name="Hub Inventory" action="action_hub_inventory"/>

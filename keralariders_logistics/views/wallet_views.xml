@@ -338,7 +338,7 @@
 
     <menuitem id="menu_logistics_wallet"
                 name="Wallets"
-                parent="menu_logistics_root"
+                parent="menu_logistics_finance"
                 sequence="10"
     />
     <menuitem id="menu_logistics_wallet_wallet"

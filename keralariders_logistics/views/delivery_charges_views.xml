@@ -67,9 +67,9 @@
     <menuitem
         id="menu_delivery_charges"
         name="Delivery Charges"
-        parent="menu_logistics_root"
+        parent="menu_logistics_configuration"
         action="action_delivery_charges"
-        sequence="60"
+        sequence="20"
         active="False"/>
 
 </odoo>
