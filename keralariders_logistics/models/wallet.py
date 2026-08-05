@@ -102,12 +102,16 @@ class WalletRechargeRequest(models.Model):
     _inherit = ['mail.thread', 'mail.activity.mixin']
     name = fields.Char(string="Reference", readonly=True, store=True, copy=False, default=lambda self: _('New'))
 
+    _ACTIVITY_TYPE_TODO = 'mail.mail_activity_data_todo'
+
     @api.model_create_multi
     def create(self, vals_list):
         for vals in vals_list:
             if vals.get('name', _('New')) == _('New'):
                 vals['name'] = self.env['ir.sequence'].sudo().next_by_code('logistics.wallet.recharge.request') or _('New')
-        return super(WalletRechargeRequest, self).create(vals_list)
+        records = super(WalletRechargeRequest, self).create(vals_list)
+        records.filtered(lambda r: r.state == 'pending_approval')._schedule_admin_approval_activities()
+        return records
     
     request_date = fields.Datetime(string="Request Date", default=fields.Datetime.now)
     seller_id = fields.Many2one('logistics.seller', string="Seller", required=True)
@@ -135,6 +139,48 @@ class WalletRechargeRequest(models.Model):
     state = fields.Selection([('pending_approval', 'Pending Approval'), ('approved', 'Approved'), ('cancelled', 'Cancelled')], string="Status", default='pending_approval')
     wallet_transaction_id = fields.Many2one('logistics.wallet.transaction', string="Wallet Transaction")
 
+    def _get_logistics_admin_users(self):
+        """Internal users in logistics admin group (excludes portal/public/system)."""
+        admin_group = self.env.ref('keralariders_logistics.group_logistics_admin', raise_if_not_found=False)
+        if not admin_group:
+            return self.env['res.users']
+        root_user = self.env.ref('base.user_root', raise_if_not_found=False)
+        return admin_group.user_ids.filtered(
+            lambda u: u.active and not u.share and (not root_user or u != root_user)
+        )
+
+    def _schedule_admin_approval_activities(self):
+        """Create one To-Do activity per logistics admin for pending recharge requests."""
+        admin_users = self._get_logistics_admin_users()
+        if not admin_users:
+            return self.env['mail.activity']
+        activities = self.env['mail.activity']
+        for request in self:
+            amount = request.currency_id.format(request.requested_amount) if request.currency_id else request.requested_amount
+            note = _(
+                "Seller: %(seller)s<br/>"
+                "Amount: %(amount)s<br/>"
+                "Reference: %(reference)s",
+                seller=request.seller_id.display_name or '',
+                amount=amount,
+                reference=request.name or '',
+            )
+            for user in admin_users:
+                activities |= request.sudo().activity_schedule(
+                    self._ACTIVITY_TYPE_TODO,
+                    summary=_('Wallet recharge pending approval'),
+                    note=note,
+                    user_id=user.id,
+                )
+        return activities
+
+    def _complete_admin_approval_activities(self, feedback):
+        """Mark open automated To-Do activities on these requests as done."""
+        self.sudo().activity_feedback(
+            [self._ACTIVITY_TYPE_TODO],
+            feedback=feedback,
+        )
+
     def action_approve_request(self):
         if self.recharged_amount <= 0:
             raise UserError(f'Recharge amount must be greater than 0.')
@@ -148,14 +194,17 @@ class WalletRechargeRequest(models.Model):
                 'reference': f'Recharge - {self.display_name}',
             }).id
             self.state = 'approved'
+            self._complete_admin_approval_activities(_('Approved'))
 
     def action_cancel(self):
         if self.wallet_transaction_id:
             self.wallet_transaction_id.unlink()
         self.state = 'cancelled'
+        self._complete_admin_approval_activities(_('Cancelled'))
 
     def action_reset(self):
         self.state = 'pending_approval'
+        self._schedule_admin_approval_activities()
 
 
     def action_view_wallet_transaction(self):
