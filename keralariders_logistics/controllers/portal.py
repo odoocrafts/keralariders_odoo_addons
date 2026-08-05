@@ -627,10 +627,7 @@ class LogisticsPortal(CustomerPortal):
         else:
             preferred_drop_hub = shipment.source_hub_id
 
-        event_types = dict(
-            request.env['logistics.shipment.event'].fields_get(allfields=['event_type'])['event_type']['selection']
-        )
-        tracking_events = shipment.event_ids.sorted(lambda e: (e.event_time or fields.Datetime.now(), e.id), reverse=True)
+        tracking_events = shipment.get_tracking_timeline(newest_first=False)
 
         values = {
             'shipment': shipment,
@@ -645,7 +642,6 @@ class LogisticsPortal(CustomerPortal):
             'can_pass_through': shipment.can_record_central_pass_through(delivery_executive),
             'is_hub_transfer': bool(active_leg and active_leg.operation_type == 'hub_transfer'),
             'tracking_events': tracking_events,
-            'event_type_labels': event_types,
             'error': request.session.pop('error', None),
             'success': request.session.pop('success', None),
         }

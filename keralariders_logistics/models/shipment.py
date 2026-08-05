@@ -120,6 +120,254 @@ class Shipment(models.Model):
             })
 
     # -------------------------------------------------------------------------
+    # Public / portal tracking helpers
+    # -------------------------------------------------------------------------
+    _TRACKING_PROGRESS_STEPS = [
+        ('order_placed', 'Order Placed'),
+        ('picked_up', 'Picked Up'),
+        ('at_hub', 'At Hub'),
+        ('in_transit', 'In Transit'),
+        ('out_for_delivery', 'Out for Delivery'),
+        ('delivered', 'Delivered'),
+    ]
+
+    # Map shipment.state → progress step index (0-based). -1 = terminal non-delivery.
+    _STATE_TO_PROGRESS_INDEX = {
+        'order_added': 0,
+        'pickup_requested': 0,
+        'picked': 1,
+        'at_source_hub': 2,
+        'at_central_hub': 2,
+        'at_destination_hub': 2,
+        'in_transit': 3,
+        'out_for_delivery': 4,
+        'delivered': 5,
+        'cancelled': -1,
+        'return_requested': -1,
+        'return_picked': -1,
+        'returned': -1,
+    }
+
+    def _format_tracking_datetime(self, value):
+        """Format a datetime (or date) for public tracking display."""
+        self.ensure_one()
+        if not value:
+            return ''
+        if isinstance(value, str):
+            value = fields.Datetime.from_string(value)
+        # Date-only (no time) — format without time
+        if not hasattr(value, 'hour'):
+            return value.strftime('%d %b %Y')
+        local_dt = fields.Datetime.context_timestamp(self, value)
+        return local_dt.strftime('%d %b %Y, %I:%M %p')
+
+    def get_tracking_origin_label(self):
+        """Human-readable origin: district/state, else source hub, else pincode."""
+        self.ensure_one()
+        parts = []
+        if self.shipping_from_district_id:
+            parts.append(self.shipping_from_district_id.name)
+        elif self.source_hub_id:
+            parts.append(self.source_hub_id.name)
+        if self.shipping_from_state_id:
+            parts.append(self.shipping_from_state_id.name)
+        if parts:
+            return ', '.join(parts)
+        return self.shipping_from_zip or _('—')
+
+    def get_tracking_destination_label(self):
+        """Human-readable destination: district/state, else dest hub, else pincode."""
+        self.ensure_one()
+        parts = []
+        if self.shipping_to_district_id:
+            parts.append(self.shipping_to_district_id.name)
+        elif self.destination_hub_id:
+            parts.append(self.destination_hub_id.name)
+        if self.shipping_to_state_id:
+            parts.append(self.shipping_to_state_id.name)
+        if parts:
+            return ', '.join(parts)
+        return self.shipping_to_zip or _('—')
+
+    def get_tracking_delivery_display(self):
+        """Label + value for the delivery date panel (actual vs estimated)."""
+        self.ensure_one()
+        delivered_at = self.delivered_on or self.actual_delivery_date
+        if self.state == 'delivered' or delivered_at:
+            return {
+                'label': _('Delivered on'),
+                'value': self._format_tracking_datetime(delivered_at) if delivered_at else _('Delivered'),
+                'is_delivered': True,
+            }
+        if self.estimated_delivery_date:
+            return {
+                'label': _('Estimated Delivery'),
+                'value': self.estimated_delivery_date.strftime('%d %b %Y'),
+                'is_delivered': False,
+            }
+        return {
+            'label': _('Estimated Delivery'),
+            'value': False,  # omit "Pending" in UI
+            'is_delivered': False,
+        }
+
+    def get_tracking_progress_steps(self):
+        """Vertical journey steps with done / current / pending status."""
+        self.ensure_one()
+        current_idx = self._STATE_TO_PROGRESS_INDEX.get(self.state, 0)
+        steps = []
+        for idx, (_key, label) in enumerate(self._TRACKING_PROGRESS_STEPS):
+            if self.state == 'delivered':
+                status = 'done'
+            elif current_idx < 0:
+                # Cancelled / return: mark early steps done when we know pickup happened
+                if idx == 0:
+                    status = 'done'
+                elif idx == 1 and (self.picked_on or self.state in ('return_picked', 'returned')):
+                    status = 'done'
+                else:
+                    status = 'pending'
+            elif idx < current_idx:
+                status = 'done'
+            elif idx == current_idx:
+                status = 'current'
+            else:
+                status = 'pending'
+            steps.append({
+                'key': _key,
+                'label': label,
+                'status': status,
+            })
+        return steps
+
+    def _synthesize_tracking_timeline(self):
+        """Minimal timeline from known dates/state when no custody events exist.
+
+        Only include steps we can back with real timestamps (or current state),
+        so delivered packages never show an empty history.
+        """
+        self.ensure_one()
+        entries = []
+        order_dt = self.create_date
+        if not order_dt and self.order_date:
+            order_dt = fields.Datetime.to_datetime(self.order_date)
+        if order_dt:
+            entries.append({
+                'label': _('Order Placed'),
+                'time': order_dt,
+                'time_display': self._format_tracking_datetime(order_dt),
+                'detail': '',
+                'event_type': 'order_added',
+            })
+
+        if self.pickup_requested_on:
+            entries.append({
+                'label': _('Pickup Requested'),
+                'time': self.pickup_requested_on,
+                'time_display': self._format_tracking_datetime(self.pickup_requested_on),
+                'detail': '',
+                'event_type': 'pickup_requested',
+            })
+
+        past_pickup_states = (
+            'picked', 'in_transit', 'at_source_hub', 'at_central_hub',
+            'at_destination_hub', 'out_for_delivery', 'delivered',
+            'return_picked', 'returned',
+        )
+        if self.picked_on or self.state in past_pickup_states:
+            picked_dt = self.picked_on or order_dt or self.write_date
+            detail = self.source_hub_id.name if self.source_hub_id else ''
+            entries.append({
+                'label': _('Picked Up'),
+                'time': picked_dt,
+                'time_display': self._format_tracking_datetime(picked_dt),
+                'detail': detail,
+                'event_type': 'pickup_scan',
+            })
+
+        # Current hub / in-transit status (only when not yet delivered)
+        if self.state in ('at_source_hub', 'at_central_hub', 'at_destination_hub', 'in_transit'):
+            hub = self.current_hub_id
+            if self.state == 'at_source_hub':
+                hub_label = _('At Source Hub')
+                hub = hub or self.source_hub_id
+            elif self.state == 'at_central_hub':
+                hub_label = _('At Central Hub')
+            elif self.state == 'at_destination_hub':
+                hub_label = _('At Destination Hub')
+                hub = hub or self.destination_hub_id
+            else:
+                hub_label = _('In Transit')
+            hub_dt = self.write_date or self.picked_on or order_dt
+            entries.append({
+                'label': hub_label,
+                'time': hub_dt,
+                'time_display': self._format_tracking_datetime(hub_dt),
+                'detail': hub.name if hub else '',
+                'event_type': 'hub_receive' if self.state != 'in_transit' else 'depart_hub',
+            })
+
+        if self.state == 'out_for_delivery':
+            de_name = self.delivery_executive_id.name if self.delivery_executive_id else ''
+            ofd_dt = self.write_date or self.picked_on or order_dt
+            entries.append({
+                'label': _('Out for Delivery'),
+                'time': ofd_dt,
+                'time_display': self._format_tracking_datetime(ofd_dt),
+                'detail': (_('by %s') % de_name) if de_name else '',
+                'event_type': 'out_for_delivery',
+            })
+
+        delivered_at = self.delivered_on or self.actual_delivery_date
+        if self.state == 'delivered' or delivered_at:
+            entries.append({
+                'label': _('Delivered'),
+                'time': delivered_at or self.write_date,
+                'time_display': self._format_tracking_datetime(delivered_at or self.write_date),
+                'detail': '',
+                'event_type': 'delivered',
+            })
+
+        if self.state == 'cancelled':
+            entries.append({
+                'label': _('Cancelled'),
+                'time': self.write_date,
+                'time_display': self._format_tracking_datetime(self.write_date),
+                'detail': '',
+                'event_type': 'cancelled',
+            })
+
+        return entries
+
+    def get_tracking_timeline(self, newest_first=False):
+        """Timeline entries for public track / DE portal.
+
+        Prefer real custody events; otherwise synthesize from known dates/state.
+        Default order is chronological (oldest → newest).
+        """
+        self.ensure_one()
+        if self.event_ids:
+            labels = dict(self.env['logistics.shipment.event']._fields['event_type'].selection)
+            events = self.event_ids.sorted(
+                key=lambda e: (e.event_time, e.id),
+            )
+            entries = []
+            for event in events:
+                entries.append({
+                    'label': labels.get(event.event_type, event.event_type),
+                    'time': event.event_time,
+                    'time_display': self._format_tracking_datetime(event.event_time),
+                    'detail': event.get_timeline_detail() or '',
+                    'event_type': event.event_type,
+                })
+        else:
+            entries = self._synthesize_tracking_timeline()
+
+        if newest_first:
+            entries = list(reversed(entries))
+        return entries
+
+    # -------------------------------------------------------------------------
     # Route leg helpers (Phase 2)
     # -------------------------------------------------------------------------
     def _get_next_actionable_leg(self):

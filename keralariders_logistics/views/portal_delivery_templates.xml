@@ -435,7 +435,6 @@
 
                     <t t-call="keralariders_logistics.shipment_tracking_timeline">
                         <t t-set="timeline_events" t-value="tracking_events"/>
-                        <t t-set="timeline_event_labels" t-value="event_type_labels"/>
                     </t>
                 </div>
             </div>

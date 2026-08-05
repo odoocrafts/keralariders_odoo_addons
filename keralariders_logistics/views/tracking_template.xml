@@ -8,7 +8,7 @@
                 <t t-call-assets="web.assets_frontend" t-css="false"/>
                 <style>
                     body {
-                        background-color: #f8f9fa;
+                        background-color: #f3f4f6;
                     }
                     .tracking-card {
                         border-radius: 1rem;
@@ -98,90 +98,294 @@
                 <meta name="viewport" content="width=device-width, initial-scale=1"/>
                 <t t-call-assets="web.assets_frontend" t-js="false"/>
                 <t t-call-assets="web.assets_frontend" t-css="false"/>
+                <style>
+                    body { background-color: #f3f4f6; }
+                    .kx-track-card {
+                        border: none;
+                        border-radius: 1rem;
+                        box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+                        overflow: hidden;
+                    }
+                    .kx-track-header {
+                        background: linear-gradient(135deg, #1f2937, #374151);
+                        color: #fff;
+                        padding: 1.75rem 1.25rem;
+                        text-align: center;
+                    }
+                    .kx-track-header .company-logo {
+                        max-height: 56px;
+                        max-width: 100%;
+                        margin-bottom: 0.75rem;
+                        background: rgba(255,255,255,0.95);
+                        padding: 6px 12px;
+                        border-radius: 8px;
+                    }
+                    .kx-status-badge {
+                        display: inline-block;
+                        padding: 0.35rem 0.9rem;
+                        border-radius: 999px;
+                        font-weight: 700;
+                        font-size: 0.95rem;
+                        letter-spacing: 0.02em;
+                        background: rgba(255,255,255,0.15);
+                        color: #fff;
+                    }
+                    .kx-status-badge.is-delivered {
+                        background: #059669;
+                        color: #fff;
+                    }
+                    .kx-status-badge.is-ofd {
+                        background: #d97706;
+                        color: #fff;
+                    }
+                    .kx-status-badge.is-cancelled {
+                        background: #dc2626;
+                        color: #fff;
+                    }
+                    .kx-meta-label {
+                        font-size: 0.75rem;
+                        text-transform: uppercase;
+                        letter-spacing: 0.06em;
+                        color: #6b7280;
+                        font-weight: 700;
+                        margin-bottom: 0.25rem;
+                    }
+                    .kx-meta-value {
+                        font-size: 1.05rem;
+                        color: #111827;
+                        font-weight: 600;
+                        margin-bottom: 0;
+                    }
+                    .kx-meta-value.muted { color: #9ca3af; font-weight: 500; }
+                    .kx-route-row {
+                        background: #f9fafb;
+                        border-radius: 0.75rem;
+                        padding: 1rem 1.1rem;
+                    }
+                    .kx-progress {
+                        list-style: none;
+                        padding: 0;
+                        margin: 0;
+                        position: relative;
+                    }
+                    .kx-progress::before {
+                        content: '';
+                        position: absolute;
+                        left: 11px;
+                        top: 8px;
+                        bottom: 8px;
+                        width: 2px;
+                        background: #e5e7eb;
+                    }
+                    .kx-progress-step {
+                        position: relative;
+                        padding-left: 2.25rem;
+                        padding-bottom: 1rem;
+                    }
+                    .kx-progress-step:last-child { padding-bottom: 0; }
+                    .kx-progress-dot {
+                        position: absolute;
+                        left: 4px;
+                        top: 4px;
+                        width: 16px;
+                        height: 16px;
+                        border-radius: 50%;
+                        background: #fff;
+                        border: 2px solid #d1d5db;
+                        z-index: 1;
+                    }
+                    .kx-progress-step.is-done .kx-progress-dot {
+                        background: #059669;
+                        border-color: #059669;
+                    }
+                    .kx-progress-step.is-current .kx-progress-dot {
+                        background: #1f2937;
+                        border-color: #1f2937;
+                        box-shadow: 0 0 0 3px rgba(31, 41, 55, 0.2);
+                    }
+                    .kx-progress-label {
+                        font-weight: 600;
+                        color: #9ca3af;
+                        font-size: 0.95rem;
+                    }
+                    .kx-progress-step.is-done .kx-progress-label,
+                    .kx-progress-step.is-current .kx-progress-label {
+                        color: #111827;
+                    }
+                    .kx-event-list {
+                        list-style: none;
+                        padding: 0;
+                        margin: 0;
+                        border-left: 3px solid #e5e7eb;
+                        padding-left: 1.25rem;
+                    }
+                    .kx-event-item {
+                        position: relative;
+                        margin-bottom: 1rem;
+                    }
+                    .kx-event-item:last-child { margin-bottom: 0; }
+                    .kx-event-item::before {
+                        content: '';
+                        position: absolute;
+                        left: -1.55rem;
+                        top: 0.4rem;
+                        width: 10px;
+                        height: 10px;
+                        border-radius: 50%;
+                        background: #374151;
+                        border: 2px solid #fff;
+                        box-shadow: 0 0 0 2px #d1d5db;
+                    }
+                    .kx-event-item.is-delivered::before {
+                        background: #059669;
+                        box-shadow: 0 0 0 2px #a7f3d0;
+                    }
+                    .kx-facts {
+                        display: flex;
+                        flex-wrap: wrap;
+                        gap: 0.75rem 1.25rem;
+                        font-size: 0.9rem;
+                        color: #4b5563;
+                    }
+                    .kx-facts strong { color: #111827; }
+                    .kx-delivered-banner {
+                        background: #ecfdf5;
+                        border: 1px solid #a7f3d0;
+                        color: #065f46;
+                        border-radius: 0.75rem;
+                        padding: 1rem;
+                        text-align: center;
+                    }
+                </style>
             </t>
             <t t-set="title">Track Shipment <t t-esc="shipment.name"/></t>
-            <div class="container mt-3 mt-md-5 mb-5">
-                <div class="card shadow-sm border-0 rounded">
-                    <div class="card-header bg-primary text-white text-center py-4">
-                        <h2 class="mb-0">Shipment Tracking</h2>
-                        <p class="mb-0 mt-2">AWB: <strong><t t-esc="shipment.name"/></strong></p>
-                    </div>
-                    <div class="card-body p-4 p-md-5">
-                        <div class="row mb-4">
-                            <div class="col-md-6">
-                                <h5>Status</h5>
-                                <h3 class="text-info"><t t-esc="shipment_state_str"/></h3>
+            <div class="container mt-3 mt-md-4 mb-5">
+                <div class="row justify-content-center">
+                    <div class="col-lg-8 col-xl-7">
+                        <div class="card kx-track-card">
+                            <div class="kx-track-header">
+                                <t t-if="company and company.logo">
+                                    <img t-attf-src="/web/image/res.company/#{company.id}/logo" alt="Company Logo" class="company-logo"/>
+                                </t>
+                                <p class="mb-1 text-white-50 small text-uppercase" style="letter-spacing:0.08em;opacity:0.8;">Shipment Tracking</p>
+                                <h2 class="mb-2 fw-bold" style="font-size:1.35rem;">AWB <t t-esc="shipment.name"/></h2>
+                                <span t-attf-class="kx-status-badge #{'is-delivered' if shipment.state == 'delivered' else 'is-ofd' if shipment.state == 'out_for_delivery' else 'is-cancelled' if shipment.state in ('cancelled', 'returned') else ''}">
+                                    <t t-esc="shipment_state_str"/>
+                                </span>
                             </div>
-                            <div class="col-md-6 text-md-end text-md-right">
-                                <h5>Estimated Delivery</h5>
-                                <h4 class="text-success">
-                                    <t t-if="shipment.estimated_delivery_date">
-                                        <t t-esc="shipment.estimated_delivery_date"/>
-                                    </t>
-                                    <t t-else="">
-                                        Pending
-                                    </t>
-                                </h4>
-                            </div>
-                        </div>
-                        <hr/>
-                        <div class="row mt-4">
-                            <div class="col-md-6 mb-3">
-                                <h6 class="text-muted text-uppercase font-weight-bold">Origin</h6>
-                                <p class="mb-0">
-                                    <t t-if="shipment.shipping_from_district_id"><t t-esc="shipment.shipping_from_district_id.name"/>, </t>
-                                    <t t-if="shipment.shipping_from_state_id"><t t-esc="shipment.shipping_from_state_id.name"/></t>
-                                </p>
-                            </div>
-                            <div class="col-md-6 mb-3">
-                                <h6 class="text-muted text-uppercase font-weight-bold">Destination</h6>
-                                <p class="mb-0">
-                                    <t t-if="shipment.shipping_to_district_id"><t t-esc="shipment.shipping_to_district_id.name"/>, </t>
-                                    <t t-if="shipment.shipping_to_state_id"><t t-esc="shipment.shipping_to_state_id.name"/></t>
-                                </p>
-                            </div>
-                        </div>
 
-                        <t t-call="keralariders_logistics.shipment_tracking_timeline">
-                            <t t-set="timeline_events" t-value="tracking_events"/>
-                            <t t-set="timeline_event_labels" t-value="event_type_labels"/>
-                        </t>
-                        
-                        <t t-if="shipment.state == 'delivered'">
-                            <div class="alert alert-success mt-4 text-center">
-                                <i class="fa fa-check-circle fa-2x mb-2"></i>
-                                <h5>This shipment was successfully delivered.</h5>
+                            <div class="card-body p-4">
+                                <!-- Status + delivery date -->
+                                <div class="row g-3 mb-3">
+                                    <div class="col-sm-6">
+                                        <div class="kx-meta-label">Status</div>
+                                        <p class="kx-meta-value"><t t-esc="shipment_state_str"/></p>
+                                    </div>
+                                    <div class="col-sm-6 text-sm-end">
+                                        <div class="kx-meta-label"><t t-esc="delivery_display.get('label')"/></div>
+                                        <t t-if="delivery_display.get('value')">
+                                            <p t-att-class="'kx-meta-value text-success' if delivery_display.get('is_delivered') else 'kx-meta-value'">
+                                                <t t-esc="delivery_display.get('value')"/>
+                                            </p>
+                                        </t>
+                                        <t t-else="">
+                                            <p class="kx-meta-value muted">—</p>
+                                        </t>
+                                    </div>
+                                </div>
+
+                                <!-- Origin / Destination -->
+                                <div class="kx-route-row mb-4">
+                                    <div class="row g-3">
+                                        <div class="col-sm-6">
+                                            <div class="kx-meta-label">Origin</div>
+                                            <p class="kx-meta-value"><t t-esc="origin_label"/></p>
+                                        </div>
+                                        <div class="col-sm-6">
+                                            <div class="kx-meta-label">Destination</div>
+                                            <p class="kx-meta-value"><t t-esc="destination_label"/></p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Optional facts -->
+                                <div class="kx-facts mb-4">
+                                    <t t-if="weight_display">
+                                        <span>Weight: <strong><t t-esc="weight_display"/></strong></span>
+                                    </t>
+                                    <t t-if="payment_type_label and shipment.order_payment_type != 'na'">
+                                        <span>Payment: <strong><t t-esc="payment_type_label"/></strong></span>
+                                    </t>
+                                    <t t-if="last_update_display">
+                                        <span>Updated: <strong><t t-esc="last_update_display"/></strong></span>
+                                    </t>
+                                </div>
+
+                                <!-- Journey progress -->
+                                <t t-if="progress_steps and shipment.state not in ('cancelled', 'return_requested', 'return_picked', 'returned')">
+                                    <h5 class="mb-3" style="font-weight:700;">Journey</h5>
+                                    <ol class="kx-progress mb-4">
+                                        <t t-foreach="progress_steps" t-as="step">
+                                            <li t-attf-class="kx-progress-step is-#{step['status']}">
+                                                <span class="kx-progress-dot"/>
+                                                <span class="kx-progress-label"><t t-esc="step['label']"/></span>
+                                            </li>
+                                        </t>
+                                    </ol>
+                                </t>
+
+                                <!-- Event timeline -->
+                                <t t-call="keralariders_logistics.shipment_tracking_timeline">
+                                    <t t-set="timeline_events" t-value="tracking_events"/>
+                                </t>
+
+                                <t t-if="shipment.state == 'delivered'">
+                                    <div class="kx-delivered-banner mt-4">
+                                        <i class="fa fa-check-circle fa-lg mb-2 d-block"/>
+                                        <strong>This shipment was successfully delivered.</strong>
+                                        <t t-if="delivery_display.get('value')">
+                                            <div class="small mt-1"><t t-esc="delivery_display.get('value')"/></div>
+                                        </t>
+                                    </div>
+                                </t>
+
+                                <div class="text-center mt-4">
+                                    <a href="/track" class="btn btn-outline-secondary btn-sm">
+                                        <i class="fa fa-search me-1"/> Track another shipment
+                                    </a>
+                                </div>
                             </div>
-                        </t>
+                        </div>
                     </div>
                 </div>
             </div>
         </t>
     </template>
 
-    <!-- Shared custody/event timeline for public track + DE portal -->
+    <!-- Shared custody/event timeline for public track + DE portal (expects list of dicts) -->
     <template id="shipment_tracking_timeline" name="Shipment Tracking Timeline">
         <t t-if="timeline_events">
-            <hr class="mt-4"/>
-            <h5 class="mb-3">Tracking History</h5>
+            <hr class="mt-2"/>
+            <h5 class="mb-3" style="font-weight:700;">Tracking History</h5>
             <ul class="list-unstyled mb-0" style="border-left:3px solid #e5e7eb;padding-left:1.25rem;">
                 <t t-foreach="timeline_events" t-as="event">
                     <li class="mb-3 position-relative" style="margin-left:0.25rem;">
-                        <span style="position:absolute;left:-1.55rem;top:0.35rem;width:10px;height:10px;border-radius:50%;background:#374151;border:2px solid #fff;box-shadow:0 0 0 2px #d1d5db;"></span>
+                        <span style="position:absolute;left:-1.55rem;top:0.35rem;width:10px;height:10px;border-radius:50%;background:#374151;border:2px solid #fff;box-shadow:0 0 0 2px #d1d5db;"/>
                         <div class="fw-semibold">
-                            <t t-esc="(timeline_event_labels or {}).get(event.event_type, event.event_type)"/>
+                            <t t-esc="event.get('label')"/>
                         </div>
                         <div class="text-muted small">
-                            <t t-esc="event.event_time"/>
+                            <t t-esc="event.get('time_display') or ''"/>
                         </div>
-                        <t t-set="detail" t-value="event.get_timeline_detail()"/>
-                        <div t-if="detail" class="small mt-1"><t t-esc="detail"/></div>
+                        <t t-if="event.get('detail')">
+                            <div class="small mt-1 text-secondary"><t t-esc="event.get('detail')"/></div>
+                        </t>
                     </li>
                 </t>
             </ul>
         </t>
         <t t-else="">
-            <hr class="mt-4"/>
+            <hr class="mt-2"/>
             <p class="text-muted mb-0">No tracking events yet.</p>
         </t>
     </template>
