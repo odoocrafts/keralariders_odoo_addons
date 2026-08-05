@@ -16,7 +16,6 @@ delivery_states = [
     ('return_requested', 'Return Requested'),
     ('return_picked', 'Return Picked'),
     ('returned', 'Returned'),
-    ('cancel', 'Cancelled'),
 ]
 
 class Shipment(models.Model):
@@ -24,6 +23,14 @@ class Shipment(models.Model):
     _description = 'Shipment'
     _inherit = ['mail.thread', 'mail.activity.mixin']
     _order = 'name desc, write_date desc'
+
+    def init(self):
+        """Migrate legacy duplicate cancel key → cancelled."""
+        self.env.cr.execute("""
+            UPDATE logistics_shipment
+               SET state = 'cancelled'
+             WHERE state = 'cancel'
+        """)
 
     def _compute_display_name(self):
         for rec in self:
@@ -48,9 +55,16 @@ class Shipment(models.Model):
                 vals['name'] = self.env['ir.sequence'].sudo().next_by_code('logistics.shipment') or _('New')
             # Initial custody: package starts with the seller until DE pickup.
             vals.setdefault('custodian_type', 'seller')
+            if vals.get('state') == 'cancel':
+                vals['state'] = 'cancelled'
         shipments = super(Shipment, self).create(vals_list)
         shipments.filtered(lambda s: s.estimated_route_ids and not s.active_leg_id)._sync_active_leg()
         return shipments
+
+    def write(self, vals):
+        if vals.get('state') == 'cancel':
+            vals = dict(vals, state='cancelled')
+        return super().write(vals)
 
     # -------------------------------------------------------------------------
     # Custody
@@ -215,7 +229,7 @@ class Shipment(models.Model):
             return False
         if self.custodian_type != 'hub' or not self.current_hub_id:
             return False
-        if self.state in ('delivered', 'cancelled', 'cancel', 'returned'):
+        if self.state in ('delivered', 'cancelled', 'returned'):
             return False
         leg = self._get_claimable_leg(de)
         if not leg:
@@ -327,7 +341,15 @@ class Shipment(models.Model):
                     _("Shipment %s cannot be dropped at hub from state '%s'.")
                     % (shipment.name, shipment.state)
                 )
-            target_hub = hub or shipment.source_hub_id or shipment.current_hub_id
+            leg = shipment.active_leg_id
+            if hub:
+                target_hub = hub
+            elif leg and leg.operation_type == 'hub_transfer' and leg.to_hub_id:
+                target_hub = leg.to_hub_id
+            elif leg and leg.operation_type == 'pickup' and leg.to_hub_id:
+                target_hub = leg.to_hub_id
+            else:
+                target_hub = shipment.source_hub_id or shipment.current_hub_id or shipment.destination_hub_id
             if not target_hub:
                 raise UserError(_("No hub specified for drop of shipment %s.") % shipment.name)
             de = actor_de or shipment.custodian_de_id or shipment.delivery_executive_id
@@ -358,7 +380,7 @@ class Shipment(models.Model):
             target_hub = hub or shipment.current_hub_id or shipment.source_hub_id
             if not target_hub:
                 raise UserError(_("Hub is required to receive shipment %s.") % shipment.name)
-            if shipment.state in ('delivered', 'cancelled', 'cancel', 'returned'):
+            if shipment.state in ('delivered', 'cancelled', 'returned'):
                 raise UserError(
                     _("Shipment %s cannot be received at hub in state '%s'.")
                     % (shipment.name, shipment.state)
@@ -481,25 +503,142 @@ class Shipment(models.Model):
             shipment._lock_route()
         return True
 
-    def action_central_pass_through(self, hub=None, scanned_code=None, note=None):
-        """Optional lightweight Thrissur pass-through event (does not force route)."""
+    def get_active_leg_label(self):
+        """Human-readable active leg label for portal / My Tasks."""
+        self.ensure_one()
+        leg = self.active_leg_id
+        if not leg:
+            return False
+        if leg.operation_type == 'hub_transfer':
+            from_hub = leg.from_hub_id
+            to_hub = leg.to_hub_id
+            from_label = (from_hub.code or from_hub.name) if from_hub else (leg.source_location_name or '?')
+            to_label = (to_hub.code or to_hub.name) if to_hub else (leg.destination_location_name or '?')
+            return _("Hub transfer: %s → %s") % (from_label, to_label)
+        if leg.operation_type == 'pickup':
+            return _("Pickup → %s") % (
+                (leg.to_hub_id.code or leg.to_hub_id.name) if leg.to_hub_id else (leg.destination_location_name or 'Hub')
+            )
+        if leg.operation_type == 'delivery':
+            return _("Last mile delivery")
+        return leg.name or False
+
+    def can_depart_from_hub(self, de=None):
+        """DE still at source hub on an in-progress hub_transfer leg."""
+        self.ensure_one()
+        if self.custodian_type != 'de' or self.state != 'in_transit':
+            return False
+        if de and self.custodian_de_id and self.custodian_de_id != de:
+            return False
+        leg = self.active_leg_id
+        if not leg or leg.operation_type != 'hub_transfer' or leg.state not in ('assigned', 'in_progress'):
+            return False
+        from_hub = leg.from_hub_id or self.source_hub_id
+        return bool(self.current_hub_id and from_hub and self.current_hub_id == from_hub)
+
+    def action_depart_from_hub(self, actor_de=None, note=None):
+        """DE confirms leaving the source hub on a hub_transfer (stays in_transit)."""
+        for shipment in self:
+            de = actor_de or shipment.custodian_de_id or shipment.delivery_executive_id
+            if not shipment.can_depart_from_hub(de):
+                raise UserError(
+                    _("Shipment %s cannot record hub departure in its current state.")
+                    % shipment.name
+                )
+            left_hub = shipment.current_hub_id
+            shipment._create_custody_event(
+                'depart_hub',
+                to_custodian='de',
+                hub=left_hub,
+                actor_de=de,
+                scanned_code=shipment.name,
+                note=note or _("Departed %s for hub transfer.") % (left_hub.name if left_hub else _('hub')),
+                leg=shipment.active_leg_id,
+            )
+            shipment.write({
+                'state': 'in_transit',
+                'current_hub_id': False,
+            })
+            shipment._lock_route()
+        return True
+
+    def can_record_central_pass_through(self, de=None):
+        """Optional Thrissur pass-through while DE holds a mid hub-transfer package.
+
+        When ``de`` is None (admin/backend), allow any non-terminal shipment.
+        """
+        self.ensure_one()
+        if self.state in ('delivered', 'cancelled', 'returned'):
+            return False
+        if de is None:
+            return True
+        if self.custodian_type != 'de':
+            return False
+        if self.custodian_de_id and self.custodian_de_id != de:
+            return False
+        if self.state not in ('in_transit', 'picked', 'at_central_hub'):
+            return False
+        leg = self.active_leg_id
+        if leg and leg.operation_type == 'hub_transfer' and leg.state in ('assigned', 'in_progress'):
+            return True
+        return self.state == 'in_transit'
+
+    def action_central_pass_through(self, hub=None, scanned_code=None, note=None, actor_de=None):
+        """Optional Thrissur pass-through: keep in_transit + event + note location at main hub.
+
+        Does not insert Thrissur into the planned route. Physical scan/event only.
+        """
         main_hub = hub or self.env['logistics.hub'].get_main_hub()
         if not main_hub:
             raise UserError(_("No Main Hub (Thrissur) is configured."))
+        if main_hub.hub_type != 'main':
+            raise UserError(_("Pass-through must be recorded at the Main Hub (Thrissur)."))
         for shipment in self:
+            if shipment.state in ('delivered', 'cancelled', 'returned'):
+                raise UserError(
+                    _("Shipment %s cannot record pass-through in state '%s'.")
+                    % (shipment.name, shipment.state)
+                )
+            de = actor_de or shipment.custodian_de_id
+            if actor_de is not None and not shipment.can_record_central_pass_through(actor_de):
+                raise UserError(
+                    _("Shipment %s is not eligible for Thrissur pass-through right now.")
+                    % shipment.name
+                )
+
             shipment._create_custody_event(
                 'central_pass_through',
                 to_custodian=shipment.custodian_type,
                 hub=main_hub,
+                actor_de=de,
                 scanned_code=scanned_code or shipment.name,
-                note=note or _("Physical pass-through at main hub recorded."),
+                note=note or _("Physical pass-through at %s recorded.") % main_hub.name,
+                leg=shipment.active_leg_id,
             )
-            # Optionally reflect physical presence without changing planned route
-            if shipment.custodian_type == 'hub':
-                shipment.write({
-                    'state': 'at_central_hub',
-                    'current_hub_id': main_hub.id,
-                })
+            # Keep in_transit; location is on the event (hub_id), not as hub inventory presence
+            if shipment.state != 'in_transit' and shipment.custodian_type == 'de':
+                shipment.write({'state': 'in_transit'})
+            shipment._lock_route()
+        return True
+
+    def action_cancel_shipment(self):
+        """Admin cancel — preferred over free statusbar clicks."""
+        for shipment in self:
+            if shipment.state in ('delivered', 'returned'):
+                raise UserError(
+                    _("Shipment %s cannot be cancelled from state '%s'.")
+                    % (shipment.name, shipment.state)
+                )
+            if shipment.state == 'cancelled':
+                continue
+            shipment._create_custody_event(
+                'status_override',
+                to_custodian=shipment.custodian_type,
+                note=_("Cancelled by %s.") % self.env.user.name,
+            )
+            shipment.write({
+                'state': 'cancelled',
+            })
         return True
 
     def action_mark_delivered(self, actor_de=None, scanned_code=None, note=None, delivery_remarks=None):

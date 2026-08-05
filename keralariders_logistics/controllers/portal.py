@@ -48,7 +48,7 @@ class LogisticsPortal(CustomerPortal):
         
         if delivery_executive:
             domain = delivery_executive._my_tasks_domain() + [
-                ('state', 'not in', ('delivered', 'cancelled', 'cancel')),
+                ('state', 'not in', ('delivered', 'cancelled')),
             ]
             assigned_shipment_count = request.env['logistics.shipment'].sudo().search_count(domain)
             values['assigned_shipment_count'] = str(assigned_shipment_count) if assigned_shipment_count > 0 else '0 '
@@ -568,9 +568,9 @@ class LogisticsPortal(CustomerPortal):
             
         Shipment = request.env['logistics.shipment'].sudo()
         domain = delivery_executive._my_tasks_domain() + [
-            ('state', 'not in', ('delivered', 'cancelled', 'cancel')),
-        ]
-        
+                ('state', 'not in', ('delivered', 'cancelled')),
+            ]
+            
         searchbar_sortings = {
             'date': {'label': _('Newest'), 'order': 'create_date desc, id desc'},
             'name': {'label': _('Reference'), 'order': 'name'},
@@ -617,13 +617,35 @@ class LogisticsPortal(CustomerPortal):
             return request.redirect(f'/my/delivery/{shipment.id}/claim')
 
         hubs = request.env['logistics.hub'].sudo().search([('active', '=', True)])
-            
+        shipment._sync_active_leg()
+        active_leg = shipment.active_leg_id
+        preferred_drop_hub = False
+        if active_leg and active_leg.operation_type == 'hub_transfer' and active_leg.to_hub_id:
+            preferred_drop_hub = active_leg.to_hub_id
+        elif active_leg and active_leg.operation_type == 'pickup' and active_leg.to_hub_id:
+            preferred_drop_hub = active_leg.to_hub_id
+        else:
+            preferred_drop_hub = shipment.source_hub_id
+
+        event_types = dict(
+            request.env['logistics.shipment.event'].fields_get(allfields=['event_type'])['event_type']['selection']
+        )
+        tracking_events = shipment.event_ids.sorted(lambda e: (e.event_time or fields.Datetime.now(), e.id), reverse=True)
+
         values = {
             'shipment': shipment,
             'page_name': 'deliveries',
             'hubs': hubs,
             'delivery_executive': delivery_executive,
             'can_self_assign': shipment.can_de_self_assign(delivery_executive),
+            'active_leg': active_leg,
+            'active_leg_label': shipment.get_active_leg_label(),
+            'preferred_drop_hub': preferred_drop_hub,
+            'can_depart_hub': shipment.can_depart_from_hub(delivery_executive),
+            'can_pass_through': shipment.can_record_central_pass_through(delivery_executive),
+            'is_hub_transfer': bool(active_leg and active_leg.operation_type == 'hub_transfer'),
+            'tracking_events': tracking_events,
+            'event_type_labels': event_types,
             'error': request.session.pop('error', None),
             'success': request.session.pop('success', None),
         }
@@ -699,7 +721,15 @@ class LogisticsPortal(CustomerPortal):
             request.session['error'] = "Shipment not found."
             return request.redirect('/my/deliveries')
         hub_id = int(post.get('hub_id') or 0)
-        hub = request.env['logistics.hub'].sudo().browse(hub_id) if hub_id else shipment.source_hub_id
+        hub = request.env['logistics.hub'].sudo().browse(hub_id) if hub_id else False
+        if not hub:
+            leg = shipment.active_leg_id
+            if leg and leg.operation_type == 'hub_transfer' and leg.to_hub_id:
+                hub = leg.to_hub_id
+            elif leg and leg.operation_type == 'pickup' and leg.to_hub_id:
+                hub = leg.to_hub_id
+            else:
+                hub = shipment.source_hub_id
         try:
             shipment.action_drop_at_hub(
                 hub=hub,
@@ -708,6 +738,49 @@ class LogisticsPortal(CustomerPortal):
                 note=post.get('note'),
             )
             request.session['success'] = f"Shipment {shipment.name} marked dropped at {hub.name}. Awaiting hub receive."
+        except UserError as e:
+            request.session['error'] = str(e)
+        return request.redirect(f'/my/delivery/{shipment.id}')
+
+    @http.route(['/my/delivery/<int:shipment_id>/depart_hub'], type='http', auth="user", website=True, methods=['POST'])
+    def portal_my_delivery_depart_hub(self, shipment_id=None, **post):
+        delivery_executive = request.env['logistics.delivery.executive'].sudo().search(
+            [('user_id', '=', request.env.user.id)], limit=1
+        )
+        if not delivery_executive:
+            return request.redirect('/my')
+        shipment = request.env['logistics.shipment'].sudo().browse(shipment_id)
+        if not shipment.exists():
+            request.session['error'] = "Shipment not found."
+            return request.redirect('/my/deliveries')
+        try:
+            shipment.action_depart_from_hub(
+                actor_de=delivery_executive,
+                note=post.get('note'),
+            )
+            request.session['success'] = f"Departed hub for transfer of {shipment.name}."
+        except UserError as e:
+            request.session['error'] = str(e)
+        return request.redirect(f'/my/delivery/{shipment.id}')
+
+    @http.route(['/my/delivery/<int:shipment_id>/pass_through'], type='http', auth="user", website=True, methods=['POST'])
+    def portal_my_delivery_pass_through(self, shipment_id=None, **post):
+        delivery_executive = request.env['logistics.delivery.executive'].sudo().search(
+            [('user_id', '=', request.env.user.id)], limit=1
+        )
+        if not delivery_executive:
+            return request.redirect('/my')
+        shipment = request.env['logistics.shipment'].sudo().browse(shipment_id)
+        if not shipment.exists():
+            request.session['error'] = "Shipment not found."
+            return request.redirect('/my/deliveries')
+        try:
+            shipment.action_central_pass_through(
+                scanned_code=post.get('scanned_code') or shipment.name,
+                note=post.get('note'),
+                actor_de=delivery_executive,
+            )
+            request.session['success'] = f"Thrissur pass-through recorded for {shipment.name}."
         except UserError as e:
             request.session['error'] = str(e)
         return request.redirect(f'/my/delivery/{shipment.id}')

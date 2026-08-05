@@ -54,7 +54,7 @@ class AssignDeliveryExecutiveWizard(models.TransientModel):
                         % (shipment.name, shipment.delivery_executive_id.name)
                     )
                 shipment.delivery_executive_id = self.delivery_executive_id.id
-                if shipment.custodian_type in ('seller', 'de') and shipment.state not in ('delivered', 'cancelled', 'cancel'):
+                if shipment.custodian_type in ('seller', 'de') and shipment.state not in ('delivered', 'cancelled'):
                     shipment.custodian_de_id = self.delivery_executive_id.id
                 continue
 
@@ -73,7 +73,7 @@ class AssignDeliveryExecutiveWizard(models.TransientModel):
             start = False
             shipment._assign_leg_de(leg, self.delivery_executive_id, start=start)
             shipment.delivery_executive_id = self.delivery_executive_id.id
-            if shipment.custodian_type in ('seller', 'de') and shipment.state not in ('delivered', 'cancelled', 'cancel'):
+            if shipment.custodian_type in ('seller', 'de') and shipment.state not in ('delivered', 'cancelled'):
                 shipment.custodian_de_id = self.delivery_executive_id.id
             shipment._create_custody_event(
                 'leg_assign',

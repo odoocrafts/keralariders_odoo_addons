@@ -58,7 +58,7 @@ class Order(models.Model):
 
             if all(s == 'delivered' for s in states):
                 order.state = 'delivered'
-            elif all(s == 'cancelled' or s == 'cancel' for s in states):
+            elif all(s == 'cancelled' for s in states):
                 order.state = 'cancelled'
             elif all(s == 'picked' for s in states):
                 order.state = 'picked'

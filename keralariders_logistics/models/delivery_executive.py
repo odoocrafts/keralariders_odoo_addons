@@ -97,7 +97,7 @@ class DeliveryExecutive(models.Model):
 
     def get_shipments_data(self):
         domain = self._my_tasks_domain()
-        all_shipments = self.env['logistics.shipment'].search(domain + [('state', 'not in', ('cancelled', 'cancel'))])
+        all_shipments = self.env['logistics.shipment'].search(domain + [('state', '!=', 'cancelled')])
         # Also include delivered for counts (broader than open tasks)
         delivered_extra = self.env['logistics.shipment'].search([
             ('delivery_executive_id', '=', self.id),

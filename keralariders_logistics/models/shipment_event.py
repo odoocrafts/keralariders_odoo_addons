@@ -18,9 +18,10 @@ class ShipmentEvent(models.Model):
         ('dropped_at_hub', 'Dropped at Hub'),
         ('hub_receive', 'Hub Receive'),
         ('hub_dispatch', 'Hub Dispatch'),
+        ('depart_hub', 'Departed Hub'),
         ('de_self_assign', 'DE Self-Assign'),
         ('leg_assign', 'Leg Assign'),
-        ('central_pass_through', 'Central Pass-Through'),
+        ('central_pass_through', 'Passed via Thrissur Hub'),
         ('out_for_delivery', 'Out for Delivery'),
         ('delivered', 'Delivered'),
         ('status_override', 'Status Override'),
@@ -58,3 +59,15 @@ class ShipmentEvent(models.Model):
             hub = rec.hub_id.name if rec.hub_id else ''
             awb = rec.shipment_id.name if rec.shipment_id else ''
             rec.name = f"{label} — {awb}" + (f" @ {hub}" if hub else '')
+
+    def get_timeline_detail(self):
+        """Short human-readable detail line for public/portal tracking."""
+        self.ensure_one()
+        parts = []
+        if self.hub_id:
+            parts.append(self.hub_id.name)
+        if self.actor_de_id:
+            parts.append(_("by %s") % self.actor_de_id.name)
+        if self.note:
+            parts.append(self.note)
+        return ' · '.join(parts) if parts else False

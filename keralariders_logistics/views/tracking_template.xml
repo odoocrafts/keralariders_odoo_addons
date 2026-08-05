@@ -141,6 +141,11 @@
                                 </p>
                             </div>
                         </div>
+
+                        <t t-call="keralariders_logistics.shipment_tracking_timeline">
+                            <t t-set="timeline_events" t-value="tracking_events"/>
+                            <t t-set="timeline_event_labels" t-value="event_type_labels"/>
+                        </t>
                         
                         <t t-if="shipment.state == 'delivered'">
                             <div class="alert alert-success mt-4 text-center">
@@ -151,6 +156,33 @@
                     </div>
                 </div>
             </div>
+        </t>
+    </template>
+
+    <!-- Shared custody/event timeline for public track + DE portal -->
+    <template id="shipment_tracking_timeline" name="Shipment Tracking Timeline">
+        <t t-if="timeline_events">
+            <hr class="mt-4"/>
+            <h5 class="mb-3">Tracking History</h5>
+            <ul class="list-unstyled mb-0" style="border-left:3px solid #e5e7eb;padding-left:1.25rem;">
+                <t t-foreach="timeline_events" t-as="event">
+                    <li class="mb-3 position-relative" style="margin-left:0.25rem;">
+                        <span style="position:absolute;left:-1.55rem;top:0.35rem;width:10px;height:10px;border-radius:50%;background:#374151;border:2px solid #fff;box-shadow:0 0 0 2px #d1d5db;"></span>
+                        <div class="fw-semibold">
+                            <t t-esc="(timeline_event_labels or {}).get(event.event_type, event.event_type)"/>
+                        </div>
+                        <div class="text-muted small">
+                            <t t-esc="event.event_time"/>
+                        </div>
+                        <t t-set="detail" t-value="event.get_timeline_detail()"/>
+                        <div t-if="detail" class="small mt-1"><t t-esc="detail"/></div>
+                    </li>
+                </t>
+            </ul>
+        </t>
+        <t t-else="">
+            <hr class="mt-4"/>
+            <p class="text-muted mb-0">No tracking events yet.</p>
         </t>
     </template>
 </odoo>

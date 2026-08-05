@@ -48,10 +48,17 @@ class TrackingController(http.Controller):
             
         state_dict = dict(shipment._fields['state'].selection)
         shipment_state_str = state_dict.get(shipment.state, shipment.state)
-        
+        event_types = dict(shipment.env['logistics.shipment.event']._fields['event_type'].selection)
+        tracking_events = shipment.event_ids.sorted(
+            key=lambda e: (e.event_time or '', e.id),
+            reverse=True,
+        )
+
         values = {
             'shipment': shipment,
             'shipment_state_str': shipment_state_str,
+            'tracking_events': tracking_events,
+            'event_type_labels': event_types,
             'languages': [],
         }
         return request.render('keralariders_logistics.tracking_page', values)

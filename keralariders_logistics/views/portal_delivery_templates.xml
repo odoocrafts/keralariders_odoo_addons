@@ -211,6 +211,7 @@
                         <th>AWB / Ref</th>
                         <th>Date</th>
                         <th>Shipping To</th>
+                        <th>Task / Leg</th>
                         <th>Weight</th>
                         <th>Payment Type</th>
                         <th>Status</th>
@@ -223,6 +224,11 @@
                             <td><a t-attf-href="/my/delivery/#{shipment.id}"><span t-field="shipment.name"/></a></td>
                             <td><span t-field="shipment.order_date"/></td>
                             <td><span t-field="shipment.shipping_to_name"/><br/><small class="text-muted"><span t-field="shipment.shipping_to_mobile"/></small></td>
+                            <td>
+                                <t t-set="leg_label" t-value="shipment.get_active_leg_label()"/>
+                                <span t-if="leg_label" class="badge text-bg-info text-wrap"><t t-esc="leg_label"/></span>
+                                <span t-else="" class="text-muted">—</span>
+                            </td>
                             <td><span t-field="shipment.total_weight"/> kg</td>
                             <td>
                                 <span t-if="shipment.order_payment_type == 'cod'" class="badge bg-warning text-dark">COD: <span t-field="shipment.cod_amount"/></span>
@@ -247,9 +253,12 @@
     <template id="portal_my_delivery_detail" name="Delivery Detail">
         <t t-call="portal.portal_layout">
             <div class="card shadow-sm mb-4">
-                <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
                     <h4 class="mb-0">Delivery Details - <t t-esc="shipment.name"/></h4>
-                    <span class="badge bg-secondary fs-6"><t t-esc="dict(shipment.fields_get(allfields=['state'])['state']['selection'])[shipment.state]"/></span>
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                        <span t-if="active_leg_label" class="badge text-bg-info fs-6"><t t-esc="active_leg_label"/></span>
+                        <span class="badge bg-secondary fs-6"><t t-esc="dict(shipment.fields_get(allfields=['state'])['state']['selection'])[shipment.state]"/></span>
+                    </div>
                 </div>
                 <div class="card-body">
                     <t t-if="error">
@@ -278,7 +287,12 @@
                                 <span t-if="shipment.order_payment_type == 'cod'" class="text-danger fw-bold">COD (Collect <span t-field="shipment.cod_amount"/>)</span>
                                 <span t-else="" class="text-success fw-bold">Prepaid</span><br/>
                                 <strong>Custody:</strong> <span t-field="shipment.custodian_type"/><br/>
-                                <strong>Current Hub:</strong> <span t-field="shipment.current_hub_id"/>
+                                <strong>Current Hub:</strong> <span t-field="shipment.current_hub_id"/><br/>
+                                <t t-if="active_leg">
+                                    <strong>Active leg:</strong> <t t-esc="active_leg_label or active_leg.name"/><br/>
+                                    <strong>Leg state:</strong> <t t-esc="active_leg.state"/>
+                                    <t t-if="active_leg.assigned_de_id"> · <t t-esc="active_leg.assigned_de_id.name"/></t>
+                                </t>
                             </p>
                         </div>
                     </div>
@@ -296,7 +310,66 @@
                         </form>
                     </t>
 
-                    <t t-if="shipment.custodian_type == 'de' and shipment.state in ['picked', 'in_transit']">
+                    <!-- Hub-transfer actions while DE holds the package -->
+                    <t t-if="shipment.custodian_type == 'de' and is_hub_transfer and shipment.state in ['picked', 'in_transit', 'at_central_hub']">
+                        <hr/>
+                        <h4 class="mb-3 text-info">
+                            <i class="fa fa-truck"/> Hub Transfer
+                            <small class="text-muted ms-2" t-if="active_leg_label"><t t-esc="active_leg_label"/></small>
+                        </h4>
+                        <p class="text-muted small mb-3">
+                            After claim/dispatch you hold the package. Depart the source hub if still there,
+                            optionally record a Thrissur pass-through if you physically go via the main hub,
+                            then drop at the destination hub for hub-manager receive.
+                        </p>
+
+                        <t t-if="can_depart_hub">
+                            <form t-attf-action="/my/delivery/#{shipment.id}/depart_hub" method="post" class="mb-3">
+                                <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                                <button type="submit" class="btn btn-outline-primary w-100"
+                                        onclick="return confirm('Confirm departure from source hub?');">
+                                    <i class="fa fa-sign-out"/> Depart from Hub
+                                </button>
+                            </form>
+                        </t>
+
+                        <t t-if="can_pass_through">
+                            <form t-attf-action="/my/delivery/#{shipment.id}/pass_through" method="post" class="mb-3">
+                                <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                                <input type="hidden" name="scanned_code" t-att-value="shipment.name"/>
+                                <button type="submit" class="btn btn-outline-secondary w-100"
+                                        onclick="return confirm('Record optional Thrissur pass-through? Package stays In Transit.');">
+                                    <i class="fa fa-map-marker"/> Record Thrissur Pass-Through
+                                </button>
+                            </form>
+                        </t>
+
+                        <h5 class="mb-2 text-warning">Arrive / Drop at Destination Hub</h5>
+                        <p class="text-muted small">Signals drop intent. Destination hub manager must Receive to take custody.</p>
+                        <form t-attf-action="/my/delivery/#{shipment.id}/drop_at_hub" method="post" class="row g-2 align-items-end">
+                            <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                            <div class="col-md-8">
+                                <label class="form-label">Hub</label>
+                                <select name="hub_id" class="form-select" required="1">
+                                    <t t-foreach="hubs" t-as="hub">
+                                        <option t-att-value="hub.id"
+                                                t-att-selected="preferred_drop_hub and hub.id == preferred_drop_hub.id">
+                                            <t t-esc="hub.name"/>
+                                            <t t-if="hub.code"> (<t t-esc="hub.code"/>)</t>
+                                        </option>
+                                    </t>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <button type="submit" class="btn btn-warning w-100">
+                                    <i class="fa fa-building"/> Drop at Hub
+                                </button>
+                            </div>
+                        </form>
+                    </t>
+
+                    <!-- Pickup / general drop (non transfer) -->
+                    <t t-if="shipment.custodian_type == 'de' and shipment.state in ['picked', 'in_transit'] and not is_hub_transfer">
                         <hr/>
                         <h4 class="mb-3 text-warning">Drop at Hub</h4>
                         <p class="text-muted small">Marks package as dropped. Hub manager receive scan is required to transfer custody to the hub.</p>
@@ -307,7 +380,7 @@
                                 <select name="hub_id" class="form-select" required="1">
                                     <t t-foreach="hubs" t-as="hub">
                                         <option t-att-value="hub.id"
-                                                t-att-selected="shipment.source_hub_id and hub.id == shipment.source_hub_id.id">
+                                                t-att-selected="preferred_drop_hub and hub.id == preferred_drop_hub.id">
                                             <t t-esc="hub.name"/>
                                         </option>
                                     </t>
@@ -359,6 +432,11 @@
                             </button>
                         </form>
                     </t>
+
+                    <t t-call="keralariders_logistics.shipment_tracking_timeline">
+                        <t t-set="timeline_events" t-value="tracking_events"/>
+                        <t t-set="timeline_event_labels" t-value="event_type_labels"/>
+                    </t>
                 </div>
             </div>
         </t>
@@ -390,7 +468,19 @@
                             <t t-esc="shipment.shipping_to_zip"/>
                         </p>
                         <t t-if="leg">
-                            <p class="mb-1"><strong>Next leg:</strong> <t t-esc="leg.name"/></p>
+                            <p class="mb-1"><strong>Next leg:</strong>
+                                <t t-if="leg.operation_type == 'hub_transfer'">
+                                    Hub transfer:
+                                    <t t-if="leg.from_hub_id"><t t-esc="leg.from_hub_id.code or leg.from_hub_id.name"/></t>
+                                    <t t-else="">?</t>
+                                    →
+                                    <t t-if="leg.to_hub_id"><t t-esc="leg.to_hub_id.code or leg.to_hub_id.name"/></t>
+                                    <t t-else="">?</t>
+                                </t>
+                                <t t-else="">
+                                    <t t-esc="leg.name"/>
+                                </t>
+                            </p>
                             <p class="mb-0"><strong>Operation:</strong>
                                 <span class="badge text-bg-info"><t t-esc="leg.operation_type"/></span>
                             </p>

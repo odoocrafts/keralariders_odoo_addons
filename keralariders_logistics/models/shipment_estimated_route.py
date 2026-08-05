@@ -237,6 +237,8 @@ class ShipmentInherit(models.Model):
                                 <span style="background:#64748b;color:white;padding:6px 10px;border-radius:4px;font-weight:600;font-size:12px;">{route.state or 'planned'}</span>
                                 {"<span style='background:#0f766e;color:white;padding:6px 10px;border-radius:4px;font-weight:600;font-size:12px;'>Assigned: " + route.assigned_de_id.name + "</span>" if route.assigned_de_id else ""}
                                 {"<span style='background:#8b5cf6;color:white;padding:6px 10px;border-radius:4px;font-weight:600;font-size:12px;'>Suggested: " + route.executive1_id.name + "</span>" if route.executive1_id and not route.assigned_de_id else ""}
+                                {"<span style='background:#475569;color:white;padding:6px 10px;border-radius:4px;font-weight:600;font-size:12px;'>Started: " + fields.Datetime.to_string(route.started_at) + "</span>" if route.started_at else ""}
+                                {"<span style='background:#15803d;color:white;padding:6px 10px;border-radius:4px;font-weight:600;font-size:12px;'>Done: " + fields.Datetime.to_string(route.completed_at) + "</span>" if route.completed_at else ""}
                             </div>
                         </div>
                     </div>
