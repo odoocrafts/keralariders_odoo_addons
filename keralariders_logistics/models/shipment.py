@@ -156,10 +156,20 @@ class Shipment(models.Model):
         'out_for_delivery': 4,
         'delivered': 5,
         'cancelled': -1,
-        'return_requested': -1,
-        'return_picked': -1,
-        'returned': -1,
+        # Return journey reuses hub progress steps after pickup
+        'return_requested': 0,
+        'return_picked': 1,
+        'returned': 5,
     }
+
+    is_return_journey = fields.Boolean(
+        string='Return Journey',
+        default=False,
+        copy=False,
+        tracking=True,
+        help='When set, the package is on a free reverse path: '
+             'customer pickup → hubs → seller. No wallet deduction.',
+    )
 
     def _format_tracking_datetime(self, value):
         """Format a datetime (or date) for public tracking display."""
@@ -332,7 +342,15 @@ class Shipment(models.Model):
             })
 
         delivered_at = self.delivered_on or self.actual_delivery_date
-        if self.state == 'delivered' or delivered_at:
+        if self.state == 'returned':
+            entries.append({
+                'label': _('Returned to Seller'),
+                'time': delivered_at or self.write_date,
+                'time_display': self._format_tracking_datetime(delivered_at or self.write_date),
+                'detail': _('Free return'),
+                'event_type': 'returned',
+            })
+        elif self.state == 'delivered' or (delivered_at and not self.is_return_journey):
             entries.append({
                 'label': _('Delivered'),
                 'time': delivered_at or self.write_date,
@@ -366,9 +384,12 @@ class Shipment(models.Model):
         'de_self_assign': 75,
         'out_for_delivery': 80,
         'delivered': 90,
+        'return_requested': 92,
+        'returned': 96,
         'cancelled': 95,
         'status_override': 50,
         'note': 5,
+        'skip_hub_local': 78,
     }
 
     def _timeline_minute_key(self, value):
@@ -618,10 +639,65 @@ class Shipment(models.Model):
             )
         return True
 
-    def action_mark_picked(self, actor_de=None, scanned_code=None, note=None):
-        """DE confirms pickup from seller. Custody → DE."""
+    def action_request_return(self):
+        """Seller-initiated free return: reverse route customer → hubs → seller.
+
+        No wallet debit at any step. Rebuilds estimated route with swapped hubs
+        so existing hub receive/dispatch/self-assign custody actions apply.
+        """
         for shipment in self:
-            if shipment.state not in ('pickup_requested', 'order_added'):
+            if shipment.state != 'delivered':
+                raise UserError(
+                    _("Shipment %s can only request return when Delivered "
+                      "(current state: %s).")
+                    % (shipment.name, shipment.state)
+                )
+            if shipment.is_return_journey:
+                raise UserError(
+                    _("Shipment %s already has a return journey in progress.")
+                    % shipment.name
+                )
+
+            # Unlock and rebuild reverse planned route (no wallet charge)
+            shipment.write({
+                'is_return_journey': True,
+                'route_locked': False,
+            })
+            shipment.estimated_route_ids = [(5, 0, 0)]
+            shipment.with_context(rebuild_return_route=True)._compute_estimated_route_ids()
+            shipment._sync_active_leg()
+
+            pickup_leg = shipment.estimated_route_ids.filtered(
+                lambda l: l.operation_type == 'pickup'
+            )[:1]
+            pickup_de = pickup_leg.executive1_id if pickup_leg else False
+            if pickup_de and pickup_leg:
+                shipment._assign_leg_de(pickup_leg, pickup_de, start=False)
+
+            shipment._create_custody_event(
+                'return_requested',
+                to_custodian='customer',
+                note=_("Free return requested by seller. Pickup from customer, "
+                       "hub custody, then delivery back to seller. No wallet charge."),
+                leg=pickup_leg,
+            )
+            shipment._write_with_state({
+                'state': 'return_requested',
+                'custodian_type': 'customer',
+                'custodian_de_id': False,
+                'current_hub_id': False,
+                'delivery_executive_id': pickup_de.id if pickup_de else False,
+                'active_leg_id': pickup_leg.id if pickup_leg else False,
+                'route_locked': True,
+            })
+        return True
+
+    def action_mark_picked(self, actor_de=None, scanned_code=None, note=None):
+        """DE confirms pickup from seller (outbound) or customer (return). Custody → DE."""
+        for shipment in self:
+            outbound_ok = shipment.state in ('pickup_requested', 'order_added')
+            return_ok = shipment.state == 'return_requested' and shipment.is_return_journey
+            if not (outbound_ok or return_ok):
                 raise UserError(
                     _("Shipment %s cannot be marked picked from state '%s'.")
                     % (shipment.name, shipment.state)
@@ -648,16 +724,19 @@ class Shipment(models.Model):
             elif pickup_leg and de:
                 shipment._start_leg(pickup_leg, de=de)
 
+            pickup_note = note
+            if return_ok and not pickup_note:
+                pickup_note = _("Return pickup from customer (free — no wallet charge).")
             shipment._create_custody_event(
                 'pickup_scan',
                 to_custodian='de',
                 actor_de=de,
                 scanned_code=scanned_code or shipment.name,
-                note=note,
+                note=pickup_note,
                 leg=pickup_leg,
             )
             vals = {
-                'state': 'picked',
+                'state': 'return_picked' if return_ok else 'picked',
                 'picked_on': fields.Datetime.now(),
                 'custodian_type': 'de',
                 'custodian_de_id': de.id if de else False,
@@ -684,7 +763,10 @@ class Shipment(models.Model):
                     _("Shipment %s must be in DE custody to drop at hub (current: %s).")
                     % (shipment.name, shipment.custodian_type)
                 )
-            if shipment.state not in ('picked', 'in_transit', 'at_source_hub', 'at_central_hub', 'at_destination_hub'):
+            if shipment.state not in (
+                'picked', 'return_picked', 'in_transit',
+                'at_source_hub', 'at_central_hub', 'at_destination_hub',
+            ):
                 raise UserError(
                     _("Shipment %s cannot be dropped at hub from state '%s'.")
                     % (shipment.name, shipment.state)
@@ -709,14 +791,11 @@ class Shipment(models.Model):
                 scanned_code=scanned_code or shipment.name,
                 note=note or _("Dropped at hub; awaiting hub receive scan."),
             )
-            # Stay in DE custody; optionally move toward in_transit if leaving seller area
+            # Stay in DE custody; optionally move toward in_transit if leaving pickup area
             vals = {
                 'current_hub_id': target_hub.id,
             }
-            if shipment.state == 'picked' and shipment.source_hub_id and target_hub == shipment.source_hub_id:
-                # Still picked until hub receives; leave state as picked/in_transit
-                vals['state'] = 'in_transit'
-            elif shipment.state == 'picked':
+            if shipment.state in ('picked', 'return_picked'):
                 vals['state'] = 'in_transit'
             shipment._write_with_state(vals)
             shipment._lock_route()
@@ -990,7 +1069,10 @@ class Shipment(models.Model):
         return True
 
     def action_mark_delivered(self, actor_de=None, scanned_code=None, note=None, delivery_remarks=None):
-        """DE marks delivered — only allowed from out_for_delivery."""
+        """DE marks delivered (outbound → customer) or returned (return → seller).
+
+        Only allowed from out_for_delivery. Return completion is free — no wallet debit.
+        """
         for shipment in self:
             if shipment.state != 'out_for_delivery':
                 raise UserError(
@@ -1004,19 +1086,23 @@ class Shipment(models.Model):
                 delivery_leg = shipment.estimated_route_ids.filtered(
                     lambda l: l.operation_type == 'delivery' and l.state != 'done'
                 )[:1]
+            is_return = shipment.is_return_journey
+            event_note = note or delivery_remarks
+            if is_return and not event_note:
+                event_note = _("Returned to seller (free — no wallet charge).")
             shipment._create_custody_event(
-                'delivered',
-                to_custodian='customer',
+                'returned' if is_return else 'delivered',
+                to_custodian='seller' if is_return else 'customer',
                 actor_de=de,
                 scanned_code=scanned_code or shipment.name,
-                note=note or delivery_remarks,
+                note=event_note,
                 leg=delivery_leg,
             )
             if delivery_leg:
                 shipment._complete_leg(delivery_leg)
             vals = {
-                'state': 'delivered',
-                'custodian_type': 'customer',
+                'state': 'returned' if is_return else 'delivered',
+                'custodian_type': 'seller' if is_return else 'customer',
                 'custodian_de_id': False,
                 'current_hub_id': False,
                 'actual_delivery_date': fields.Datetime.now(),
@@ -1031,7 +1117,7 @@ class Shipment(models.Model):
     def can_skip_hub_local_delivery(self, de=None):
         """Same-district (same source/dest hub) packages can go OFD after pickup without hub inventory."""
         self.ensure_one()
-        if self.state != 'picked' or self.custodian_type != 'de':
+        if self.state not in ('picked', 'return_picked') or self.custodian_type != 'de':
             return False
         if de and self.custodian_de_id and self.custodian_de_id != de:
             return False
@@ -1056,7 +1142,7 @@ class Shipment(models.Model):
             if not shipment.can_skip_hub_local_delivery(de):
                 raise UserError(
                     _("Shipment %s is not eligible for local delivery skip-hub "
-                      "(requires same-district / same hub, picked, DE custody).")
+                      "(requires same-district / same hub, picked/return_picked, DE custody).")
                     % shipment.name
                 )
             shipment._sync_active_leg()

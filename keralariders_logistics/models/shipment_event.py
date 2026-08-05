@@ -25,6 +25,8 @@ class ShipmentEvent(models.Model):
         ('skip_hub_local', 'Local Delivery (Skip Hub)'),
         ('out_for_delivery', 'Out for Delivery'),
         ('delivered', 'Delivered'),
+        ('return_requested', 'Return Requested'),
+        ('returned', 'Returned to Seller'),
         ('status_override', 'Status Override'),
         ('note', 'Note'),
     ], string='Event Type', required=True, index=True)

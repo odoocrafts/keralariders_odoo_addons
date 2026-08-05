@@ -537,11 +537,15 @@ class LogisticsPortal(CustomerPortal):
             return request.redirect('/my/shipments')
             
         try:
-            # Update state (Free of charge)
-            shipment.sudo().with_context(allow_shipment_state_write=True).write({
-                'state': 'return_requested'
-            })
-            request.session['success'] = f"Return pickup requested successfully for {shipment.name}. This is free of charge."
+            # Free reverse journey: customer pickup → hubs → seller (no wallet debit)
+            shipment.sudo().action_request_return()
+            request.session['success'] = (
+                f"Free return requested for {shipment.name}. "
+                f"A DE will pick up from the customer, move through hubs, and deliver back to you. "
+                f"No wallet deduction."
+            )
+        except UserError as e:
+            request.session['error'] = str(e)
         except Exception as e:
             request.session['error'] = str(e)
             
@@ -585,7 +589,7 @@ class LogisticsPortal(CustomerPortal):
             
         Shipment = request.env['logistics.shipment'].sudo()
         domain = delivery_executive._my_tasks_domain() + [
-                ('state', 'not in', ('delivered', 'cancelled')),
+                ('state', 'not in', ('delivered', 'cancelled', 'returned')),
             ]
             
         searchbar_sortings = {
@@ -901,13 +905,15 @@ class LogisticsPortal(CustomerPortal):
             request.session['error'] = "Shipment not found."
             return request.redirect('/my/deliveries')
             
-        if shipment.state == 'delivered':
-            request.session['error'] = "Shipment is already delivered."
+        if shipment.state in ('delivered', 'returned'):
+            request.session['error'] = "Shipment is already completed."
             return request.redirect(f'/my/delivery/{shipment.id}')
 
         try:
+            is_return = shipment.is_return_journey
             payment_method = None
-            if shipment.order_payment_type == 'cod':
+            # COD collection only on outbound delivery — returns are free, no COD re-collect
+            if not is_return and shipment.order_payment_type == 'cod':
                 payment_method = post.get('cod_payment_method')
                 if payment_method not in ['cash', 'upi']:
                     request.session['error'] = "Please select a valid COD payment method."
@@ -919,10 +925,15 @@ class LogisticsPortal(CustomerPortal):
                 actor_de=delivery_executive,
                 delivery_remarks=delivery_remarks,
             )
-            if shipment.order_payment_type == 'cod':
+            if not is_return and shipment.order_payment_type == 'cod':
                 shipment.sudo().action_create_payment_cod_from_portal(payment_method=payment_method)
 
-            request.session['success'] = f"Shipment {shipment.name} marked as delivered successfully!"
+            if is_return:
+                request.session['success'] = (
+                    f"Shipment {shipment.name} returned to seller successfully (free — no wallet charge)."
+                )
+            else:
+                request.session['success'] = f"Shipment {shipment.name} marked as delivered successfully!"
             return request.redirect('/my/deliveries')
         except Exception as e:
             request.session['error'] = str(e)
@@ -950,7 +961,7 @@ class LogisticsPortal(CustomerPortal):
         awaiting_receive = Shipment.search_count([
             ('current_hub_id', 'in', hubs.ids),
             ('custodian_type', '=', 'de'),
-            ('state', 'in', ('picked', 'in_transit')),
+            ('state', 'in', ('picked', 'return_picked', 'in_transit')),
         ])
         values = {
             'page_name': 'hub',

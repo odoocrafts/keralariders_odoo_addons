@@ -26,17 +26,20 @@ class ShipmentInherit(models.Model):
         store=True,
     )
 
-    @api.depends('shipping_from_zip', 'shipping_to_zip')
+    @api.depends('shipping_from_zip', 'shipping_to_zip', 'is_return_journey')
     def _compute_estimated_route_ids(self):
         """Plan route: same hub = pickup→delivery; different hubs = pickup→hub_transfer→delivery.
 
         Cross-district / north↔south is a direct source→dest hub transfer.
         Thrissur main hub is NOT inserted automatically; optional central_pass_through
         is recorded as an event when the physical path crosses that area.
+
+        Return journeys reverse the path: pickup at consignee → hubs → delivery to seller.
         """
         for rec in self:
-            # Preserve planned route after ops have started
-            if rec.route_locked or (rec.id and rec.event_ids):
+            force_rebuild = self.env.context.get('rebuild_return_route') or self.env.context.get('force_route_recompute')
+            # Preserve planned route after ops have started (unless explicitly rebuilding)
+            if (rec.route_locked or (rec.id and rec.event_ids)) and not force_rebuild:
                 rec.estimated_route_ids = rec.estimated_route_ids
                 rec.source_hub_id = rec.source_hub_id
                 rec.destination_hub_id = rec.destination_hub_id
@@ -47,20 +50,32 @@ class ShipmentInherit(models.Model):
                 rec.destination_hub_id = False
                 continue
 
-            source_hub = self.env['logistics.hub'].get_hub_from_pincode(rec.shipping_from_zip)
-            final_hub = self.env['logistics.hub'].get_hub_from_pincode(rec.shipping_to_zip)
+            # Outbound: seller → customer. Return: customer → seller.
+            if rec.is_return_journey:
+                pickup_zip = rec.shipping_to_zip
+                delivery_zip = rec.shipping_from_zip
+                pickup_from_label = 'Pickup from Consignee (Return)'
+                delivery_to_label = 'Delivery at Seller Address (Return)'
+            else:
+                pickup_zip = rec.shipping_from_zip
+                delivery_zip = rec.shipping_to_zip
+                pickup_from_label = 'Pickup from Source Address'
+                delivery_to_label = 'Delivery at Consignee Address'
+
+            source_hub = self.env['logistics.hub'].get_hub_from_pincode(pickup_zip)
+            final_hub = self.env['logistics.hub'].get_hub_from_pincode(delivery_zip)
             DE = self.env['logistics.delivery.executive']
 
-            pickup_exec = DE.get_assigned_executive_for_pincode(rec.shipping_from_zip, 'pickup')
-            delivery_exec = DE.get_assigned_executive_for_pincode(rec.shipping_to_zip, 'delivery')
+            pickup_exec = DE.get_assigned_executive_for_pincode(pickup_zip, 'pickup')
+            delivery_exec = DE.get_assigned_executive_for_pincode(delivery_zip, 'delivery')
 
             if source_hub == final_hub:
                 # Same hub / same district: pickup → delivery (2 legs)
                 lines = [
                     (0, 0, {
                         'sequence': 1,
-                        'name': f'Pickup from Source Address --> {source_hub.name}',
-                        'source_location_name': 'Pickup from Source Address',
+                        'name': f'{pickup_from_label} --> {source_hub.name}',
+                        'source_location_name': pickup_from_label,
                         'destination_location_name': f'{source_hub.name}',
                         'from_hub_id': False,
                         'to_hub_id': source_hub.id,
@@ -70,9 +85,9 @@ class ShipmentInherit(models.Model):
                     }),
                     (0, 0, {
                         'sequence': 2,
-                        'name': f'{source_hub.name} --> Delivery at Consignee Address',
+                        'name': f'{source_hub.name} --> {delivery_to_label}',
                         'source_location_name': f'{source_hub.name}',
-                        'destination_location_name': 'Delivery at Consignee Address',
+                        'destination_location_name': delivery_to_label,
                         'from_hub_id': source_hub.id,
                         'to_hub_id': False,
                         'executive1_id': delivery_exec.id if delivery_exec else False,
@@ -85,8 +100,8 @@ class ShipmentInherit(models.Model):
                 lines = [
                     (0, 0, {
                         'sequence': 1,
-                        'name': f'Pickup from Source Address --> {source_hub.name}',
-                        'source_location_name': 'Pickup from Source Address',
+                        'name': f'{pickup_from_label} --> {source_hub.name}',
+                        'source_location_name': pickup_from_label,
                         'destination_location_name': f'{source_hub.name}',
                         'from_hub_id': False,
                         'to_hub_id': source_hub.id,
@@ -106,9 +121,9 @@ class ShipmentInherit(models.Model):
                     }),
                     (0, 0, {
                         'sequence': 3,
-                        'name': f'{final_hub.name} --> Delivery at Consignee Address',
+                        'name': f'{final_hub.name} --> {delivery_to_label}',
                         'source_location_name': f'{final_hub.name}',
-                        'destination_location_name': 'Delivery at Consignee Address',
+                        'destination_location_name': delivery_to_label,
                         'from_hub_id': final_hub.id,
                         'to_hub_id': False,
                         'executive1_id': delivery_exec.id if delivery_exec else False,
@@ -258,9 +273,9 @@ class ShipmentInherit(models.Model):
                         "Only a Logistics Administrator can force recompute."
                     )
                 rec.route_locked = False
-            # Clear stored lines then recompute
+            # Clear stored lines then recompute (honours is_return_journey when set)
             rec.estimated_route_ids = [(5, 0, 0)]
-            rec._compute_estimated_route_ids()
+            rec.with_context(force_route_recompute=True)._compute_estimated_route_ids()
             rec._sync_active_leg()
 
 

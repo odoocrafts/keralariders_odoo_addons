@@ -184,7 +184,7 @@
                     decoration-warning="state in ('pickup_requested','return_requested')"
                     decoration-primary="state == 'picked'"
                     decoration-muted="state == 'in_transit'"
-                    decoration-success="state == 'delivered'"
+                    decoration-success="state in ('delivered', 'returned')"
                     decoration-danger="state == 'cancelled'"
                     width="100"
                 />                
@@ -207,12 +207,17 @@
             <form string="Shipment">
                 <header>
                     <button name="%(keralariders_logistics.action_report_shipment)d" string="Print AWB" type="action" class="btn-primary"/>
+                    <button name="action_request_return" type="object" string="Request Return (Free)"
+                            invisible="state != 'delivered'"
+                            groups="keralariders_logistics.group_logistics_admin"
+                            class="btn-warning"
+                            confirm="Start free return: pickup from customer → hubs → seller? No wallet deduction."/>
                     <button name="action_mark_picked" type="object" string="Mark Picked"
-                            invisible="state not in ('pickup_requested', 'order_added')"
+                            invisible="state not in ('pickup_requested', 'order_added', 'return_requested')"
                             groups="keralariders_logistics.group_logistics_admin,keralariders_logistics.group_logistics_executive"
                             class="btn-secondary"/>
                     <button name="action_hub_receive" type="object" string="Hub Receive"
-                            invisible="custodian_type == 'hub'"
+                            invisible="custodian_type == 'hub' or state in ('delivered', 'cancelled', 'returned')"
                             groups="keralariders_logistics.group_logistics_admin,keralariders_logistics.group_logistics_hub_manager"
                             class="btn-secondary"/>
                     <button name="action_central_pass_through" type="object" string="Record Thrissur Pass-Through"
@@ -221,7 +226,7 @@
                             class="btn-secondary"
                             confirm="Record optional physical pass-through at Thrissur Main Hub? Package stays In Transit."/>
                     <button name="action_skip_hub_local_delivery" type="object" string="Deliver Locally (Skip Hub)"
-                            invisible="state != 'picked' or custodian_type != 'de'"
+                            invisible="state not in ('picked', 'return_picked') or custodian_type != 'de'"
                             groups="keralariders_logistics.group_logistics_admin,keralariders_logistics.group_logistics_executive"
                             class="btn-secondary"
                             confirm="Same-district local delivery — skip hub inventory and go Out for Delivery?"/>
@@ -231,7 +236,7 @@
                             class="btn-secondary"
                             confirm="Cancel this shipment?"/>
                     <field name="state" widget="statusbar" options="{'clickable': 0}"
-                           statusbar_visible="order_added,pickup_requested,picked,in_transit,at_source_hub,at_destination_hub,out_for_delivery,delivered"/>
+                           statusbar_visible="order_added,pickup_requested,picked,in_transit,at_source_hub,at_destination_hub,out_for_delivery,delivered,return_requested,return_picked,returned"/>
                 </header>
                 <sheet>
                     <div class="oe_title" >
@@ -245,6 +250,8 @@
                             <field name="order_id"/>
                             <field name="order_date"/>
                             <field name="order_payment_type"/>
+                            <field name="is_return_journey" readonly="1"
+                                      invisible="not is_return_journey"/>
                             <!-- <field name="cod_amount" invisible="order_payment_type != 'cod'"/> -->
                             <label for="cod_amount" invisible="order_payment_type != 'cod'"/>
                             <div class="d-flex align-items-center" invisible="order_payment_type != 'cod'">

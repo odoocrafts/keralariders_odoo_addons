@@ -281,15 +281,35 @@
                         <div class="alert alert-success" role="alert"><t t-esc="success"/></div>
                     </t>
 
+                    <t t-if="shipment.is_return_journey">
+                        <div class="alert alert-info" role="alert">
+                            <strong>Free return journey</strong> — pick up from customer, move through hubs, deliver back to seller.
+                            No wallet charge.
+                        </div>
+                    </t>
+
                     <div class="row mb-4">
                         <div class="col-md-6">
-                            <h5>Customer Information</h5>
-                            <p>
-                                <strong>Name:</strong> <span t-field="shipment.shipping_to_name"/><br/>
-                                <strong>Mobile:</strong> <span t-field="shipment.shipping_to_mobile"/><br/>
-                                <strong>Address:</strong> <span t-field="shipment.shipping_to_address"/><br/>
-                                <span t-field="shipment.shipping_to_district_id.name"/>, <span t-field="shipment.shipping_to_state_id.name"/> - <span t-field="shipment.shipping_to_zip"/>
-                            </p>
+                            <t t-if="shipment.is_return_journey and shipment.state == 'out_for_delivery'">
+                                <h5>Deliver To Seller</h5>
+                                <p>
+                                    <strong>Name:</strong> <span t-field="shipment.shipping_from_name"/><br/>
+                                    <strong>Address:</strong> <span t-field="shipment.shipping_from_address"/><br/>
+                                    <span t-field="shipment.shipping_from_district_id.name"/>, <span t-field="shipment.shipping_from_state_id.name"/> - <span t-field="shipment.shipping_from_zip"/>
+                                </p>
+                            </t>
+                            <t t-else="">
+                                <h5>
+                                    <t t-if="shipment.is_return_journey">Customer (Return Pickup)</t>
+                                    <t t-else="">Customer Information</t>
+                                </h5>
+                                <p>
+                                    <strong>Name:</strong> <span t-field="shipment.shipping_to_name"/><br/>
+                                    <strong>Mobile:</strong> <span t-field="shipment.shipping_to_mobile"/><br/>
+                                    <strong>Address:</strong> <span t-field="shipment.shipping_to_address"/><br/>
+                                    <span t-field="shipment.shipping_to_district_id.name"/>, <span t-field="shipment.shipping_to_state_id.name"/> - <span t-field="shipment.shipping_to_zip"/>
+                                </p>
+                            </t>
                         </div>
                         <div class="col-md-6">
                             <h5>Package Information</h5>
@@ -297,8 +317,14 @@
                                 <strong>Weight:</strong> <span t-field="shipment.total_weight"/> kg<br/>
                                 <strong>Description:</strong> <span t-field="shipment.item_description"/><br/>
                                 <strong>Payment Type:</strong>
-                                <span t-if="shipment.order_payment_type == 'cod'" class="text-danger fw-bold">COD (Collect <span t-field="shipment.cod_amount"/>)</span>
-                                <span t-else="" class="text-success fw-bold">Prepaid</span><br/>
+                                <t t-if="shipment.is_return_journey">
+                                    <span class="text-success fw-bold">Free return (no charge)</span>
+                                </t>
+                                <t t-else="">
+                                    <span t-if="shipment.order_payment_type == 'cod'" class="text-danger fw-bold">COD (Collect <span t-field="shipment.cod_amount"/>)</span>
+                                    <span t-else="" class="text-success fw-bold">Prepaid</span>
+                                </t>
+                                <br/>
                                 <strong>Custody:</strong> <span t-field="shipment.custodian_type"/><br/>
                                 <strong>Current Hub:</strong> <span t-field="shipment.current_hub_id"/><br/>
                                 <t t-if="active_leg">
@@ -319,6 +345,20 @@
                             <button type="submit" class="btn btn-lg btn-primary w-100 fw-bold shadow-sm"
                                     onclick="return confirm('Confirm pickup scan for this shipment?');">
                                 <i class="fa fa-hand-paper-o"/> MARK AS PICKED
+                            </button>
+                        </form>
+                    </t>
+
+                    <t t-if="shipment.state == 'return_requested'">
+                        <hr/>
+                        <h4 class="mb-3 text-primary">Confirm Return Pickup (from Customer)</h4>
+                        <p class="text-muted small mb-3">Free return — no wallet charge. After pickup, drop at hub for custody handoff.</p>
+                        <form t-attf-action="/my/delivery/#{shipment.id}/mark_picked" method="post">
+                            <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                            <input type="hidden" name="scanned_code" t-att-value="shipment.name"/>
+                            <button type="submit" class="btn btn-lg btn-primary w-100 fw-bold shadow-sm"
+                                    onclick="return confirm('Confirm return pickup from customer? (Free — no wallet charge)');">
+                                <i class="fa fa-hand-paper-o"/> MARK RETURN PICKED
                             </button>
                         </form>
                     </t>
@@ -344,7 +384,7 @@
                     </t>
 
                     <!-- Hub-transfer actions while DE holds the package -->
-                    <t t-if="shipment.custodian_type == 'de' and is_hub_transfer and shipment.state in ['picked', 'in_transit', 'at_central_hub']">
+                    <t t-if="shipment.custodian_type == 'de' and is_hub_transfer and shipment.state in ['picked', 'return_picked', 'in_transit', 'at_central_hub']">
                         <hr/>
                         <h4 class="mb-3 text-info">
                             <i class="fa fa-truck"/> Hub Transfer
@@ -406,7 +446,7 @@
                     </t>
 
                     <!-- Pickup / general drop (non transfer) -->
-                    <t t-if="shipment.custodian_type == 'de' and shipment.state in ['picked', 'in_transit'] and not is_hub_transfer">
+                    <t t-if="shipment.custodian_type == 'de' and shipment.state in ['picked', 'return_picked', 'in_transit'] and not is_hub_transfer">
                         <hr/>
                         <h4 class="mb-3 text-warning">Drop at Hub</h4>
                         <p class="text-muted small">Marks package as dropped. Hub manager receive scan is required to transfer custody to the hub.</p>
@@ -433,11 +473,19 @@
 
                     <t t-if="shipment.state == 'out_for_delivery'">
                         <hr/>
-                        <h4 class="mb-3 text-primary">Mark as Delivered</h4>
+                        <h4 class="mb-3 text-primary">
+                            <t t-if="shipment.is_return_journey">Mark Returned to Seller</t>
+                            <t t-else="">Mark as Delivered</t>
+                        </h4>
                         <form t-attf-action="/my/delivery/#{shipment.id}/mark_delivered" method="post">
                             <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
-                            
-                            <t t-if="shipment.order_payment_type == 'cod'">
+
+                            <t t-if="shipment.is_return_journey">
+                                <div class="alert alert-success mb-3">
+                                    Free return completion — deliver package to the seller. No wallet deduction. No COD collection.
+                                </div>
+                            </t>
+                            <t t-elif="shipment.order_payment_type == 'cod'">
                                 <div class="mb-4 p-3 border rounded bg-light">
                                     <h5 class="mb-3">Collect COD Payment: <span t-field="shipment.cod_amount"/></h5>
                                     
@@ -457,16 +505,26 @@
                                 </div>
                             </t>
                             <div class="mb-4 p-3 border rounded bg-light">
-                                    <h5 class="mb-3">Delivery Remarks</h5>
+                                    <h5 class="mb-3">
+                                        <t t-if="shipment.is_return_journey">Return Remarks</t>
+                                        <t t-else="">Delivery Remarks</t>
+                                    </h5>
                                     <div class="form-input p-2 mb-2 row">
                                         <textarea class="form-input" rows="5" type="text" name="delivery_remarks" id="deliveryRemarks"/>
                                     </div>
                             </div>
 
-
-                            <button type="submit" class="btn btn-lg btn-success w-100 fw-bold shadow-sm" onclick="return confirm('Are you sure you want to mark this shipment as DELIVERED? This action cannot be undone.');">
-                                <i class="fa fa-check-circle"/> MARK AS DELIVERED
-                            </button>
+                            <t t-if="shipment.is_return_journey">
+                                <button type="submit" class="btn btn-lg btn-success w-100 fw-bold shadow-sm"
+                                        onclick="return confirm('Confirm package returned to seller? (Free — no wallet charge)');">
+                                    <i class="fa fa-check-circle"/> MARK RETURNED TO SELLER
+                                </button>
+                            </t>
+                            <t t-else="">
+                                <button type="submit" class="btn btn-lg btn-success w-100 fw-bold shadow-sm" onclick="return confirm('Are you sure you want to mark this shipment as DELIVERED? This action cannot be undone.');">
+                                    <i class="fa fa-check-circle"/> MARK AS DELIVERED
+                                </button>
+                            </t>
                         </form>
                     </t>
 

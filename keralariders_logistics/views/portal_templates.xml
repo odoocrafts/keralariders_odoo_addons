@@ -356,10 +356,14 @@
                                     </form>
                                 </t>
                                 <t t-if="shipment.state == 'delivered'">
-                                    <form action="/my/shipments/request_return" method="post" style="display:inline;">
+                                    <form action="/my/shipments/request_return" method="post" style="display:inline;"
+                                          title="Free return: pickup from customer, through hubs, back to you. No wallet charge.">
                                         <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
                                         <input type="hidden" name="shipment_id" t-att-value="shipment.id"/>
-                                        <button type="submit" class="btn btn-sm btn-warning">Request Return</button>
+                                        <button type="submit" class="btn btn-sm btn-warning"
+                                                onclick="return confirm('Request a FREE return? A DE will pick up from the customer, move through hubs, and deliver back to you. No wallet deduction.');">
+                                            Request Return (Free)
+                                        </button>
                                     </form>
                                 </t>
                             </td>
@@ -681,7 +685,7 @@
                                                             <li>I have read and agree to the <strong>KeralaXpress Seller Terms &amp; Conditions</strong> and <strong>Privacy Policy</strong>.</li>
                                                             <li>The business and KYC information provided by me is true, accurate, and complete.</li>
                                                             <li>I am authorized to register and operate this seller account.</li>
-                                                            <li>I agree to pay all applicable shipping, pickup, RTO, COD, and other service charges as per the KeralaXpress rate card.</li>
+                                                            <li>I agree to pay all applicable shipping, pickup, COD, and other service charges as per the KeralaXpress rate card. Seller-initiated returns are free (no additional wallet deduction).</li>
                                                             <li>I will not ship prohibited, illegal, hazardous, counterfeit, or restricted items through KeralaXpress.</li>
                                                             <li>I am responsible for proper packaging, accurate shipment details, and compliance with all applicable laws.</li>
                                                             <li>I understand that KeralaXpress reserves the right to inspect, refuse, suspend, or cancel shipments or my account if these terms are violated.</li>

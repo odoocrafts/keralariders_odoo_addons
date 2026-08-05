@@ -98,14 +98,14 @@ class DeliveryExecutive(models.Model):
     def get_shipments_data(self):
         domain = self._my_tasks_domain()
         all_shipments = self.env['logistics.shipment'].search(domain + [('state', '!=', 'cancelled')])
-        # Also include delivered for counts (broader than open tasks)
+        # Also include completed shipments for counts (broader than open tasks)
         delivered_extra = self.env['logistics.shipment'].search([
             ('delivery_executive_id', '=', self.id),
-            ('state', 'in', ('delivered', 'return_requested', 'return_picked', 'returned')),
+            ('state', 'in', ('delivered', 'returned')),
         ])
         all_shipments |= delivered_extra
         delivered_shipments = all_shipments.filtered(
-            lambda rec: rec.state in ('delivered', 'return_requested', 'return_picked', 'returned')
+            lambda rec: rec.state in ('delivered', 'returned')
         )
         pending_shipments = (all_shipments - delivered_shipments).filtered(lambda rec: rec.state != 'cancelled')
         return all_shipments, delivered_shipments, pending_shipments
