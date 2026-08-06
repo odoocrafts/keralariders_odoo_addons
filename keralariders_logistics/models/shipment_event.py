@@ -66,13 +66,14 @@ class ShipmentEvent(models.Model):
     def get_timeline_detail(self, public=False):
         """Short human-readable detail line for public/portal tracking.
 
-        When public=True, omit billing / wallet jargon from notes (legacy events).
+        When public=True, omit DE/hub-manager actor names and sanitize notes
+        (billing jargon, legacy "by Name" fragments) for /track.
         """
         self.ensure_one()
         parts = []
         if self.hub_id:
             parts.append(self.hub_id.name)
-        if self.actor_de_id:
+        if self.actor_de_id and not public:
             parts.append(_("by %s") % self.actor_de_id.name)
         if self.note:
             note = self.note.strip()

@@ -1,5 +1,6 @@
 from odoo import models, fields, api, _
 from odoo.exceptions import UserError
+import re
 import uuid
 
 delivery_states = [
@@ -249,17 +250,87 @@ class Shipment(models.Model):
         return labels.get(event_type, event_type)
 
     def _sanitize_public_timeline_detail(self, detail):
-        """Strip billing / internal return jargon from notes shown on /track.
+        """Strip billing jargon, actor names, and internal ops copy from /track details.
 
-        Rewrites or drops legacy notes that mention wallet, free return billing,
-        or seller-initiated charge language so existing AWBs look clean.
+        Rewrites or drops legacy notes that mention wallet / free-return billing,
+        "by <Name>" actor segments, or DE/QR claim jargon so customers only see
+        hub names, status-safe notes, and COD facts without who collected.
         """
         if not detail:
             return ''
         text = detail.strip()
         if not text:
             return ''
-        lower = text.lower()
+
+        def _clean_fragment(part):
+            part = (part or '').strip()
+            if not part:
+                return ''
+
+            # Soften / drop known internal ops phrases (label already covers self-assign).
+            part = re.sub(
+                r'(?i)^DE self-assigned via QR/?claim\.?$',
+                '',
+                part,
+            )
+            part = re.sub(
+                r'(?i)^Assigned to\s+.+?\s+for\s+.+?\s+leg\.?$',
+                '',
+                part,
+            )
+            part = re.sub(
+                r'(?i)^Local same-district delivery\s*[—\-]\s*hub inventory skipped\.?$',
+                '',
+                part,
+            )
+            part = re.sub(
+                r'(?i)^Physical pass-through at\s+(.+?)\s+recorded\.?$',
+                r'\1',
+                part,
+            )
+            part = re.sub(
+                r'(?i)^Cancelled by\s+[^.]+\.?$',
+                '',
+                part,
+            )
+            part = part.strip()
+            if not part:
+                return ''
+
+            # "by Ashik - cash collected" / "by Ashik — cash collected" → keep fact only
+            if re.match(r'(?i)^by\s+.+?\s*[-–—]\s*cash collected$', part):
+                return 'Cash collected'
+            if re.match(r'(?i)^cash collected$', part):
+                return 'Cash collected'
+
+            # Drop pure "by <Name>" actor fragments (and trailing dash variants)
+            if re.match(r'(?i)^by\s+\S', part):
+                # Keep non-name remainder after "by Name - "
+                remainder = re.sub(
+                    r'(?i)^by\s+[^·•\n-]+?\s*[-–—]\s*',
+                    '',
+                    part,
+                ).strip()
+                if remainder and remainder.lower() != part.lower():
+                    if remainder.lower() == 'cash collected':
+                        return 'Cash collected'
+                    return remainder
+                return ''
+
+            # Inline " … by Name" (legacy notes without · separators)
+            part = re.sub(
+                r'(?i)\s+by\s+[A-Za-z][A-Za-z .\'-]{0,60}$',
+                '',
+                part,
+            ).strip()
+            return part
+
+        fragments = [
+            _clean_fragment(p)
+            for p in re.split(r'\s*[·•]\s*', text)
+        ]
+        fragments = [f for f in fragments if f]
+
         billing_markers = (
             'wallet',
             'no charge',
@@ -271,19 +342,13 @@ class Shipment(models.Model):
             'seller-initiated',
             'hub custody',
         )
-        if any(marker in lower for marker in billing_markers):
-            # Drop the whole fragment when it is billing/ops copy.
-            # Keep non-billing parts of merged " · " detail lines.
-            parts = [p.strip() for p in text.split(' · ') if p.strip()]
-            kept = []
-            for part in parts:
-                part_lower = part.lower()
-                if any(marker in part_lower for marker in billing_markers):
-                    continue
-                # Also drop leftover internal scan jargon if it was only a label dump
-                kept.append(part)
-            return ' · '.join(kept)
-        return text
+        kept = []
+        for part in fragments:
+            part_lower = part.lower()
+            if any(marker in part_lower for marker in billing_markers):
+                continue
+            kept.append(part)
+        return ' · '.join(kept)
 
     def get_tracking_origin_label(self):
         """Human-readable origin: district/state, else source hub, else pincode."""
@@ -386,11 +451,12 @@ class Shipment(models.Model):
             })
         return steps
 
-    def _synthesize_tracking_timeline(self):
+    def _synthesize_tracking_timeline(self, public=False):
         """Minimal timeline from known dates/state when no custody events exist.
 
         Only include steps we can back with real timestamps (or current state),
         so delivered packages never show an empty history.
+        When public=True, omit DE names from synthesized detail lines.
         """
         self.ensure_one()
         entries = []
@@ -456,11 +522,14 @@ class Shipment(models.Model):
         if self.state == 'out_for_delivery':
             de_name = self.delivery_executive_id.name if self.delivery_executive_id else ''
             ofd_dt = self.write_date or self.picked_on or order_dt
+            ofd_detail = ''
+            if de_name and not public:
+                ofd_detail = _('by %s') % de_name
             entries.append({
                 'label': _('Out for Delivery'),
                 'time': ofd_dt,
                 'time_display': self._format_tracking_datetime(ofd_dt),
-                'detail': (_('by %s') % de_name) if de_name else '',
+                'detail': ofd_detail,
                 'event_type': 'out_for_delivery',
             })
 
@@ -580,16 +649,22 @@ class Shipment(models.Model):
         collapsed.append(self._merge_timeline_cluster(cluster))
         return collapsed
 
-    def get_tracking_timeline(self, newest_first=False):
+    def get_tracking_timeline(self, newest_first=False, public=False):
         """Timeline entries for public track / DE portal.
 
         Prefer real custody events; otherwise synthesize from known dates/state.
         Default order is chronological (oldest → newest).
         Consecutive same-minute items are collapsed into one history entry.
-        Labels and details are customer-facing (no wallet / free-return billing copy).
+
+        When public=True (/track only): customer-facing labels, no actor names,
+        and sanitized notes (billing / "by Name" / QR-claim jargon stripped).
+        Portal callers should leave public=False so DE/hub names remain visible.
         """
         self.ensure_one()
         if self.event_ids:
+            type_labels = dict(
+                self.env['logistics.shipment.event']._fields['event_type'].selection
+            )
             events = self.event_ids.sorted(
                 key=lambda e: (e.event_time, e.id),
             )
@@ -614,34 +689,41 @@ class Shipment(models.Model):
                         )
                     )
                 )
-                detail = event.get_timeline_detail(public=True) or ''
-                entries.append({
-                    'label': self._public_timeline_label(
+                detail = event.get_timeline_detail(public=public) or ''
+                if public:
+                    label = self._public_timeline_label(
                         event.event_type, is_return=is_return_event
-                    ),
+                    )
+                    detail = self._sanitize_public_timeline_detail(detail)
+                else:
+                    label = type_labels.get(event.event_type, event.event_type)
+                entries.append({
+                    'label': label,
                     'time': event.event_time,
                     'time_display': self._format_tracking_datetime(event.event_time),
-                    'detail': self._sanitize_public_timeline_detail(detail),
+                    'detail': detail,
                     'event_type': event.event_type,
                 })
         else:
-            entries = self._synthesize_tracking_timeline()
+            entries = self._synthesize_tracking_timeline(public=public)
+            if public:
+                for entry in entries:
+                    entry['label'] = self._public_timeline_label(
+                        entry.get('event_type'),
+                        is_return=self.is_return_journey and entry.get('event_type') in (
+                            'return_requested', 'returned', 'pickup_scan', 'out_for_delivery',
+                        ),
+                    )
+                    entry['detail'] = self._sanitize_public_timeline_detail(
+                        entry.get('detail') or ''
+                    )
+
+        entries = self._collapse_same_minute_timeline(entries)
+        if public:
             for entry in entries:
-                entry['label'] = self._public_timeline_label(
-                    entry.get('event_type'),
-                    is_return=self.is_return_journey and entry.get('event_type') in (
-                        'return_requested', 'returned', 'pickup_scan', 'out_for_delivery',
-                    ),
-                )
                 entry['detail'] = self._sanitize_public_timeline_detail(
                     entry.get('detail') or ''
                 )
-
-        entries = self._collapse_same_minute_timeline(entries)
-        for entry in entries:
-            entry['detail'] = self._sanitize_public_timeline_detail(
-                entry.get('detail') or ''
-            )
 
         if newest_first:
             entries = list(reversed(entries))

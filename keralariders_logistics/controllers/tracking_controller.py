@@ -49,7 +49,7 @@ class TrackingController(http.Controller):
         shipment_state_str = shipment.get_tracking_status_label()
         payment_labels = dict(shipment._fields['order_payment_type'].selection)
         delivery_display = shipment.get_tracking_delivery_display()
-        tracking_events = shipment.get_tracking_timeline(newest_first=False)
+        tracking_events = shipment.get_tracking_timeline(newest_first=False, public=True)
         progress_steps = shipment.get_tracking_progress_steps()
         weight_display = False
         if shipment.total_weight:
