@@ -1,5 +1,9 @@
+import logging
+
 from odoo import models, fields, api, _
-from odoo.exceptions import UserError
+from odoo.exceptions import AccessError, UserError
+
+_logger = logging.getLogger(__name__)
 
 class Wallet(models.Model):
     _name = 'logistics.wallet'
@@ -140,18 +144,31 @@ class WalletRechargeRequest(models.Model):
     wallet_transaction_id = fields.Many2one('logistics.wallet.transaction', string="Wallet Transaction")
 
     def _get_logistics_admin_users(self):
-        """Internal users in logistics admin group (excludes portal/public/system)."""
+        """Internal users in logistics admin group (excludes portal/public/system).
+
+        Uses sudo for the group/user lookup: portal sellers cannot read
+        res.groups, and this is only used to pick admin activity assignees.
+        """
         admin_group = self.env.ref('keralariders_logistics.group_logistics_admin', raise_if_not_found=False)
         if not admin_group:
             return self.env['res.users']
         root_user = self.env.ref('base.user_root', raise_if_not_found=False)
-        return admin_group.user_ids.filtered(
+        return admin_group.sudo().user_ids.filtered(
             lambda u: u.active and not u.share and (not root_user or u != root_user)
         )
 
     def _schedule_admin_approval_activities(self):
         """Create one To-Do activity per logistics admin for pending recharge requests."""
-        admin_users = self._get_logistics_admin_users()
+        try:
+            admin_users = self._get_logistics_admin_users()
+        except AccessError:
+            _logger.warning(
+                "Could not resolve logistics admin users for recharge activities "
+                "(insufficient rights for %s); skipping activity schedule.",
+                self.env.user.login,
+                exc_info=True,
+            )
+            return self.env['mail.activity']
         if not admin_users:
             return self.env['mail.activity']
         activities = self.env['mail.activity']

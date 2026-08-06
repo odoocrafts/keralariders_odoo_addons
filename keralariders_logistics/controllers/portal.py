@@ -1,7 +1,7 @@
 from odoo import http, fields, _
 from odoo.addons.portal.controllers.portal import CustomerPortal, pager as portal_pager
 from odoo.http import request
-from odoo.exceptions import UserError
+from odoo.exceptions import AccessError, UserError
 
 class LogisticsPortal(CustomerPortal):
     
@@ -167,12 +167,15 @@ class LogisticsPortal(CustomerPortal):
             wallet = request.env['logistics.wallet'].search([('seller_id', '=', seller.id)], limit=1)
             amount = float(post.get('amount', 0))
             if amount > 0 and wallet:
-                request.env['logistics.wallet.recharge.request'].create({
-                    'seller_id': seller.id,
-                    'wallet_id': wallet.id,
-                    'requested_amount': amount,
-                })
-                request.session['success'] = "Your transaction will be manually verified from the backend. Please wait for verification."
+                try:
+                    request.env['logistics.wallet.recharge.request'].create({
+                        'seller_id': seller.id,
+                        'wallet_id': wallet.id,
+                        'requested_amount': amount,
+                    })
+                    request.session['success'] = "Your transaction will be manually verified from the backend. Please wait for verification."
+                except AccessError:
+                    request.session['error'] = "Unable to submit your recharge request. Please contact support."
         return request.redirect('/my/wallet')
 
     @http.route(['/my/shipments', '/my/shipments/page/<int:page>'], type='http', auth="user", website=True)
