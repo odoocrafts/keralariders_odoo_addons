@@ -253,7 +253,7 @@
                                     <tr>
                                         <td><t t-esc="shipment.name"/></td>
                                         <td><t t-esc="shipment.current_hub_id.name"/></td>
-                                        <td><span class="badge text-bg-secondary"><t t-esc="shipment.state"/></span></td>
+                                        <td><span class="badge text-bg-secondary"><t t-esc="dict(shipment.fields_get(allfields=['state'])['state']['selection']).get(shipment.state, shipment.state)"/></span></td>
                                         <td>
                                             <t t-esc="shipment.shipping_to_name"/><br/>
                                             <small class="text-muted"><t t-esc="shipment.shipping_to_zip"/></small>
