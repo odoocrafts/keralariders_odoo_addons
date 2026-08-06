@@ -392,7 +392,6 @@
                         </h4>
                         <p class="text-muted small mb-3">
                             After claim/dispatch you hold the package. Depart the source hub if still there,
-                            optionally record a Thrissur pass-through if you physically go via the main hub,
                             then drop at the destination hub for hub-manager receive.
                         </p>
 
@@ -402,21 +401,6 @@
                                 <button type="submit" class="btn btn-outline-primary w-100"
                                         onclick="return confirm('Confirm departure from source hub?');">
                                     <i class="fa fa-sign-out"/> Depart from Hub
-                                </button>
-                            </form>
-                        </t>
-
-                        <t t-if="can_pass_through">
-                            <h5 class="mb-2 text-secondary">Thrissur Pass-Through</h5>
-                            <p class="text-muted small">Scan the AWB QR to record optional physical pass-through at the main hub. Package stays In Transit.</p>
-                            <form t-attf-action="/my/delivery/#{shipment.id}/pass_through" method="post" class="mb-3" id="pass_through_form">
-                                <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
-                                <input type="hidden" name="scanned_code" id="pass_through_scanned_code" value=""/>
-                                <button type="button"
-                                        class="btn btn-outline-secondary w-100 btn-scan-qr"
-                                        data-scan-target="#pass_through_scanned_code"
-                                        data-scan-auto-submit="1">
-                                    <i class="fa fa-qrcode"/> Scan AWB &amp; Record Thrissur Pass-Through
                                 </button>
                             </form>
                         </t>

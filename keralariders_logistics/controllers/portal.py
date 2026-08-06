@@ -660,7 +660,6 @@ class LogisticsPortal(CustomerPortal):
             'active_leg_label': shipment.get_active_leg_label(),
             'preferred_drop_hub': preferred_drop_hub,
             'can_depart_hub': shipment.can_depart_from_hub(delivery_executive),
-            'can_pass_through': shipment.can_record_central_pass_through(delivery_executive),
             'can_skip_hub': shipment.can_skip_hub_local_delivery(delivery_executive),
             'is_hub_transfer': bool(active_leg and active_leg.operation_type == 'hub_transfer'),
             'tracking_events': tracking_events,
@@ -777,39 +776,6 @@ class LogisticsPortal(CustomerPortal):
                 note=post.get('note'),
             )
             request.session['success'] = f"Departed hub for transfer of {shipment.name}."
-        except UserError as e:
-            request.session['error'] = str(e)
-        return request.redirect(f'/my/delivery/{shipment.id}')
-
-    @http.route(['/my/delivery/<int:shipment_id>/pass_through'], type='http', auth="user", website=True, methods=['POST'])
-    def portal_my_delivery_pass_through(self, shipment_id=None, **post):
-        delivery_executive = request.env['logistics.delivery.executive'].sudo().search(
-            [('user_id', '=', request.env.user.id)], limit=1
-        )
-        if not delivery_executive:
-            return request.redirect('/my')
-        shipment = request.env['logistics.shipment'].sudo().browse(shipment_id)
-        if not shipment.exists():
-            request.session['error'] = "Shipment not found."
-            return request.redirect('/my/deliveries')
-        try:
-            scanned = (post.get('scanned_code') or '').strip()
-            if scanned:
-                # Accept AWB, tracking URL, or raw token that contains the AWB
-                awb = shipment.name
-                if awb not in scanned and scanned != awb:
-                    # Allow if last path segment equals AWB
-                    tail = scanned.rstrip('/').split('/')[-1]
-                    if tail != awb and 'id=' + awb not in scanned:
-                        raise UserError(
-                            f"Scanned code does not match shipment {awb}. Please scan the correct AWB."
-                        )
-            shipment.action_central_pass_through(
-                scanned_code=scanned or shipment.name,
-                note=post.get('note'),
-                actor_de=delivery_executive,
-            )
-            request.session['success'] = f"Thrissur pass-through recorded for {shipment.name}."
         except UserError as e:
             request.session['error'] = str(e)
         return request.redirect(f'/my/delivery/{shipment.id}')
