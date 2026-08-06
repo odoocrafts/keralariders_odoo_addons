@@ -49,8 +49,41 @@ class Shipment(models.Model):
             else:
                 shipment.tracking_url = False
 
+    @api.model
+    def _shipping_from_vals_for_seller(self, seller):
+        """Copy seller origin (pickup) address onto shipment shipping_from_* fields.
+
+        Used by create() / portal bulk upload so required shipping_from_zip is never
+        left null when seller_id is set (stored compute alone is not enough on insert).
+        """
+        if not seller:
+            return {}
+        from_zip = (seller.zip or '').strip() or (
+            (seller.partner_id.zip or '').strip() if seller.partner_id else ''
+        )
+        street = seller.street or (seller.partner_id.street if seller.partner_id else '') or ''
+        street2 = seller.street2 or (seller.partner_id.street2 if seller.partner_id else '') or ''
+        address = '\n'.join([street, street2]) if (street or street2) else ''
+        district = seller.district_id
+        state = seller.state_id or (seller.partner_id.state_id if seller.partner_id else False)
+        country = seller.country_id or (seller.partner_id.country_id if seller.partner_id else False)
+        if from_zip and not district:
+            pincode_info = self.env['logistics.district'].get_district_from_pincode(from_zip)
+            if pincode_info and pincode_info.get('district_id'):
+                district = pincode_info['district_id']
+                state = state or district.state_id
+        return {
+            'shipping_from_name': seller.name or (seller.partner_id.name if seller.partner_id else '') or '',
+            'shipping_from_address': address,
+            'shipping_from_zip': from_zip or False,
+            'shipping_from_district_id': district.id if district else False,
+            'shipping_from_state_id': state.id if state else False,
+            'shipping_from_country_id': country.id if country else False,
+        }
+
     @api.model_create_multi
     def create(self, vals_list):
+        Seller = self.env['logistics.seller']
         for vals in vals_list:
             if vals.get('name', _('New')) == _('New'):
                 vals['name'] = self.env['ir.sequence'].sudo().next_by_code('logistics.shipment') or _('New')
@@ -58,6 +91,16 @@ class Shipment(models.Model):
             vals.setdefault('custodian_type', 'seller')
             if vals.get('state') == 'cancel':
                 vals['state'] = 'cancelled'
+            # Ensure origin pincode/address are present before INSERT (required column).
+            if vals.get('seller_id') and not vals.get('shipping_from_zip'):
+                seller = Seller.browse(vals['seller_id'])
+                from_vals = self._shipping_from_vals_for_seller(seller)
+                if not from_vals.get('shipping_from_zip'):
+                    raise UserError(_(
+                        "Update seller pickup pincode before creating shipments."
+                    ))
+                for key, value in from_vals.items():
+                    vals.setdefault(key, value)
         shipments = super(Shipment, self).create(vals_list)
         shipments.filtered(lambda s: s.estimated_route_ids and not s.active_leg_id)._sync_active_leg()
         shipments._auto_assign_pickup_executive()

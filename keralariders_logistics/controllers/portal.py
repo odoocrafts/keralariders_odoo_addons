@@ -264,6 +264,10 @@ class LogisticsPortal(CustomerPortal):
             if total_weight <= 0:
                 raise UserError("Weight must be greater than 0.")
                 
+            shipping_from_vals = request.env['logistics.shipment'].sudo()._shipping_from_vals_for_seller(seller)
+            if not shipping_from_vals.get('shipping_from_zip'):
+                raise UserError(_("Update seller pickup pincode before creating shipments."))
+
             shipment_vals = {
                 'seller_id': seller.id,
                 'shipping_to_name': shipping_to_name,
@@ -278,6 +282,7 @@ class LogisticsPortal(CustomerPortal):
                 'total_order_value': float(post.get('total_order_value') or 0),
                 'billing_same_as_shipping': True,
                 'state': 'order_added',
+                **shipping_from_vals,
             }
             shipment = request.env['logistics.shipment'].sudo().create(shipment_vals)
             
@@ -432,7 +437,15 @@ class LogisticsPortal(CustomerPortal):
         if not csv_file or not pickup_date:
             request.session['error'] = "Missing file or pickup date."
             return request.redirect('/my/orders/new')
-            
+
+        # Seller origin (from) must exist before any shipment INSERT — required column.
+        Shipment = request.env['logistics.shipment'].sudo()
+        shipping_from_vals = Shipment._shipping_from_vals_for_seller(seller)
+        if not shipping_from_vals.get('shipping_from_zip'):
+            request.session['error'] = "Update seller pickup pincode before uploading"
+            return request.redirect('/my/orders/new')
+
+        order = None
         try:
             import csv
             import io
@@ -537,9 +550,11 @@ class LogisticsPortal(CustomerPortal):
                     'total_order_value': order_value,
                     'billing_same_as_shipping': True,
                     'state': 'order_added',
+                    # Seller origin (pickup) — mirrors single-shipment / compute from seller
+                    **shipping_from_vals,
                 }
                 
-                shipment = request.env['logistics.shipment'].sudo().create(shipment_vals)
+                shipment = Shipment.create(shipment_vals)
                 if shipment.order_payment_type == 'cod':
                     shipment.cod_amount = shipment.total_order_value
                 success_count += 1
@@ -562,12 +577,26 @@ class LogisticsPortal(CustomerPortal):
                 
             request.session['success'] = msg
             return request.redirect(f'/my/orders/{order.id}')
-            
+
+        except UserError as e:
+            if order and not order.shipment_ids:
+                order.sudo().unlink()
+            request.session['error'] = e.args[0] if e.args else str(e)
+            return request.redirect('/my/orders/new')
         except UnicodeDecodeError:
+            if order and not order.shipment_ids:
+                order.sudo().unlink()
             request.session['error'] = "Error reading file. Please ensure it is a valid CSV file saved with UTF-8 encoding."
             return request.redirect('/my/orders/new')
         except Exception as e:
-            request.session['error'] = f"Error processing file: {str(e)}"
+            if order and not order.shipment_ids:
+                order.sudo().unlink()
+            err = str(e)
+            # Avoid exposing raw Postgres constraint / SQL errors on the portal.
+            if 'shipping_from_zip' in err or 'not-null' in err.lower() or 'NotNullViolation' in type(e).__name__:
+                request.session['error'] = "Update seller pickup pincode before uploading"
+            else:
+                request.session['error'] = "Error processing file. Please check your CSV and try again."
             return request.redirect('/my/orders/new')
             
     @http.route(['/my/orders/request_pickup'], type='http', auth="user", website=True, methods=['POST'])
