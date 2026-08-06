@@ -74,6 +74,8 @@ class Order(models.Model):
                 
             for shipment in order.shipment_ids:
                 shipment.action_add_wallet_transaction()
+                # Ensure pickup DE / pickup leg assignment (wallet unchanged).
+                shipment._auto_assign_pickup_executive()
             
             # Update all shipments
             order.shipment_ids.with_context(allow_shipment_state_write=True).write({

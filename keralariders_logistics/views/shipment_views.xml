@@ -15,6 +15,7 @@
                 <field name="shipping_to_mobile"/>
                 <field name="shipping_to_email"/>
                 <field name="delivery_executive_id"/>
+                <field name="pickup_executive_id"/>
 
                 <separator/>
 
@@ -175,6 +176,7 @@
                 <field name="seller_id" width="100"/>
                 <field name="shipping_to_name" width="100" string="Shipping To"/>
                 <field name="delivery_executive_id" string="Delivery Exec." width="100"/>
+                <field name="pickup_executive_id" string="Pickup Exec." width="100" optional="show"/>
                 <field name="order_date" width="100"/>
                 <field name="shipping_from_district_id" string="Shipping From" width="100"/>
                 <field name="shipping_to_district_id" string="Shipping To" width="100"/>
@@ -328,6 +330,7 @@
                             <field name="seller_notes"/>
                         </group>
                         <group string="Delivery">
+                            <field name="pickup_executive_id"/>
                             <field name="delivery_executive_id"/>
                             <field name="estimated_delivery_date"/>
                             <field name="actual_delivery_date"/>
@@ -362,12 +365,12 @@
                         </group>
                         <group string="Shipping To (Customer)">
                             <field name="shipping_to_name" string="Name"/>
-                            <field name="shipping_to_address" string="Address"/>
-                            <field name="shipping_to_zip" string="Pincode" force_save="1"/>
+                            <field name="shipping_to_address" string="Address" required="1"/>
+                            <field name="shipping_to_zip" string="Pincode" force_save="1" required="1"/>
                             <field name="shipping_to_district_id" string="District"/>
                             <field name="shipping_to_state_id" string="State"/>
                             <field name="shipping_to_country_id" string="Country"/>
-                            <field name="shipping_to_mobile" string="Mobile"/>
+                            <field name="shipping_to_mobile" string="Mobile" required="1"/>
                             <field name="shipping_to_email" string="Email"/>
                         </group>
                     </group>

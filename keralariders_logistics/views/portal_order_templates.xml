@@ -128,6 +128,7 @@
                                 <tr>
                                     <th>AWB / Ref</th>
                                     <th>Customer Name</th>
+                                    <th>Phone</th>
                                     <th>Weight (Kg)</th>
                                     <th>Payment Type</th>
                                     <th>Charges</th>
@@ -139,6 +140,7 @@
                                     <tr>
                                         <td><a t-attf-href="/track/#{ship.tracking_token}"><span t-field="ship.name"/></a></td>
                                         <td><span t-field="ship.shipping_to_name"/></td>
+                                        <td><span t-field="ship.shipping_to_mobile"/></td>
                                         <td><span t-field="ship.total_weight"/></td>
                                         <td><span t-esc="dict(ship.fields_get(allfields=['order_payment_type'])['order_payment_type']['selection'])[ship.order_payment_type]"/></td>
                                         <td><span t-field="ship.delivery_charges_total" t-options='{"widget": "monetary", "display_currency": ship.currency_id}'/></td>
@@ -181,7 +183,11 @@
 
                                 <div class="mb-4">
                                     <label class="form-label fw-bold">1. Download Template</label>
-                                    <p class="text-muted small">Please use our standard CSV template to prepare your shipment data.</p>
+                                    <p class="text-muted small">
+                                        Please use our standard CSV template. Columns marked
+                                        <strong>* (mandatory)</strong> — Phone Number, Address, and Pincode —
+                                        are required for every row.
+                                    </p>
                                     <a href="/my/shipments/bulk_upload/template" class="btn btn-outline-secondary btn-sm">
                                         <i class="fa fa-download me-1"/> Download CSV Template
                                     </a>
@@ -203,9 +209,9 @@
                                 <h5>How it works:</h5>
                                 <ol class="small ps-3 mb-0">
                                     <li class="mb-2">Download the CSV template.</li>
-                                    <li class="mb-2">Fill in your shipments' details carefully. Do not change the headers.</li>
+                                    <li class="mb-2">Fill in your shipments' details carefully. Do not change the headers. <strong>Phone, Address, and Pincode are mandatory</strong> for every row.</li>
                                     <li class="mb-2">Upload the file here.</li>
-                                    <li class="mb-2">We will parse the file and calculate the total delivery charges.</li>
+                                    <li class="mb-2">We will parse the file and calculate the total delivery charges. Rows missing required fields are skipped with an error summary.</li>
                                     <li class="mb-0">You can then review the charges, recharge your wallet if needed, and confirm the pickup request!</li>
                                 </ol>
                             </div>

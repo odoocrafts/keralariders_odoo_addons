@@ -326,6 +326,7 @@
                                 </t>
                                 <br/>
                                 <strong>Custody:</strong> <span t-field="shipment.custodian_type"/><br/>
+                                <strong>Pickup Executive:</strong> <span t-field="shipment.pickup_executive_id"/><br/>
                                 <strong>Current Hub:</strong> <span t-field="shipment.current_hub_id"/><br/>
                                 <t t-if="active_leg">
                                     <strong>Active leg:</strong> <t t-esc="active_leg_label or active_leg.name"/><br/>

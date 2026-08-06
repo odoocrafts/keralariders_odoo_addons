@@ -243,18 +243,35 @@ class LogisticsPortal(CustomerPortal):
             return request.redirect('/my')
             
         try:
+            # Server-side required customer contact fields
+            shipping_to_name = (post.get('shipping_to_name') or '').strip()
+            shipping_to_mobile = (post.get('shipping_to_mobile') or '').strip()
+            shipping_to_address = (post.get('shipping_to_address') or '').strip()
+            shipping_to_zip = (post.get('shipping_to_zip') or '').strip()
+            missing = []
+            if not shipping_to_name:
+                missing.append('Customer Name')
+            if not shipping_to_mobile:
+                missing.append('Phone Number')
+            if not shipping_to_address:
+                missing.append('Address')
+            if not shipping_to_zip:
+                missing.append('Pincode')
+            if missing:
+                raise UserError(_("Missing required fields: %s") % ', '.join(missing))
+
             total_weight = float(post.get('total_weight') or 0)
             if total_weight <= 0:
                 raise UserError("Weight must be greater than 0.")
                 
             shipment_vals = {
                 'seller_id': seller.id,
-                'shipping_to_name': post.get('shipping_to_name'),
-                'shipping_to_address': post.get('shipping_to_address'),
-                'shipping_to_zip': post.get('shipping_to_zip'),
+                'shipping_to_name': shipping_to_name,
+                'shipping_to_address': shipping_to_address,
+                'shipping_to_zip': shipping_to_zip,
                 'shipping_to_district_id': int(post.get('shipping_to_district_id')) if post.get('shipping_to_district_id') else False,
                 'shipping_to_state_id': int(post.get('shipping_to_state_id')) if post.get('shipping_to_state_id') else False,
-                'shipping_to_mobile': post.get('shipping_to_mobile'),
+                'shipping_to_mobile': shipping_to_mobile,
                 'item_description': post.get('item_description'),
                 'total_weight': total_weight,
                 'order_payment_type': post.get('order_payment_type', 'prepaid'),
@@ -281,7 +298,17 @@ class LogisticsPortal(CustomerPortal):
         
         output = io.StringIO()
         writer = csv.writer(output)
-        headers = ['Customer Name', 'Phone Number', 'Address', 'Pincode', 'Weight (kg)', 'Item Description', 'Payment Type (prepaid/cod)', 'Total Order Value']
+        # Columns marked * / (mandatory) must be filled; upload accepts both marked and plain headers.
+        headers = [
+            'Customer Name*',
+            'Phone Number* (mandatory)',
+            'Address* (mandatory)',
+            'Pincode* (mandatory)',
+            'Weight (kg)*',
+            'Item Description*',
+            'Payment Type (prepaid/cod)',
+            'Total Order Value',
+        ]
         writer.writerow(headers)
         
         # Add sample rows to help the user
@@ -409,30 +436,66 @@ class LogisticsPortal(CustomerPortal):
         try:
             import csv
             import io
+            import re
+            
+            def _csv_cell(row, *aliases):
+                """Read a cell by exact or normalized header (strips * / (mandatory))."""
+                for alias in aliases:
+                    val = row.get(alias)
+                    if val is not None and str(val).strip() != '':
+                        return str(val).strip()
+                normalized = {
+                    re.sub(r'\s*\(mandatory\)\s*', '', re.sub(r'\*+', '', (k or ''))).strip().lower(): v
+                    for k, v in row.items()
+                }
+                for alias in aliases:
+                    key = re.sub(r'\s*\(mandatory\)\s*', '', re.sub(r'\*+', '', alias)).strip().lower()
+                    val = normalized.get(key)
+                    if val is not None and str(val).strip() != '':
+                        return str(val).strip()
+                return ''
             
             file_content = csv_file.read().decode('utf-8')
             csv_reader = csv.DictReader(io.StringIO(file_content))
             
             success_count = 0
             failed_count = 0
+            failure_reasons = []
             
             order = request.env['logistics.order'].sudo().create({
                 'seller_id': seller.id,
                 'pickup_date': pickup_date,
             })
             
-            for row in csv_reader:
-                customer_name = row.get('Customer Name')
-                phone = row.get('Phone Number')
-                address = row.get('Address')
-                pincode = row.get('Pincode')
-                weight_str = row.get('Weight (kg)')
-                description = row.get('Item Description')
-                payment_type = row.get('Payment Type (prepaid/cod)', '').strip().lower()
-                order_value_str = row.get('Total Order Value', '0')
-                
-                if not all([customer_name, phone, address, pincode, weight_str, description]):
+            for row_num, row in enumerate(csv_reader, start=2):
+                customer_name = _csv_cell(row, 'Customer Name*', 'Customer Name')
+                phone = _csv_cell(row, 'Phone Number* (mandatory)', 'Phone Number*', 'Phone Number')
+                address = _csv_cell(row, 'Address* (mandatory)', 'Address*', 'Address')
+                pincode = _csv_cell(row, 'Pincode* (mandatory)', 'Pincode*', 'Pincode')
+                weight_str = _csv_cell(row, 'Weight (kg)*', 'Weight (kg)')
+                description = _csv_cell(row, 'Item Description*', 'Item Description')
+                payment_type = (_csv_cell(row, 'Payment Type (prepaid/cod)') or '').strip().lower()
+                order_value_str = _csv_cell(row, 'Total Order Value') or '0'
+
+                missing_fields = []
+                if not customer_name:
+                    missing_fields.append('Customer Name')
+                if not phone:
+                    missing_fields.append('Phone Number')
+                if not address:
+                    missing_fields.append('Address')
+                if not pincode:
+                    missing_fields.append('Pincode')
+                if not weight_str:
+                    missing_fields.append('Weight')
+                if not description:
+                    missing_fields.append('Item Description')
+                if missing_fields:
                     failed_count += 1
+                    if len(failure_reasons) < 5:
+                        failure_reasons.append(
+                            f"Row {row_num}: missing {', '.join(missing_fields)}"
+                        )
                     continue
                     
                 try:
@@ -440,6 +503,8 @@ class LogisticsPortal(CustomerPortal):
                     order_value = float(order_value_str) if order_value_str else 0.0
                 except ValueError:
                     failed_count += 1
+                    if len(failure_reasons) < 5:
+                        failure_reasons.append(f"Row {row_num}: invalid weight or order value")
                     continue
                     
                 district_id = False
@@ -450,6 +515,8 @@ class LogisticsPortal(CustomerPortal):
                     state_id = pincode_info['district_id'].state_id.id
                 else:
                     failed_count += 1
+                    if len(failure_reasons) < 5:
+                        failure_reasons.append(f"Row {row_num}: unknown pincode {pincode}")
                     continue
                     
                 if payment_type not in ['prepaid', 'cod']:
@@ -479,12 +546,19 @@ class LogisticsPortal(CustomerPortal):
                 
             if success_count == 0:
                 order.sudo().unlink()
-                request.session['error'] = "All rows failed validation. Order not created."
+                detail = ('; '.join(failure_reasons)) if failure_reasons else ''
+                request.session['error'] = (
+                    "All rows failed validation (phone, address, and pincode are mandatory). "
+                    "Order not created."
+                    + (f" {detail}" if detail else "")
+                )
                 return request.redirect('/my/orders/new')
                 
             msg = f"Order created with {success_count} shipments."
             if failed_count > 0:
                 msg += f" {failed_count} rows failed validation and were skipped."
+                if failure_reasons:
+                    msg += " " + '; '.join(failure_reasons)
                 
             request.session['success'] = msg
             return request.redirect(f'/my/orders/{order.id}')

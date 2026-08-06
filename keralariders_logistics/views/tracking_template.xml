@@ -258,6 +258,19 @@
                                     </div>
                                 </div>
 
+                                <!-- Final-mile delivery contact (OFD / delivered only) -->
+                                <t t-if="delivery_contact_phone">
+                                    <div class="mb-4 p-3 rounded" style="background:#f0fdf4;border:1px solid #bbf7d0;">
+                                        <div class="kx-meta-label mb-1">Delivery contact</div>
+                                        <p class="kx-meta-value mb-0">
+                                            <a t-att-href="'tel:' + delivery_contact_phone" class="text-decoration-none fw-semibold" style="color:#166534;">
+                                                <i class="fa fa-phone me-1"/>
+                                                <t t-esc="delivery_contact_phone"/>
+                                            </a>
+                                        </p>
+                                    </div>
+                                </t>
+
                                 <!-- Optional facts -->
                                 <div class="kx-facts mb-4">
                                     <t t-if="weight_display">

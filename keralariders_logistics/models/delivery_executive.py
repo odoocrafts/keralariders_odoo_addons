@@ -114,8 +114,9 @@ class DeliveryExecutive(models.Model):
         """Shipments assigned to this DE at shipment or leg level."""
         self.ensure_one()
         return [
-            '|', '|', '|',
+            '|', '|', '|', '|',
             ('delivery_executive_id', '=', self.id),
+            ('pickup_executive_id', '=', self.id),
             ('custodian_de_id', '=', self.id),
             ('active_leg_id.assigned_de_id', '=', self.id),
             ('estimated_route_ids.assigned_de_id', '=', self.id),
@@ -174,14 +175,33 @@ class DeliveryExecutive(models.Model):
 
     @api.model
     def get_assigned_executive_for_pincode(self, pincode, operation_type):
-        pincode = self.env['logistics.pincode'].search([('name', '=', pincode)], limit=1)
-        if pincode:
-            if operation_type == 'pickup':
-                executive = self.search([('assigned_pickup_pincodes', 'in', [pincode.id])], limit=1)
-            elif operation_type == 'delivery':
-                executive = self.search([('assigned_delivery_pincodes', 'in', [pincode.id])], limit=1)
-            else:
-                raise ValueError("Invalid operation type. Must be either 'pickup' or 'delivery'.")
+        """Find an active DE covering this pincode for pickup or delivery.
+
+        Role flags: if any role is set, require the matching flag (`is_pickup` /
+        `is_delivery`). If no role flags are set, the DE is eligible for both.
+        Deterministic: lowest id when multiple match.
+        """
+        pin = self.env['logistics.pincode'].search([('name', '=', pincode)], limit=1)
+        if not pin:
+            return self.browse()
+
+        no_role = [
+            ('is_pickup', '=', False),
+            ('is_delivery', '=', False),
+            ('is_driver', '=', False),
+            ('is_manager', '=', False),
+        ]
+        if operation_type == 'pickup':
+            pincode_field = 'assigned_pickup_pincodes'
+            role_domain = ['|', ('is_pickup', '=', True), '&', '&', '&'] + no_role
+        elif operation_type == 'delivery':
+            pincode_field = 'assigned_delivery_pincodes'
+            role_domain = ['|', ('is_delivery', '=', True), '&', '&', '&'] + no_role
         else:
-            executive = self #return empty recordset if no pincode found
-        return executive
+            raise ValueError("Invalid operation type. Must be either 'pickup' or 'delivery'.")
+
+        domain = [
+            ('active', '=', True),
+            (pincode_field, 'in', [pin.id]),
+        ] + role_domain
+        return self.search(domain, order='id', limit=1)

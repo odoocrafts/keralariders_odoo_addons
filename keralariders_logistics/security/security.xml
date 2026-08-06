@@ -106,8 +106,9 @@
         <record id="logistics_shipment_de_rule" model="ir.rule">
             <field name="name">DE Shipment Rule</field>
             <field name="model_id" ref="model_logistics_shipment"/>
-            <field name="domain_force">['|', '|', '|',
+            <field name="domain_force">['|', '|', '|', '|',
                 ('delivery_executive_id.user_id', '=', user.id),
+                ('pickup_executive_id.user_id', '=', user.id),
                 ('custodian_de_id.user_id', '=', user.id),
                 ('estimated_route_ids.assigned_de_id.user_id', '=', user.id),
                 ('active_leg_id.assigned_de_id.user_id', '=', user.id)]</field>

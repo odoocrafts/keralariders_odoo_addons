@@ -55,6 +55,11 @@ class TrackingController(http.Controller):
         if shipment.total_weight:
             weight_display = f"{shipment.total_weight:.3f} kg"
 
+        # Final-mile contact: show DE mobile only for OFD / delivered (not earlier stages).
+        delivery_contact_phone = False
+        if shipment.state in ('out_for_delivery', 'delivered') and shipment.delivery_executive_id:
+            delivery_contact_phone = (shipment.delivery_executive_id.mobile or '').strip() or False
+
         values = {
             'shipment': shipment,
             'shipment_state_str': shipment_state_str,
@@ -66,6 +71,7 @@ class TrackingController(http.Controller):
             'payment_type_label': payment_labels.get(shipment.order_payment_type, ''),
             'weight_display': weight_display,
             'last_update_display': shipment._format_tracking_datetime(shipment.write_date),
+            'delivery_contact_phone': delivery_contact_phone,
             'company': request.env.company,
             'languages': [],
         }

@@ -1,5 +1,5 @@
 from odoo import models, fields, api, _
-from odoo.exceptions import UserError
+from odoo.exceptions import UserError, ValidationError
 import re
 import uuid
 
@@ -60,6 +60,7 @@ class Shipment(models.Model):
                 vals['state'] = 'cancelled'
         shipments = super(Shipment, self).create(vals_list)
         shipments.filtered(lambda s: s.estimated_route_ids and not s.active_leg_id)._sync_active_leg()
+        shipments._auto_assign_pickup_executive()
         return shipments
 
     def write(self, vals):
@@ -783,6 +784,45 @@ class Shipment(models.Model):
             return False
         return self._de_eligible_for_operation(de, leg.operation_type)
 
+    def _auto_assign_pickup_executive(self):
+        """Assign pickup DE from origin pincode; set pickup leg assigned_de_id when possible.
+
+        Does not block create when no matching DE exists. Never overwrites an
+        already-set pickup_executive_id. Distinct from delivery_executive_id (last-mile).
+        """
+        DE = self.env['logistics.delivery.executive']
+        for shipment in self:
+            if shipment.pickup_executive_id:
+                de = shipment.pickup_executive_id
+            else:
+                pickup_zip = (
+                    shipment.shipping_to_zip
+                    if shipment.is_return_journey
+                    else shipment.shipping_from_zip
+                )
+                if not pickup_zip:
+                    continue
+                de = DE.get_assigned_executive_for_pincode(pickup_zip, 'pickup')
+                if not de:
+                    continue
+                shipment.pickup_executive_id = de.id
+
+            pickup_leg = shipment.estimated_route_ids.filtered(
+                lambda l: l.operation_type == 'pickup' and l.state != 'done'
+            )[:1]
+            if (
+                pickup_leg
+                and de
+                and not pickup_leg.assigned_de_id
+                and shipment._de_eligible_for_leg(de, pickup_leg)
+            ):
+                # Soft assign (planned → assigned); do not raise on create/bulk.
+                pickup_leg.write({
+                    'assigned_de_id': de.id,
+                    'state': 'assigned' if pickup_leg.state == 'planned' else pickup_leg.state,
+                })
+        return True
+
     def _assign_leg_de(self, leg, de, start=False):
         """Assign DE to a leg and optionally start it."""
         self.ensure_one()
@@ -912,6 +952,11 @@ class Shipment(models.Model):
                 lambda l: l.operation_type == 'pickup'
             )[:1]
             pickup_de = pickup_leg.executive1_id if pickup_leg else False
+            if not pickup_de:
+                pickup_zip = shipment.shipping_to_zip  # return: pickup from consignee
+                pickup_de = self.env['logistics.delivery.executive'].get_assigned_executive_for_pincode(
+                    pickup_zip, 'pickup'
+                ) if pickup_zip else False
             if pickup_de and pickup_leg:
                 shipment._assign_leg_de(pickup_leg, pickup_de, start=False)
 
@@ -926,6 +971,7 @@ class Shipment(models.Model):
                 'custodian_type': 'customer',
                 'custodian_de_id': False,
                 'current_hub_id': False,
+                'pickup_executive_id': pickup_de.id if pickup_de else False,
                 'delivery_executive_id': pickup_de.id if pickup_de else False,
                 'active_leg_id': pickup_leg.id if pickup_leg else False,
                 'route_locked': True,
@@ -942,7 +988,12 @@ class Shipment(models.Model):
                     _("Shipment %s cannot be marked picked from state '%s'.")
                     % (shipment.name, shipment.state)
                 )
-            de = actor_de or shipment.delivery_executive_id or shipment.custodian_de_id
+            de = (
+                actor_de
+                or shipment.pickup_executive_id
+                or shipment.delivery_executive_id
+                or shipment.custodian_de_id
+            )
             shipment._sync_active_leg()
             pickup_leg = shipment.active_leg_id
             if pickup_leg and pickup_leg.operation_type != 'pickup':
@@ -983,6 +1034,8 @@ class Shipment(models.Model):
                 'current_hub_id': False,
                 'estimated_delivery_date': fields.Date.today(),
             }
+            if de and not shipment.pickup_executive_id:
+                vals['pickup_executive_id'] = de.id
             if de and not shipment.delivery_executive_id:
                 vals['delivery_executive_id'] = de.id
             if pickup_leg:
@@ -1499,7 +1552,17 @@ class Shipment(models.Model):
 
     seller_id = fields.Many2one('logistics.seller', string='Seller', required=True)
     order_id = fields.Many2one('logistics.order', string='Order', ondelete='cascade')
-    delivery_executive_id = fields.Many2one('logistics.delivery.executive', string='Delivery Executive')
+    delivery_executive_id = fields.Many2one(
+        'logistics.delivery.executive',
+        string='Delivery Executive',
+        help='Current / last-mile delivery executive.',
+    )
+    pickup_executive_id = fields.Many2one(
+        'logistics.delivery.executive',
+        string='Pickup Executive',
+        tracking=True,
+        help='Pickup executive auto-assigned from seller origin pincode (or set manually).',
+    )
     order_date = fields.Date(string='Order Date', required=True, default=fields.Date.context_today)
 
     @api.depends('seller_id')
@@ -1530,7 +1593,7 @@ class Shipment(models.Model):
 
     # Shipping To Address
     shipping_to_name = fields.Char(string='Shipping To Name',)
-    shipping_to_address = fields.Text(string='Shipping To Address')
+    shipping_to_address = fields.Text(string='Shipping To Address', required=True)
     shipping_to_zip = fields.Char(string='Shipping To Pincode', required=True)
     @api.onchange('shipping_to_zip')
     def _onchange_shipping_to_zip(self):
@@ -1542,8 +1605,18 @@ class Shipment(models.Model):
     shipping_to_district_id = fields.Many2one('logistics.district', string='Shipping To District')
     shipping_to_state_id = fields.Many2one('res.country.state', string='Shipping To State', default=lambda self: self.env.company.state_id.id)
     shipping_to_country_id = fields.Many2one('res.country', string='Shipping To Country', default=lambda self: self.env.company.partner_id.country_id.id) 
-    shipping_to_mobile = fields.Char(string='Shipping To Mobile Number')
+    shipping_to_mobile = fields.Char(string='Shipping To Mobile Number', required=True)
     shipping_to_email = fields.Char(string='Shipping To Email')
+
+    @api.constrains('shipping_to_mobile', 'shipping_to_address', 'shipping_to_zip')
+    def _check_customer_contact_required(self):
+        for rec in self:
+            if not (rec.shipping_to_mobile or '').strip():
+                raise ValidationError(_('Customer phone (Shipping To Mobile) is required.'))
+            if not (rec.shipping_to_address or '').strip():
+                raise ValidationError(_('Customer address (Shipping To Address) is required.'))
+            if not (rec.shipping_to_zip or '').strip():
+                raise ValidationError(_('Customer pincode (Shipping To Pincode) is required.'))
 
     # Billing Address
     billing_same_as_shipping = fields.Boolean(string='Same as Shipping', default=True)

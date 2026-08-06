@@ -397,16 +397,16 @@
                                     <input type="text" name="shipping_to_name" class="form-control" required="1"/>
                                 </div>
                                 <div class="mb-3">
-                                    <label class="form-label">Phone Number</label>
+                                    <label class="form-label">Phone Number <span class="text-danger">*</span></label>
                                     <input type="text" name="shipping_to_mobile" class="form-control" required="1"/>
                                 </div>
                                 <div class="mb-3">
-                                    <label class="form-label">Address</label>
+                                    <label class="form-label">Address <span class="text-danger">*</span></label>
                                     <textarea name="shipping_to_address" class="form-control" rows="3" required="1"></textarea>
                                 </div>
                                 <div class="row">
                                     <div class="col-md-6 mb-3">
-                                        <label class="form-label">Pincode</label>
+                                        <label class="form-label">Pincode <span class="text-danger">*</span></label>
                                         <input type="text" name="shipping_to_zip" class="form-control" required="1"/>
                                     </div>
                                     <div class="col-md-6 mb-3">
