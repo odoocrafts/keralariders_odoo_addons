@@ -637,16 +637,10 @@ class LogisticsPortal(CustomerPortal):
         if shipment.can_de_self_assign(delivery_executive) and not kw.get('view'):
             return request.redirect(f'/my/delivery/{shipment.id}/claim')
 
-        hubs = request.env['logistics.hub'].sudo().search([('active', '=', True)])
         shipment._sync_active_leg()
         active_leg = shipment.active_leg_id
-        preferred_drop_hub = False
-        if active_leg and active_leg.operation_type == 'hub_transfer' and active_leg.to_hub_id:
-            preferred_drop_hub = active_leg.to_hub_id
-        elif active_leg and active_leg.operation_type == 'pickup' and active_leg.to_hub_id:
-            preferred_drop_hub = active_leg.to_hub_id
-        else:
-            preferred_drop_hub = shipment.source_hub_id
+        hubs = shipment.get_portal_drop_hub_ids()
+        preferred_drop_hub = shipment.get_preferred_portal_drop_hub()
 
         tracking_events = shipment.get_tracking_timeline(newest_first=False)
 
@@ -737,16 +731,21 @@ class LogisticsPortal(CustomerPortal):
         if not shipment.exists():
             request.session['error'] = "Shipment not found."
             return request.redirect('/my/deliveries')
+        shipment._sync_active_leg()
         hub_id = int(post.get('hub_id') or 0)
-        hub = request.env['logistics.hub'].sudo().browse(hub_id) if hub_id else False
-        if not hub:
-            leg = shipment.active_leg_id
-            if leg and leg.operation_type == 'hub_transfer' and leg.to_hub_id:
-                hub = leg.to_hub_id
-            elif leg and leg.operation_type == 'pickup' and leg.to_hub_id:
-                hub = leg.to_hub_id
-            else:
-                hub = shipment.source_hub_id
+        allowed = shipment.get_portal_drop_hub_ids()
+        if hub_id:
+            hub = allowed.filtered(lambda h: h.id == hub_id)[:1]
+            if not hub:
+                request.session['error'] = (
+                    "Selected hub is not valid for this shipment. "
+                    "Choose pickup hub, destination hub"
+                    + (", or Thrissur main hub" if shipment._is_north_south_cross_zone() else "")
+                    + "."
+                )
+                return request.redirect(f'/my/delivery/{shipment.id}')
+        else:
+            hub = shipment.get_preferred_portal_drop_hub()
         try:
             shipment.action_drop_at_hub(
                 hub=hub,

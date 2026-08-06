@@ -991,6 +991,52 @@ class Shipment(models.Model):
             shipment._lock_route()
         return True
 
+    def _is_north_south_cross_zone(self):
+        """True when seller and customer districts are opposite Kerala zones (north↔south)."""
+        self.ensure_one()
+        from_district = self.shipping_from_district_id
+        to_district = self.shipping_to_district_id
+        if not from_district or not to_district:
+            return False
+        District = self.env['logistics.district']
+        from_zone = District.get_district_zone(from_district)
+        to_zone = District.get_district_zone(to_district)
+        return {from_zone, to_zone} == {'north', 'south'}
+
+    def get_portal_drop_hub_ids(self):
+        """Hubs allowed in portal drop/receive selectors for this shipment.
+
+        Always includes pickup (source) and drop (destination) hubs when set,
+        plus the active transfer leg's from/to hubs. Includes the main hub
+        (Thrissur) only when origin/destination districts are north↔south.
+        """
+        self.ensure_one()
+        Hub = self.env['logistics.hub']
+        hubs = Hub.browse()
+        if self.source_hub_id:
+            hubs |= self.source_hub_id
+        if self.destination_hub_id:
+            hubs |= self.destination_hub_id
+        leg = self.active_leg_id
+        if leg:
+            if leg.from_hub_id:
+                hubs |= leg.from_hub_id
+            if leg.to_hub_id:
+                hubs |= leg.to_hub_id
+        if self._is_north_south_cross_zone():
+            main_hub = Hub.get_main_hub()
+            if main_hub:
+                hubs |= main_hub
+        return hubs.filtered(lambda h: h.active)
+
+    def get_preferred_portal_drop_hub(self):
+        """Expected next drop hub: active leg to_hub, else source (pickup) hub."""
+        self.ensure_one()
+        leg = self.active_leg_id
+        if leg and leg.operation_type in ('hub_transfer', 'pickup') and leg.to_hub_id:
+            return leg.to_hub_id
+        return self.source_hub_id or False
+
     def action_drop_at_hub(self, hub=None, actor_de=None, scanned_code=None, note=None):
         """DE marks package dropped at a hub.
 
@@ -1022,6 +1068,17 @@ class Shipment(models.Model):
                 target_hub = shipment.source_hub_id or shipment.current_hub_id or shipment.destination_hub_id
             if not target_hub:
                 raise UserError(_("No hub specified for drop of shipment %s.") % shipment.name)
+            allowed = shipment.get_portal_drop_hub_ids()
+            if target_hub not in allowed:
+                raise UserError(
+                    _("Hub '%s' is not a valid drop location for shipment %s. "
+                      "Allowed: %s.")
+                    % (
+                        target_hub.name,
+                        shipment.name,
+                        ', '.join(allowed.mapped('name')) or _('none'),
+                    )
+                )
             de = actor_de or shipment.custodian_de_id or shipment.delivery_executive_id
             shipment._create_custody_event(
                 'dropped_at_hub',
@@ -1051,6 +1108,19 @@ class Shipment(models.Model):
                 raise UserError(
                     _("Shipment %s cannot be received at hub in state '%s'.")
                     % (shipment.name, shipment.state)
+                )
+            allowed = shipment.get_portal_drop_hub_ids()
+            if shipment.current_hub_id:
+                allowed |= shipment.current_hub_id
+            if target_hub not in allowed:
+                raise UserError(
+                    _("Hub '%s' is not a valid receive location for shipment %s. "
+                      "Allowed: %s.")
+                    % (
+                        target_hub.name,
+                        shipment.name,
+                        ', '.join(allowed.mapped('name')) or _('none'),
+                    )
                 )
 
             # Determine hub-stop state from planned route hubs
