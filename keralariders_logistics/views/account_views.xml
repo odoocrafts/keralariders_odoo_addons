@@ -698,17 +698,20 @@
                 sequence="20"
                 action="action_logistics_account_transfer_cod_clearance"
     />
+    <!-- Menu (hidden: hub deposit/banking still work via portal; use other transfer menus) -->
     <menuitem id="menu_logistics_account_transfer_hub_deposit"
                 name="Hub Deposit Transfers"
                 parent="menu_logistics_account_transfers"
                 sequence="25"
                 action="action_logistics_account_transfer_hub_deposit"
+                active="False"
     />
     <menuitem id="menu_logistics_account_transfer_hub_banking"
                 name="Hub Banking Transfers"
                 parent="menu_logistics_account_transfers"
                 sequence="26"
                 action="action_logistics_account_transfer_hub_banking"
+                active="False"
     />
     <menuitem id="menu_logistics_account_transfer_other"
                 name="Other Transfers"
