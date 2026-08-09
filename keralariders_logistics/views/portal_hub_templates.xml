@@ -9,7 +9,7 @@
                     <t t-set="url" t-value="'/my/hub'"/>
                     <t t-set="count_text" t-value="hub_inventory_count if hub_inventory_count else '0'"/>
                     <t t-set="icon" t-value="'/keralariders_logistics/static/src/img/shipment.svg'"/>
-                    <t t-set="text">Hub inventory, receive &amp; dispatch</t>
+                    <t t-set="text">Hub inventory, receive, dispatch &amp; assign pickup</t>
                 </t>
                 <t t-call="keralariders_logistics.logistics_portal_card">
                     <t t-set="title">Hub COD Banking</t>
@@ -38,6 +38,18 @@
                     </t>
                 </p>
                 <div class="row g-3">
+                    <div class="col-md-4">
+                        <div class="card shadow-sm h-100">
+                            <div class="card-body">
+                                <h5 class="card-title">Pending pickups</h5>
+                                <p class="display-6 mb-0"><t t-esc="pending_pickups"/></p>
+                                <p class="small text-muted mb-2">
+                                    <t t-esc="unassigned_pickups"/> unassigned
+                                </p>
+                                <a href="/my/hub/pickups" class="btn btn-primary btn-sm">Assign pickup</a>
+                            </div>
+                        </div>
+                    </div>
                     <div class="col-md-4">
                         <div class="card shadow-sm h-100">
                             <div class="card-body">
@@ -277,6 +289,100 @@
                                                     <option value="0" t-att-selected="default_for_delivery == '0'">Hub transfer</option>
                                                 </select>
                                                 <button type="submit" class="btn btn-primary btn-sm">Dispatch</button>
+                                            </form>
+                                        </td>
+                                    </tr>
+                                </t>
+                            </tbody>
+                        </table>
+                    </div>
+                    <t t-call="portal.pager"/>
+                </t>
+            </div>
+        </t>
+    </template>
+
+    <template id="portal_my_hub_pickups" name="Hub Pending Pickups">
+        <t t-call="portal.portal_layout">
+            <div class="container py-3">
+                <a href="/my/hub" class="btn btn-link ps-0 mb-2"><i class="fa fa-arrow-left"/> Back</a>
+                <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+                    <div>
+                        <h3 class="mb-0">Assign Pickup</h3>
+                        <p class="text-muted small mb-0">
+                            Shipments awaiting pickup for your hub(s).
+                            <t t-if="unassigned_count">
+                                <span class="badge text-bg-warning ms-1"><t t-esc="unassigned_count"/> unassigned</span>
+                            </t>
+                        </p>
+                    </div>
+                </div>
+                <t t-if="error">
+                    <div class="alert alert-danger"><t t-esc="error"/></div>
+                </t>
+                <t t-if="success">
+                    <div class="alert alert-success"><t t-esc="success"/></div>
+                </t>
+                <t t-if="not shipments">
+                    <p class="alert alert-info">No shipments awaiting pickup for your hubs.</p>
+                </t>
+                <t t-else="">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle">
+                            <thead>
+                                <tr>
+                                    <th>AWB</th>
+                                    <th>From / Seller</th>
+                                    <th>Hub</th>
+                                    <th>Status</th>
+                                    <th>Current pickup DE</th>
+                                    <th>Assign</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <t t-foreach="shipments" t-as="shipment">
+                                    <tr>
+                                        <td>
+                                            <strong><t t-esc="shipment.name"/></strong>
+                                        </td>
+                                        <td>
+                                            <t t-esc="shipment.shipping_from_name or (shipment.seller_id.name if shipment.seller_id else '')"/><br/>
+                                            <small class="text-muted">
+                                                <t t-esc="shipment.shipping_from_address"/><br/>
+                                                PIN <t t-esc="shipment.shipping_from_zip or '—'"/>
+                                            </small>
+                                        </td>
+                                        <td><t t-esc="shipment.source_hub_id.name"/></td>
+                                        <td>
+                                            <span class="badge text-bg-secondary">
+                                                <t t-esc="dict(shipment.fields_get(allfields=['state'])['state']['selection']).get(shipment.state, shipment.state)"/>
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <t t-if="shipment.pickup_executive_id">
+                                                <t t-esc="shipment.pickup_executive_id.name"/>
+                                            </t>
+                                            <t t-else="">
+                                                <span class="badge text-bg-warning">Unassigned</span>
+                                            </t>
+                                        </td>
+                                        <td>
+                                            <form t-attf-action="/my/hub/pickups/assign/#{shipment.id}" method="post" class="d-flex flex-wrap gap-1">
+                                                <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                                                <select name="delivery_executive_id" class="form-select form-select-sm" required="1" style="min-width:160px;">
+                                                    <option value="">Select DE</option>
+                                                    <t t-set="eligible_des" t-value="shipment_executives.get(shipment.id)"/>
+                                                    <t t-foreach="eligible_des or []" t-as="de">
+                                                        <option t-att-value="de.id"
+                                                                t-att-selected="shipment.pickup_executive_id and de.id == shipment.pickup_executive_id.id">
+                                                            <t t-esc="de.name"/>
+                                                        </option>
+                                                    </t>
+                                                </select>
+                                                <button type="submit" class="btn btn-primary btn-sm">
+                                                    <t t-if="shipment.pickup_executive_id">Re-assign</t>
+                                                    <t t-else="">Assign</t>
+                                                </button>
                                             </form>
                                         </td>
                                     </tr>

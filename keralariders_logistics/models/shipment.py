@@ -866,6 +866,123 @@ class Shipment(models.Model):
                 })
         return True
 
+    def _pickup_origin_zip(self):
+        """Pincode where first pickup happens (seller outbound, consignee on return)."""
+        self.ensure_one()
+        return (
+            self.shipping_to_zip
+            if self.is_return_journey
+            else self.shipping_from_zip
+        )
+
+    def _get_eligible_pickup_executives(self):
+        """Pickup-capable DEs for this shipment's origin, with hub/district fallback.
+
+        Prefer DEs covering the seller/origin pincode via assigned_pickup_pincodes.
+        Fall back to active pickup DEs whose pincodes overlap the source hub's
+        pincodes, then the hub district, then all active pickup-eligible DEs.
+        """
+        self.ensure_one()
+        DE = self.env['logistics.delivery.executive']
+        all_pickup = DE.search([('active', '=', True)]).filtered(
+            lambda d: self._de_eligible_for_operation(d, 'pickup')
+        )
+        if not all_pickup:
+            return DE.browse()
+
+        pickup_zip = self._pickup_origin_zip()
+        if pickup_zip:
+            pin = self.env['logistics.pincode'].search([('name', '=', pickup_zip)], limit=1)
+            if pin:
+                by_pin = all_pickup.filtered(lambda d: pin in d.assigned_pickup_pincodes)
+                if by_pin:
+                    return by_pin
+
+        hub = self.source_hub_id
+        if hub and hub.pincode_ids:
+            hub_pins = hub.pincode_ids
+            by_hub = all_pickup.filtered(
+                lambda d: bool(d.assigned_pickup_pincodes & hub_pins)
+            )
+            if by_hub:
+                return by_hub
+
+        if hub and hub.district_id:
+            district_pins = self.env['logistics.pincode'].search([
+                '|',
+                ('district_id', '=', hub.district_id.id),
+                ('district_name', '=ilike', hub.district_id.name),
+            ])
+            if district_pins:
+                by_district = all_pickup.filtered(
+                    lambda d: bool(d.assigned_pickup_pincodes & district_pins)
+                )
+                if by_district:
+                    return by_district
+
+        return all_pickup
+
+    def action_assign_pickup_executive(self, delivery_executive, note=None):
+        """Hub manager / ops: assign (or re-assign) pickup DE before first pickup.
+
+        Sets pickup_executive_id and soft-assigns the pickup leg (planned/assigned).
+        Re-assignment is allowed while shipment is still awaiting pickup.
+        """
+        if not delivery_executive:
+            raise UserError(_("A delivery executive is required for pickup assignment."))
+        if not delivery_executive.active:
+            raise UserError(_("Delivery executive %s is inactive.") % delivery_executive.name)
+
+        for shipment in self:
+            outbound_ok = shipment.state in ('pickup_requested', 'order_added')
+            return_ok = shipment.state == 'return_requested' and shipment.is_return_journey
+            if not (outbound_ok or return_ok):
+                raise UserError(
+                    _("Shipment %s cannot assign pickup from state '%s'.")
+                    % (shipment.name, shipment.state)
+                )
+            if not shipment._de_eligible_for_operation(delivery_executive, 'pickup'):
+                raise UserError(
+                    _("Delivery executive %s is not eligible for pickup.")
+                    % delivery_executive.name
+                )
+
+            shipment._sync_active_leg()
+            pickup_leg = shipment.estimated_route_ids.filtered(
+                lambda l: l.operation_type == 'pickup' and l.state != 'done'
+            )[:1]
+            if not pickup_leg and shipment.active_leg_id and shipment.active_leg_id.operation_type == 'pickup':
+                pickup_leg = shipment.active_leg_id
+
+            if pickup_leg:
+                if pickup_leg.state == 'done':
+                    raise UserError(
+                        _("Pickup leg on shipment %s is already completed.")
+                        % shipment.name
+                    )
+                # Soft assign / reassign (not yet picked at shipment level)
+                leg_vals = {
+                    'assigned_de_id': delivery_executive.id,
+                    'state': 'assigned',
+                }
+                if pickup_leg.state == 'in_progress':
+                    # Not yet marked picked — reset start so the new DE owns the leg
+                    leg_vals['started_at'] = False
+                pickup_leg.write(leg_vals)
+                shipment.active_leg_id = pickup_leg.id
+
+            shipment.pickup_executive_id = delivery_executive.id
+            shipment._create_custody_event(
+                'leg_assign',
+                to_custodian=shipment.custodian_type,
+                actor_de=delivery_executive,
+                note=note or _(
+                    "Pickup assigned to %s."
+                ) % delivery_executive.name,
+                leg=pickup_leg,
+            )
+        return True
+
     def _assign_leg_de(self, leg, de, start=False):
         """Assign DE to a leg and optionally start it."""
         self.ensure_one()

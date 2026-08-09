@@ -79,6 +79,11 @@ class LogisticsPortal(CustomerPortal):
                 ('hub_banking_transfer_id', '=', False),
             ]) if hub_accounts else 0
             values['hub_cod_unbanked_count'] = str(unbanked) if unbanked else '0 '
+            pending_pickup_domain = self._hub_pending_pickup_domain(managed_hubs)
+            unassigned_pickups = request.env['logistics.shipment'].sudo().search_count(
+                pending_pickup_domain + [('pickup_executive_id', '=', False)]
+            )
+            values['hub_pending_pickup_count'] = str(unassigned_pickups) if unassigned_pickups else '0 '
         
         return values
         
@@ -1019,6 +1024,13 @@ class LogisticsPortal(CustomerPortal):
             ('active', '=', True),
         ])
 
+    def _hub_pending_pickup_domain(self, hubs):
+        """Shipments awaiting first pickup whose origin hub the user manages."""
+        return [
+            ('source_hub_id', 'in', hubs.ids),
+            ('state', 'in', ('pickup_requested', 'order_added')),
+        ]
+
     @http.route(['/my/hub', '/my/hub/'], type='http', auth="user", website=True)
     def portal_my_hub_home(self, **kw):
         hubs = self._get_managed_hubs()
@@ -1034,11 +1046,18 @@ class LogisticsPortal(CustomerPortal):
             ('custodian_type', '=', 'de'),
             ('state', 'in', ('picked', 'return_picked', 'in_transit')),
         ])
+        pending_pickup_domain = self._hub_pending_pickup_domain(hubs)
+        pending_pickups = Shipment.search_count(pending_pickup_domain)
+        unassigned_pickups = Shipment.search_count(
+            pending_pickup_domain + [('pickup_executive_id', '=', False)]
+        )
         values = {
             'page_name': 'hub',
             'hubs': hubs,
             'inventory_count': inventory_count,
             'awaiting_receive': awaiting_receive,
+            'pending_pickups': pending_pickups,
+            'unassigned_pickups': unassigned_pickups,
             'error': request.session.pop('error', None),
             'success': request.session.pop('success', None),
         }
@@ -1192,6 +1211,77 @@ class LogisticsPortal(CustomerPortal):
         except UserError as e:
             request.session['error'] = str(e)
         return request.redirect('/my/hub/inventory')
+
+    @http.route(['/my/hub/pickups', '/my/hub/pickups/page/<int:page>'], type='http', auth="user", website=True)
+    def portal_my_hub_pickups(self, page=1, **kw):
+        """List shipments awaiting pickup for managed origin hubs; assign pickup DE."""
+        hubs = self._get_managed_hubs()
+        if not hubs:
+            return request.redirect('/my')
+        Shipment = request.env['logistics.shipment'].sudo()
+        domain = self._hub_pending_pickup_domain(hubs)
+        shipment_count = Shipment.search_count(domain)
+        pager = portal_pager(
+            url="/my/hub/pickups",
+            total=shipment_count,
+            page=page,
+            step=self._items_per_page,
+        )
+        shipments = Shipment.search(
+            domain,
+            order='pickup_requested_on desc, write_date desc, id desc',
+            limit=self._items_per_page,
+            offset=pager['offset'],
+        )
+        unassigned_count = Shipment.search_count(
+            domain + [('pickup_executive_id', '=', False)]
+        )
+        shipment_executives = {}
+        for shipment in shipments:
+            eligible = shipment._get_eligible_pickup_executives()
+            # Always include current assignee so re-assign UI can show them
+            if shipment.pickup_executive_id and shipment.pickup_executive_id not in eligible:
+                eligible = shipment.pickup_executive_id | eligible
+            shipment_executives[shipment.id] = eligible
+        values = {
+            'page_name': 'hub_pickups',
+            'hubs': hubs,
+            'shipments': shipments,
+            'shipment_executives': shipment_executives,
+            'unassigned_count': unassigned_count,
+            'pager': pager,
+            'default_url': '/my/hub/pickups',
+            'error': request.session.pop('error', None),
+            'success': request.session.pop('success', None),
+        }
+        return request.render("keralariders_logistics.portal_my_hub_pickups", values)
+
+    @http.route(['/my/hub/pickups/assign/<int:shipment_id>'], type='http', auth="user", website=True, methods=['POST'])
+    def portal_my_hub_assign_pickup(self, shipment_id=None, **post):
+        hubs = self._get_managed_hubs()
+        if not hubs:
+            return request.redirect('/my')
+        shipment = request.env['logistics.shipment'].sudo().browse(shipment_id)
+        if not shipment.exists() or shipment.source_hub_id not in hubs:
+            request.session['error'] = "Shipment is not awaiting pickup for your hub."
+            return request.redirect('/my/hub/pickups')
+        if shipment.state not in ('pickup_requested', 'order_added'):
+            request.session['error'] = (
+                f"Shipment {shipment.name} is no longer awaiting pickup "
+                f"(status: {shipment.state})."
+            )
+            return request.redirect('/my/hub/pickups')
+        de_id = int(post.get('delivery_executive_id') or 0)
+        de = request.env['logistics.delivery.executive'].sudo().browse(de_id)
+        if not de.exists():
+            request.session['error'] = "Please select a pickup delivery executive."
+            return request.redirect('/my/hub/pickups')
+        try:
+            shipment.action_assign_pickup_executive(de)
+            request.session['success'] = f"Assigned pickup of {shipment.name} to {de.name}."
+        except UserError as e:
+            request.session['error'] = str(e)
+        return request.redirect('/my/hub/pickups')
 
     @http.route(['/my/cod_settlements', '/my/cod_settlements/page/<int:page>'], type='http', auth="user", website=True)
     def portal_my_cod_settlements(self, page=1, **kw):
