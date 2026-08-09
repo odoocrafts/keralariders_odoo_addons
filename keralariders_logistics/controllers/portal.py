@@ -1238,7 +1238,13 @@ class LogisticsPortal(CustomerPortal):
         )
         shipment_executives = {}
         for shipment in shipments:
-            eligible = shipment._get_eligible_pickup_executives()
+            try:
+                eligible = shipment._get_eligible_pickup_executives()
+            except (UserError, ValueError):
+                # Fall back to all active pickup-capable DEs rather than 500 the page
+                eligible = request.env['logistics.delivery.executive'].sudo().search(
+                    [('active', '=', True)]
+                ).filtered(lambda d: shipment._de_eligible_for_operation(d, 'pickup'))
             # Always include current assignee so re-assign UI can show them
             if shipment.pickup_executive_id and shipment.pickup_executive_id not in eligible:
                 eligible = shipment.pickup_executive_id | eligible
@@ -1271,7 +1277,11 @@ class LogisticsPortal(CustomerPortal):
                 f"(status: {shipment.state})."
             )
             return request.redirect('/my/hub/pickups')
-        de_id = int(post.get('delivery_executive_id') or 0)
+        try:
+            de_id = int(post.get('delivery_executive_id') or 0)
+        except (TypeError, ValueError):
+            request.session['error'] = "Please select a pickup delivery executive."
+            return request.redirect('/my/hub/pickups')
         de = request.env['logistics.delivery.executive'].sudo().browse(de_id)
         if not de.exists():
             request.session['error'] = "Please select a pickup delivery executive."

@@ -346,7 +346,7 @@
                                             <strong><t t-esc="shipment.name"/></strong>
                                         </td>
                                         <td>
-                                            <t t-esc="shipment.shipping_from_name or (shipment.seller_id.name if shipment.seller_id else '')"/><br/>
+                                            <t t-esc="shipment.shipping_from_name or shipment.seller_id.name or ''"/><br/>
                                             <small class="text-muted">
                                                 <t t-esc="shipment.shipping_from_address"/><br/>
                                                 PIN <t t-esc="shipment.shipping_from_zip or '—'"/>

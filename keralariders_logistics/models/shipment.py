@@ -908,11 +908,18 @@ class Shipment(models.Model):
                 return by_hub
 
         if hub and hub.district_id:
-            district_pins = self.env['logistics.pincode'].search([
-                '|',
-                ('district_id', '=', hub.district_id.id),
-                ('district_name', '=ilike', hub.district_id.name),
-            ])
+            # logistics.pincode.district_id is a non-stored compute — never search on it.
+            # Match stored district_name (CSV), including Kasargod/Kasaragod aliases.
+            name_keys = hub._district_name_match_keys(hub.district_id.name)
+            name_domain = []
+            for key in sorted(name_keys):
+                if name_domain:
+                    name_domain = ['|'] + name_domain
+                name_domain.append(('district_name', '=ilike', key))
+            district_pins = (
+                self.env['logistics.pincode'].search(name_domain)
+                if name_domain else self.env['logistics.pincode']
+            )
             if district_pins:
                 by_district = all_pickup.filtered(
                     lambda d: bool(d.assigned_pickup_pincodes & district_pins)
