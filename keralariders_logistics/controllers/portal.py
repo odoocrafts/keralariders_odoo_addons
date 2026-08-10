@@ -658,21 +658,27 @@ class LogisticsPortal(CustomerPortal):
         seller = request.env['logistics.seller'].search([('partner_id', '=', partner.id)], limit=1)
         
         shipment = request.env['logistics.shipment'].search([
-            ('id', '=', shipment_id), 
+            ('id', '=', shipment_id),
             ('seller_id', '=', seller.id),
-            ('state', '=', 'delivered')
+            '|',
+            ('state', '=', 'delivered'),
+            '&', '&', '&',
+            ('state', '=', 'delivery_failed'),
+            ('custodian_type', '=', 'hub'),
+            ('delivery_fail_count', '>=', 1),
+            ('is_return_journey', '=', False),
         ], limit=1)
         
         if not shipment:
-            request.session['error'] = "Shipment not found or not in Delivered state."
+            request.session['error'] = "Shipment not found or not eligible for return."
             return request.redirect('/my/shipments')
             
         try:
             # Free reverse journey: customer pickup → hubs → seller (no wallet debit)
+            # From delivery_failed at hub, customer pickup is skipped.
             shipment.sudo().action_request_return()
             request.session['success'] = (
                 f"Free return requested for {shipment.name}. "
-                f"A DE will pick up from the customer, move through hubs, and deliver back to you. "
                 f"No wallet deduction."
             )
         except UserError as e:
@@ -1078,6 +1084,39 @@ class LogisticsPortal(CustomerPortal):
             request.session['error'] = str(e)
             return request.redirect(f'/my/delivery/{shipment.id}')
 
+    @http.route(
+        ['/my/delivery/<int:shipment_id>/mark_delivery_failed'],
+        type='http', auth="user", website=True, methods=['POST'],
+    )
+    def portal_my_delivery_mark_delivery_failed(self, shipment_id=None, **post):
+        delivery_executive = request.env['logistics.delivery.executive'].sudo().search(
+            [('user_id', '=', request.env.user.id)], limit=1
+        )
+        if not delivery_executive:
+            return request.redirect('/my')
+        shipment = request.env['logistics.shipment'].sudo().search(
+            [('id', '=', shipment_id)], limit=1
+        )
+        if not shipment:
+            request.session['error'] = "Shipment not found."
+            return request.redirect('/my/deliveries')
+        try:
+            shipment.action_mark_delivery_failed(
+                actor_de=delivery_executive,
+                delivery_remarks=post.get('delivery_remarks') or '',
+            )
+            request.session['success'] = (
+                f"Shipment {shipment.name} marked Delivery Failed (customer did not accept). "
+                f"Return the package to the hub for Receive AWB."
+            )
+            return request.redirect(f'/my/delivery/{shipment.id}')
+        except UserError as e:
+            request.session['error'] = str(e)
+            return request.redirect(f'/my/delivery/{shipment.id}')
+        except Exception as e:
+            request.session['error'] = str(e)
+            return request.redirect(f'/my/delivery/{shipment.id}')
+
     # -------------------------------------------------------------------------
     # Hub Manager Portal
     # -------------------------------------------------------------------------
@@ -1111,7 +1150,7 @@ class LogisticsPortal(CustomerPortal):
             '&',
             ('current_hub_id', 'in', hubs.ids),
             ('custodian_type', '=', 'de'),
-            ('state', 'in', ('picked', 'return_picked', 'in_transit')),
+            ('state', 'in', ('picked', 'return_picked', 'in_transit', 'delivery_failed')),
             '&',
             ('source_hub_id', 'in', hubs.ids),
             ('custodian_type', '=', 'de'),
@@ -1278,6 +1317,46 @@ class LogisticsPortal(CustomerPortal):
             request.session['success'] = (
                 f"Assigned {shipment.name} to {de.name} (pending accept). "
                 f"Package stays in hub inventory until the DE accepts."
+            )
+        except UserError as e:
+            request.session['error'] = str(e)
+        return request.redirect('/my/hub/inventory')
+
+    @http.route(['/my/hub/return_previous/<int:shipment_id>'], type='http', auth="user", website=True, methods=['POST'])
+    def portal_my_hub_return_previous(self, shipment_id=None, **post):
+        """Hub: open reverse transfer to source hub after delivery failure."""
+        hubs = self._get_managed_hubs()
+        if not hubs:
+            return request.redirect('/my')
+        shipment = request.env['logistics.shipment'].sudo().browse(shipment_id)
+        if not shipment.exists() or shipment.current_hub_id not in hubs:
+            request.session['error'] = "Shipment not in your hub inventory."
+            return request.redirect('/my/hub/inventory')
+        try:
+            shipment.action_hub_return_to_previous_hub()
+            request.session['success'] = (
+                f"Opened return-to-source transfer for {shipment.name}. "
+                f"Assign a DE for the hub transfer."
+            )
+        except UserError as e:
+            request.session['error'] = str(e)
+        return request.redirect('/my/hub/inventory')
+
+    @http.route(['/my/hub/return_seller/<int:shipment_id>'], type='http', auth="user", website=True, methods=['POST'])
+    def portal_my_hub_return_seller(self, shipment_id=None, **post):
+        """Hub: start free return to seller from a failed delivery at hub."""
+        hubs = self._get_managed_hubs()
+        if not hubs:
+            return request.redirect('/my')
+        shipment = request.env['logistics.shipment'].sudo().browse(shipment_id)
+        if not shipment.exists() or shipment.current_hub_id not in hubs:
+            request.session['error'] = "Shipment not in your hub inventory."
+            return request.redirect('/my/hub/inventory')
+        try:
+            shipment.action_hub_return_to_seller()
+            request.session['success'] = (
+                f"Started free return to seller for {shipment.name}. "
+                f"Assign a DE for the next hop."
             )
         except UserError as e:
             request.session['error'] = str(e)

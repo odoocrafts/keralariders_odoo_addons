@@ -447,13 +447,13 @@
                                         <button type="submit" class="btn btn-sm btn-success">Request Pickup</button>
                                     </form>
                                 </t>
-                                <t t-if="shipment.state == 'delivered'">
+                                <t t-if="shipment.state == 'delivered' or (shipment.state == 'delivery_failed' and shipment.custodian_type == 'hub' and shipment.delivery_fail_count &gt;= 1 and not shipment.is_return_journey)">
                                     <form action="/my/shipments/request_return" method="post" style="display:inline;"
-                                          title="Free return: pickup from customer, through hubs, back to you. No wallet charge.">
+                                          title="Free return through hubs back to you. No wallet charge.">
                                         <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
                                         <input type="hidden" name="shipment_id" t-att-value="shipment.id"/>
                                         <button type="submit" class="btn btn-sm btn-warning"
-                                                onclick="return confirm('Request a FREE return? A DE will pick up from the customer, move through hubs, and deliver back to you. No wallet deduction.');">
+                                                onclick="return confirm('Request a FREE return? From Delivered: pickup from customer. From Delivery Failed at hub: customer pickup is skipped. No wallet deduction.');">
                                             Request Return (Free)
                                         </button>
                                     </form>

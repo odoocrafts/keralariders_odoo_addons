@@ -367,7 +367,8 @@
                                 <strong>Current Hub:</strong> <span t-field="shipment.current_hub_id"/><br/>
                                 <t t-if="active_leg">
                                     <strong>Active leg:</strong> <t t-esc="active_leg_label or active_leg.name"/><br/>
-                                    <strong>Leg state:</strong> <t t-esc="active_leg.state"/>
+                                    <strong>Leg state:</strong>
+                                    <t t-esc="dict(active_leg.fields_get(allfields=['state'])['state']['selection']).get(active_leg.state, active_leg.state)"/>
                                     <t t-if="active_leg.assigned_de_id"> · <t t-esc="active_leg.assigned_de_id.name"/></t>
                                 </t>
                             </p>
@@ -581,6 +582,73 @@
                                     <i class="fa fa-check-circle"/> MARK AS DELIVERED
                                 </button>
                             </t>
+                        </form>
+
+                        <t t-if="not shipment.is_return_journey">
+                            <div class="mt-4 p-3 border rounded border-danger">
+                                <h5 class="mb-2 text-danger">
+                                    <i class="fa fa-times-circle"/> Customer did not accept
+                                </h5>
+                                <p class="text-muted small mb-3">
+                                    Mark delivery failed when the customer refuses the package.
+                                    Remarks are required. Keep the package and return it to the hub
+                                    for Receive AWB — status stays Delivery Failed.
+                                </p>
+                                <form t-attf-action="/my/delivery/#{shipment.id}/mark_delivery_failed" method="post">
+                                    <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                                    <div class="mb-3">
+                                        <label class="form-label fw-bold" for="failedDeliveryRemarks">Delivery Remarks (required)</label>
+                                        <textarea class="form-control" rows="4" name="delivery_remarks"
+                                                  id="failedDeliveryRemarks" required="1"
+                                                  placeholder="Reason customer did not accept…"/>
+                                    </div>
+                                    <button type="submit" class="btn btn-lg btn-outline-danger w-100 fw-bold"
+                                            onclick="return confirm('Mark as customer not accepted / delivery failed? You must return the package to the hub.');">
+                                        <i class="fa fa-ban"/> Customer did not accept
+                                    </button>
+                                </form>
+                            </div>
+                        </t>
+                    </t>
+
+                    <!-- Delivery failed: DE still holds — bring back for hub receive -->
+                    <t t-if="shipment.state == 'delivery_failed' and shipment.custodian_type == 'de'">
+                        <hr/>
+                        <div class="alert alert-warning">
+                            <h5 class="alert-heading mb-2">
+                                <i class="fa fa-exclamation-triangle"/> Delivery Failed
+                            </h5>
+                            <p class="mb-1 small">
+                                Customer did not accept this order
+                                <t t-if="shipment.delivery_fail_count">
+                                    (attempt #<t t-esc="shipment.delivery_fail_count"/>)
+                                </t>.
+                                Take the package back to the hub. Hub manager must scan Receive AWB.
+                            </p>
+                            <t t-if="shipment.delivery_remarks">
+                                <p class="mb-0 small"><strong>Remarks:</strong> <t t-esc="shipment.delivery_remarks"/></p>
+                            </t>
+                        </div>
+                        <h4 class="mb-3 text-warning">Return to Hub</h4>
+                        <p class="text-muted small">Marks package as dropped. Hub manager receive scan transfers custody; status stays Delivery Failed.</p>
+                        <form t-attf-action="/my/delivery/#{shipment.id}/drop_at_hub" method="post" class="row g-2 align-items-end">
+                            <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                            <div class="col-md-8">
+                                <label class="form-label">Hub</label>
+                                <select name="hub_id" class="form-select" required="1">
+                                    <t t-foreach="hubs" t-as="hub">
+                                        <option t-att-value="hub.id"
+                                                t-att-selected="preferred_drop_hub and hub.id == preferred_drop_hub.id">
+                                            <t t-esc="hub.name"/>
+                                        </option>
+                                    </t>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <button type="submit" class="btn btn-warning w-100">
+                                    <i class="fa fa-building"/> Drop at Hub
+                                </button>
+                            </div>
                         </form>
                     </t>
 

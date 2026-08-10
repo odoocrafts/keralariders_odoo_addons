@@ -74,6 +74,10 @@
                         string="Out for Delivery"
                         domain="[('state', '=', 'out_for_delivery')]"/>
 
+                <filter name="delivery_failed"
+                        string="Delivery Failed"
+                        domain="[('state', '=', 'delivery_failed')]"/>
+
                 <filter name="at_hub"
                         string="In Hub Custody"
                         domain="[('custodian_type', '=', 'hub')]"/>
@@ -184,11 +188,11 @@
                 <field name="order_payment_type" string="Payment Type" width="100"/>
                 <field name="state" widget="badge"
                     decoration-info="state in ('order_added', 'return_picked')"
-                    decoration-warning="state in ('pickup_requested','return_requested')"
+                    decoration-warning="state in ('pickup_requested','return_requested','out_for_delivery')"
                     decoration-primary="state == 'picked'"
                     decoration-muted="state == 'in_transit'"
                     decoration-success="state in ('delivered', 'returned')"
-                    decoration-danger="state == 'cancelled'"
+                    decoration-danger="state in ('cancelled', 'delivery_failed')"
                     width="100"
                 />                
                 <field name="cod_amount" string="COD Amount" width="100" sum="COD Amount" invisible="order_payment_type != 'cod'" options="{'fg_color': 'brown: cod_balance_amount > 0; green: cod_balance_amount &lt;=0 ;'}"/>
@@ -212,10 +216,20 @@
                 <header>
                     <button name="%(keralariders_logistics.action_report_shipment)d" string="Print AWB" type="action" class="btn-primary"/>
                     <button name="action_request_return" type="object" string="Request Return (Free)"
-                            invisible="state != 'delivered'"
+                            invisible="state != 'delivered' and not (state == 'delivery_failed' and custodian_type == 'hub' and delivery_fail_count &gt;= 1)"
                             groups="keralariders_logistics.group_logistics_admin"
                             class="btn-warning"
-                            confirm="Start free return: pickup from customer → hubs → seller? No wallet deduction."/>
+                            confirm="Start free return: pickup from customer → hubs → seller? (From Delivery Failed at hub, customer pickup is skipped.) No wallet deduction."/>
+                    <button name="action_hub_return_to_previous_hub" type="object" string="Return to Previous Hub"
+                            invisible="state != 'delivery_failed' or custodian_type != 'hub' or delivery_fail_count &lt; 1 or is_return_journey"
+                            groups="keralariders_logistics.group_logistics_admin,keralariders_logistics.group_logistics_hub_manager"
+                            class="btn-secondary"
+                            confirm="Open reverse hub transfer back to the source hub?"/>
+                    <button name="action_hub_return_to_seller" type="object" string="Return to Seller (Failed)"
+                            invisible="state != 'delivery_failed' or custodian_type != 'hub' or delivery_fail_count &lt; 1 or is_return_journey"
+                            groups="keralariders_logistics.group_logistics_admin,keralariders_logistics.group_logistics_hub_manager"
+                            class="btn-warning"
+                            confirm="Start free return to seller? Customer pickup will be skipped."/>
                     <button name="action_mark_picked" type="object" string="Mark Picked"
                             invisible="state not in ('pickup_requested', 'order_added', 'return_requested')"
                             groups="keralariders_logistics.group_logistics_admin,keralariders_logistics.group_logistics_executive"
@@ -240,7 +254,7 @@
                             class="btn-secondary"
                             confirm="Cancel this shipment?"/>
                     <field name="state" widget="statusbar" options="{'clickable': 0}"
-                           statusbar_visible="order_added,pickup_requested,picked,in_transit,at_source_hub,at_destination_hub,out_for_delivery,delivered,return_requested,return_picked,returned"/>
+                           statusbar_visible="order_added,pickup_requested,picked,in_transit,at_source_hub,at_destination_hub,out_for_delivery,delivery_failed,delivered,return_requested,return_picked,returned"/>
                 </header>
                 <sheet>
                     <div class="oe_title" >
@@ -339,6 +353,7 @@
                             <field name="delivery_duration_display" string="Time to Deliver" readonly="1"
                                       invisible="not delivery_duration_display"/>
                             <field name="delivery_remarks"/>
+                            <field name="delivery_fail_count" readonly="1"/>
                             <field name="source_hub_id" string="Source Hub" readonly="1" force_save="1"/>
                             <field name="destination_hub_id" string="Destination Hub" readonly="1" force_save="1"/>
                         </group>

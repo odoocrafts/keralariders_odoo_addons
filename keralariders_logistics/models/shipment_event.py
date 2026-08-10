@@ -26,6 +26,7 @@ class ShipmentEvent(models.Model):
         ('central_pass_through', 'Passed via Thrissur Hub'),
         ('skip_hub_local', 'Local Delivery (Skip Hub)'),
         ('out_for_delivery', 'Out for Delivery'),
+        ('delivery_failed', 'Delivery Failed'),
         ('delivered', 'Delivered'),
         ('return_requested', 'Return Requested'),
         ('returned', 'Returned to Sender'),

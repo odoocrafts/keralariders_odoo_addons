@@ -219,7 +219,7 @@
                                 </t>
                                 <p class="mb-1 text-white-50 small text-uppercase" style="letter-spacing:0.08em;opacity:0.8;">Shipment Tracking</p>
                                 <h2 class="mb-2 fw-bold" style="font-size:1.35rem;">AWB <t t-esc="shipment.name"/></h2>
-                                <span t-attf-class="kx-status-badge #{'is-delivered' if shipment.state == 'delivered' else 'is-ofd' if shipment.state == 'out_for_delivery' else 'is-cancelled' if shipment.state in ('cancelled', 'returned') else ''}">
+                                <span t-attf-class="kx-status-badge #{'is-delivered' if shipment.state == 'delivered' else 'is-ofd' if shipment.state == 'out_for_delivery' else 'is-cancelled' if shipment.state in ('cancelled', 'returned', 'delivery_failed') else ''}">
                                     <t t-esc="shipment_state_str"/>
                                 </span>
                             </div>

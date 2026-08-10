@@ -1,7 +1,10 @@
 from odoo import models, fields, api, _
-from odoo.exceptions import UserError, ValidationError
+from odoo.exceptions import AccessError, UserError, ValidationError
+import logging
 import re
 import uuid
+
+_logger = logging.getLogger(__name__)
 
 delivery_states = [
     ('order_added', 'Order Added'),
@@ -12,6 +15,7 @@ delivery_states = [
     ('at_central_hub', 'At Central Hub'),
     ('at_destination_hub', 'At Destination Hub'),
     ('out_for_delivery', 'Out for Delivery'),
+    ('delivery_failed', 'Delivery Failed'),
     ('delivered', 'Delivered'),
     ('cancelled', 'Cancelled'),
     ('return_requested', 'Return Requested'),
@@ -224,6 +228,7 @@ class Shipment(models.Model):
         'at_destination_hub': 2,
         'in_transit': 3,
         'out_for_delivery': 4,
+        'delivery_failed': 4,
         'delivered': 5,
         'cancelled': -1,
         # Return journey reuses hub progress steps after pickup
@@ -231,6 +236,8 @@ class Shipment(models.Model):
         'return_picked': 1,
         'returned': 5,
     }
+
+    _ACTIVITY_TYPE_TODO = 'mail.mail_activity_data_todo'
 
     is_return_journey = fields.Boolean(
         string='Return Journey',
@@ -257,6 +264,7 @@ class Shipment(models.Model):
         'central_pass_through': 'Passed via Hub',
         'skip_hub_local': 'Out for Local Delivery',
         'out_for_delivery': 'Out for Delivery',
+        'delivery_failed': 'Delivery failed',
         'delivered': 'Delivered',
         'return_requested': 'Return requested',
         'returned': 'Returned to sender',
@@ -279,6 +287,7 @@ class Shipment(models.Model):
         'at_central_hub': 'At Central Hub',
         'at_destination_hub': 'At Destination Hub',
         'out_for_delivery': 'Out for Delivery',
+        'delivery_failed': 'Delivery Failed',
         'delivered': 'Delivered',
         'cancelled': 'Cancelled',
         'return_requested': 'Return requested',
@@ -648,6 +657,7 @@ class Shipment(models.Model):
         'de_reject_assignment': 71,
         'de_self_assign': 75,
         'out_for_delivery': 80,
+        'delivery_failed': 85,
         'delivered': 90,
         'return_requested': 92,
         'returned': 96,
@@ -1131,12 +1141,23 @@ class Shipment(models.Model):
 
         No wallet debit at any step. Rebuilds estimated route with swapped hubs
         so existing hub receive/dispatch/self-assign custody actions apply.
+
+        Also allowed from ``delivery_failed`` when the package is already in hub
+        custody (after ≥1 failed delivery attempt) — skips customer pickup.
         """
         for shipment in self:
+            if (
+                shipment.state == 'delivery_failed'
+                and shipment.custodian_type == 'hub'
+                and shipment.delivery_fail_count >= 1
+            ):
+                shipment.action_hub_return_to_seller()
+                continue
             if shipment.state != 'delivered':
                 raise UserError(
                     _("Shipment %s can only request return when Delivered "
-                      "(current state: %s).")
+                      "(or Delivery Failed at hub after a failed attempt). "
+                      "Current state: %s.")
                     % (shipment.name, shipment.state)
                 )
             if shipment.is_return_journey:
@@ -1289,8 +1310,13 @@ class Shipment(models.Model):
         return hubs.filtered(lambda h: h.active)
 
     def get_preferred_portal_drop_hub(self):
-        """Expected next drop hub: active leg to_hub, else source (pickup) hub."""
+        """Expected next drop hub: active leg to_hub, else source (pickup) hub.
+
+        Failed / OFD last-mile returns prefer the destination hub.
+        """
         self.ensure_one()
+        if self.state in ('out_for_delivery', 'delivery_failed'):
+            return self.destination_hub_id or self.current_hub_id or self.source_hub_id or False
         leg = self.active_leg_id
         if leg and leg.operation_type in ('hub_transfer', 'pickup') and leg.to_hub_id:
             return leg.to_hub_id
@@ -1322,6 +1348,7 @@ class Shipment(models.Model):
             if shipment.state not in (
                 'picked', 'return_picked', 'in_transit',
                 'at_source_hub', 'at_central_hub', 'at_destination_hub',
+                'delivery_failed',
             ):
                 raise UserError(
                     _("Shipment %s cannot be dropped at hub from state '%s'.")
@@ -1330,6 +1357,8 @@ class Shipment(models.Model):
             leg = shipment.active_leg_id
             if hub:
                 target_hub = hub
+            elif shipment.state == 'delivery_failed' and shipment.destination_hub_id:
+                target_hub = shipment.destination_hub_id
             elif leg and leg.operation_type == 'hub_transfer' and leg.to_hub_id:
                 target_hub = leg.to_hub_id
             elif leg and leg.operation_type == 'pickup' and leg.to_hub_id:
@@ -1393,6 +1422,43 @@ class Shipment(models.Model):
                     )
                 )
 
+            # Failed last-mile return: keep delivery_failed and reset delivery leg for retry
+            if shipment.state == 'delivery_failed':
+                new_state = 'delivery_failed'
+                delivery_leg = shipment.estimated_route_ids.filtered(
+                    lambda l: l.operation_type == 'delivery' and l.state != 'skipped'
+                )[:1]
+                if delivery_leg:
+                    delivery_leg.write({
+                        'state': 'planned',
+                        'assigned_de_id': False,
+                        'started_at': False,
+                        'completed_at': False,
+                    })
+                    shipment.active_leg_id = delivery_leg.id
+                else:
+                    shipment._sync_active_leg()
+                receive_note = note or _(
+                    "Received failed delivery into hub inventory (attempt #%s)."
+                ) % (shipment.delivery_fail_count or 1)
+                shipment._create_custody_event(
+                    'hub_receive',
+                    to_custodian='hub',
+                    hub=target_hub,
+                    scanned_code=scanned_code or shipment.name,
+                    note=receive_note,
+                )
+                shipment._write_with_state({
+                    'state': new_state,
+                    'custodian_type': 'hub',
+                    'custodian_de_id': False,
+                    'current_hub_id': target_hub.id,
+                    'delivery_executive_id': False,
+                })
+                shipment._sync_active_leg()
+                shipment._lock_route()
+                continue
+
             # Determine hub-stop state from planned route hubs
             if target_hub == shipment.source_hub_id and target_hub == shipment.destination_hub_id:
                 new_state = 'at_source_hub'
@@ -1405,6 +1471,14 @@ class Shipment(models.Model):
                 new_state = 'at_central_hub'
             else:
                 new_state = 'at_source_hub'
+
+            # After reverse transfer of a failed delivery, keep Delivery Failed at hub
+            if (
+                (shipment.delivery_fail_count or 0) >= 1
+                and not shipment.is_return_journey
+                and shipment.state == 'in_transit'
+            ):
+                new_state = 'delivery_failed'
 
             # Complete the inbound leg (pickup arriving at source, or hub_transfer arriving at dest)
             inbound_leg = shipment.active_leg_id
@@ -1697,7 +1771,7 @@ class Shipment(models.Model):
         self.ensure_one()
         if self.is_return_journey:
             return False
-        if self.state in ('out_for_delivery', 'delivered', 'returned'):
+        if self.state in ('out_for_delivery', 'delivery_failed', 'delivered', 'returned'):
             return False
         leg = self.active_leg_id
         if leg and leg.operation_type == 'delivery':
@@ -1897,6 +1971,309 @@ class Shipment(models.Model):
             shipment._write_with_state(vals)
         return True
 
+    def action_mark_delivery_failed(self, actor_de=None, scanned_code=None,
+                                    delivery_remarks=None, note=None):
+        """DE: customer did not accept — delivery failed; keep DE custody until hub receive.
+
+        Remarks are mandatory. Package stays with the DE and must be scanned
+        back into hub inventory (Receive AWB) while remaining ``delivery_failed``.
+        """
+        remarks = (delivery_remarks or note or '').strip()
+        if not remarks:
+            raise UserError(_(
+                "Delivery remarks are required when the customer does not accept the order."
+            ))
+        for shipment in self:
+            if shipment.state != 'out_for_delivery':
+                raise UserError(
+                    _("Shipment %s can only be marked delivery-failed when Out for Delivery "
+                      "(current state: %s).")
+                    % (shipment.name, shipment.state)
+                )
+            if shipment.is_return_journey:
+                raise UserError(
+                    _("Shipment %s is on a return journey — use Mark Returned instead.")
+                    % shipment.name
+                )
+            de = actor_de or shipment.custodian_de_id or shipment.delivery_executive_id
+            delivery_leg = shipment.active_leg_id
+            if delivery_leg and delivery_leg.operation_type != 'delivery':
+                delivery_leg = shipment.estimated_route_ids.filtered(
+                    lambda l: l.operation_type == 'delivery' and l.state != 'skipped'
+                )[:1]
+            # Reset delivery leg so hub can soft-assign / DE can claim for retry
+            if delivery_leg:
+                delivery_leg.write({
+                    'state': 'planned',
+                    'assigned_de_id': False,
+                    'started_at': False,
+                    'completed_at': False,
+                })
+            hub_hint = shipment.destination_hub_id or shipment.current_hub_id
+            shipment._create_custody_event(
+                'delivery_failed',
+                to_custodian='de',
+                hub=hub_hint,
+                actor_de=de,
+                scanned_code=scanned_code or shipment.name,
+                note=remarks,
+                leg=delivery_leg,
+            )
+            shipment._write_with_state({
+                'state': 'delivery_failed',
+                'custodian_type': 'de',
+                'custodian_de_id': de.id if de else False,
+                'delivery_executive_id': de.id if de else shipment.delivery_executive_id.id,
+                'current_hub_id': hub_hint.id if hub_hint else False,
+                'delivery_fail_count': (shipment.delivery_fail_count or 0) + 1,
+                'delivery_remarks': remarks,
+                'active_leg_id': delivery_leg.id if delivery_leg else False,
+            })
+            shipment._notify_delivery_failed()
+        return True
+
+    def _get_logistics_admin_users(self):
+        """Internal users in logistics admin group (excludes portal/public/system)."""
+        admin_group = self.env.ref(
+            'keralariders_logistics.group_logistics_admin', raise_if_not_found=False
+        )
+        if not admin_group:
+            return self.env['res.users']
+        root_user = self.env.ref('base.user_root', raise_if_not_found=False)
+        return admin_group.sudo().user_ids.filtered(
+            lambda u: u.active and not u.share and (not root_user or u != root_user)
+        )
+
+    def _notify_delivery_failed(self):
+        """Activity + email to admins; email seller and destination/current hub managers."""
+        try:
+            admin_users = self._get_logistics_admin_users()
+        except AccessError:
+            _logger.warning(
+                "Could not resolve logistics admin users for delivery-failed notify "
+                "(insufficient rights for %s); continuing without admin activities.",
+                self.env.user.login,
+                exc_info=True,
+            )
+            admin_users = self.env['res.users']
+
+        for shipment in self:
+            remarks = (shipment.delivery_remarks or '').strip()
+            de_name = (
+                shipment.custodian_de_id.name
+                or shipment.delivery_executive_id.name
+                or _('Unknown DE')
+            )
+            hub = shipment.current_hub_id or shipment.destination_hub_id
+            subject = _('Delivery failed — %s') % (shipment.name or '')
+            body = _(
+                "<p>Customer did not accept the order / delivery failed.</p>"
+                "<ul>"
+                "<li><strong>AWB:</strong> %(awb)s</li>"
+                "<li><strong>Seller:</strong> %(seller)s</li>"
+                "<li><strong>Customer:</strong> %(customer)s</li>"
+                "<li><strong>DE:</strong> %(de)s</li>"
+                "<li><strong>Fail count:</strong> %(count)s</li>"
+                "<li><strong>Hub:</strong> %(hub)s</li>"
+                "<li><strong>Remarks:</strong> %(remarks)s</li>"
+                "</ul>"
+                "<p>Package remains with the DE until hub Receive AWB. "
+                "Status stays Delivery Failed.</p>",
+                awb=shipment.name or '',
+                seller=shipment.seller_id.display_name or '',
+                customer=shipment.shipping_to_name or '',
+                de=de_name,
+                count=shipment.delivery_fail_count or 0,
+                hub=hub.name if hub else _('—'),
+                remarks=remarks or _('—'),
+            )
+            note = _(
+                "AWB: %(awb)s<br/>Seller: %(seller)s<br/>Customer: %(customer)s<br/>"
+                "DE: %(de)s<br/>Fail count: %(count)s<br/>Remarks: %(remarks)s",
+                awb=shipment.name or '',
+                seller=shipment.seller_id.display_name or '',
+                customer=shipment.shipping_to_name or '',
+                de=de_name,
+                count=shipment.delivery_fail_count or 0,
+                remarks=remarks or _('—'),
+            )
+
+            partners = self.env['res.partner']
+            for user in admin_users:
+                partners |= user.partner_id
+                try:
+                    shipment.sudo().activity_schedule(
+                        self._ACTIVITY_TYPE_TODO,
+                        summary=_('Delivery failed — %s') % (shipment.name or ''),
+                        note=note,
+                        user_id=user.id,
+                    )
+                except Exception:
+                    _logger.warning(
+                        "Failed to schedule delivery-failed activity for user %s on %s",
+                        user.login, shipment.name, exc_info=True,
+                    )
+
+            seller_partner = shipment.seller_id.partner_id if shipment.seller_id else False
+            if seller_partner:
+                partners |= seller_partner
+
+            notify_hubs = self.env['logistics.hub']
+            if shipment.destination_hub_id:
+                notify_hubs |= shipment.destination_hub_id
+            if shipment.current_hub_id:
+                notify_hubs |= shipment.current_hub_id
+            for hub_rec in notify_hubs:
+                for manager in hub_rec.manager_ids.filtered(lambda u: u.active):
+                    partners |= manager.partner_id
+
+            partners = partners.filtered(lambda p: p.email)
+            if partners:
+                try:
+                    shipment.sudo().message_notify(
+                        partner_ids=partners.ids,
+                        subject=subject,
+                        body=body,
+                        email_layout_xmlid='mail.mail_notification_light',
+                    )
+                except Exception:
+                    _logger.warning(
+                        "Failed to email delivery-failed notify for %s",
+                        shipment.name, exc_info=True,
+                    )
+
+    def _assert_hub_failed_returnable(self):
+        """delivery_failed at hub with at least one failure — ready for return options."""
+        self.ensure_one()
+        if self.state != 'delivery_failed' or self.custodian_type != 'hub':
+            raise UserError(
+                _("Shipment %s must be Delivery Failed in hub custody "
+                  "(current: %s / %s).")
+                % (self.name, self.state, self.custodian_type)
+            )
+        if (self.delivery_fail_count or 0) < 1:
+            raise UserError(
+                _("Shipment %s has no recorded delivery failures yet.")
+                % self.name
+            )
+        if self.is_return_journey:
+            raise UserError(
+                _("Shipment %s already has a return journey in progress.")
+                % self.name
+            )
+
+    def action_hub_return_to_previous_hub(self, note=None):
+        """Hub: after ≥1 failure, open reverse hub-transfer back to source hub."""
+        Route = self.env['logistics.shipment.estimated.route']
+        for shipment in self:
+            shipment._assert_hub_failed_returnable()
+            source = shipment.source_hub_id
+            current = shipment.current_hub_id
+            if not source or not current:
+                raise UserError(
+                    _("Source and current hub are required on shipment %s.")
+                    % shipment.name
+                )
+            if source == current:
+                raise UserError(
+                    _("Shipment %s is already at the source hub (%s).")
+                    % (shipment.name, source.name)
+                )
+            # Close open delivery legs — inventory moves back via hub transfer
+            for leg in shipment.estimated_route_ids.filtered(
+                lambda l: l.operation_type == 'delivery' and l.state not in ('done', 'skipped')
+            ):
+                leg.write({
+                    'state': 'skipped',
+                    'completed_at': fields.Datetime.now(),
+                    'assigned_de_id': False,
+                    'started_at': False,
+                })
+            max_seq = max(shipment.estimated_route_ids.mapped('sequence') or [0])
+            transfer = Route.create({
+                'shipment_id': shipment.id,
+                'sequence': max_seq + 1,
+                'name': _('%s → %s (return to source hub)') % (current.name, source.name),
+                'source_location_name': current.name,
+                'destination_location_name': source.name,
+                'from_hub_id': current.id,
+                'to_hub_id': source.id,
+                'operation_type': 'hub_transfer',
+                'state': 'planned',
+            })
+            shipment.active_leg_id = transfer.id
+            shipment._create_custody_event(
+                'note',
+                to_custodian='hub',
+                hub=current,
+                note=note or _(
+                    "Hub initiated return to previous hub %s after delivery failure #%s."
+                ) % (source.name, shipment.delivery_fail_count),
+                leg=transfer,
+            )
+            shipment._lock_route()
+        return True
+
+    def action_hub_return_to_seller(self, note=None):
+        """Hub: after ≥1 failure, start free return to seller (package already at hub).
+
+        Rebuilds reverse route, skips customer pickup, keeps hub custody.
+        """
+        for shipment in self:
+            shipment._assert_hub_failed_returnable()
+            current = shipment.current_hub_id
+            if not current:
+                raise UserError(_("Current hub is missing on shipment %s.") % shipment.name)
+
+            shipment.write({
+                'is_return_journey': True,
+                'route_locked': False,
+            })
+            shipment.estimated_route_ids = [(5, 0, 0)]
+            shipment.with_context(rebuild_return_route=True)._compute_estimated_route_ids()
+
+            # Skip customer pickup — package is already in logistics / hub custody
+            pickup_leg = shipment.estimated_route_ids.filtered(
+                lambda l: l.operation_type == 'pickup'
+            )[:1]
+            if pickup_leg:
+                pickup_leg.write({
+                    'state': 'skipped',
+                    'completed_at': fields.Datetime.now(),
+                })
+            shipment._sync_active_leg()
+
+            if current == shipment.source_hub_id and current == shipment.destination_hub_id:
+                new_state = 'at_source_hub'
+            elif current == shipment.source_hub_id:
+                new_state = 'at_source_hub'
+            elif current == shipment.destination_hub_id:
+                new_state = 'at_destination_hub'
+            else:
+                new_state = 'at_source_hub'
+
+            shipment._create_custody_event(
+                'return_requested',
+                to_custodian='hub',
+                hub=current,
+                note=note or _(
+                    "Hub started free return to seller after delivery failure #%s "
+                    "(customer pickup skipped — package already at hub)."
+                ) % shipment.delivery_fail_count,
+                leg=shipment.active_leg_id,
+            )
+            shipment._write_with_state({
+                'state': new_state,
+                'custodian_type': 'hub',
+                'custodian_de_id': False,
+                'current_hub_id': current.id,
+                'delivery_executive_id': False,
+                'is_return_journey': True,
+                'route_locked': True,
+            })
+            shipment._sync_active_leg()
+        return True
+
     def can_skip_hub_local_delivery(self, de=None):
         """Same-district (same source/dest hub) packages can go OFD after pickup without hub inventory."""
         self.ensure_one()
@@ -2067,6 +2444,13 @@ class Shipment(models.Model):
     estimated_delivery_date = fields.Date(string='Estimated Delivery Date')
     actual_delivery_date = fields.Datetime(string='Actual Delivery Date')
     delivery_remarks = fields.Text(string="Delivery Remarks")
+    delivery_fail_count = fields.Integer(
+        string='Delivery Fail Count',
+        default=0,
+        copy=False,
+        tracking=True,
+        help='How many times last-mile delivery failed (customer not accepted).',
+    )
 
     order_payment_type = fields.Selection([('prepaid', 'Prepaid'), ('cod', 'COD'), ('na', 'Not Applicable')], string='Order Payment Type', required=True, default='prepaid')
     cod_payment_method = fields.Selection([('cash', 'Cash'), ('upi', 'UPI')], string='COD Payment Method')
