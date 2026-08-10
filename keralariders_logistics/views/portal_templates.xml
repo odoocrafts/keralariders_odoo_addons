@@ -329,7 +329,7 @@
                                         <small class="text-muted">
                                             <span t-field="clearance.transfer_date" t-options='{"widget": "date"}'/>
                                             ·
-                                            <t t-esc="dict(clearance.fields_get(allfields=['transfer_type'])['transfer_type']['selection']).get(clearance.transfer_type, clearance.transfer_type)"/>
+                                            <t t-esc="cod_type_label(clearance.transfer_type)"/>
                                         </small>
                                     </div>
                                     <div class="text-end">
@@ -367,13 +367,12 @@
                                         </div>
                                     </td>
                                     <td>
-                                        <t t-set="type_badge" t-value="'bg-success' if tx.transfer_type == 'cod_payment' else 'bg-warning text-dark' if tx.state == 'draft' else 'bg-primary'"/>
-                                        <span t-attf-class="badge #{type_badge}">
-                                            <span t-esc="dict(tx.fields_get(allfields=['transfer_type'])['transfer_type']['selection'])[tx.transfer_type]"/>
+                                        <span t-attf-class="badge #{cod_type_badge(tx.transfer_type, tx.state)}">
+                                            <span t-esc="cod_type_label(tx.transfer_type)"/>
                                         </span>
                                     </td>
                                     <td class="text-end">
-                                        <span t-attf-class="#{'text-success' if tx.transfer_type == 'cod_payment' else 'text-primary'}" t-field="tx.amount" t-options='{"widget": "monetary", "display_currency": tx.currency_id}'/>
+                                        <span t-attf-class="#{'text-info' if tx.transfer_type == 'cod_payment' else 'text-secondary'}" t-field="tx.amount" t-options='{"widget": "monetary", "display_currency": tx.currency_id}'/>
                                     </td>
                                 </tr>
                             </t>

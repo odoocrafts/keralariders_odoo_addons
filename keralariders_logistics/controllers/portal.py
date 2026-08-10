@@ -3,8 +3,31 @@ from odoo.addons.portal.controllers.portal import CustomerPortal, pager as porta
 from odoo.http import request
 from odoo.exceptions import AccessError, UserError
 
+# Seller-facing labels for /my/cod_settlements (backend transfer_type keys unchanged).
+_COD_SETTLEMENT_SELLER_TYPE_LABELS = {
+    'cod_payment': _('COD collected from customer'),
+    'cod_clearance': _('Settlement to your account'),
+    'cod_withdrawal': _('Payout to your bank'),
+    'other': _('Transfer to your bank'),
+}
+
+
 class LogisticsPortal(CustomerPortal):
-    
+
+    @staticmethod
+    def _cod_settlement_seller_type_label(transfer_type):
+        """Map logistics.account.transfer transfer_type to a seller-friendly portal label."""
+        return _COD_SETTLEMENT_SELLER_TYPE_LABELS.get(transfer_type) or transfer_type
+
+    @staticmethod
+    def _cod_settlement_seller_type_badge(transfer_type, state=None):
+        """Soft badge classes: payments vs payouts (draft stays warning)."""
+        if state == 'draft':
+            return 'bg-warning text-dark'
+        if transfer_type == 'cod_payment':
+            return 'bg-info text-dark'
+        return 'bg-secondary'
+
     def _prepare_home_portal_values(self, counters):
         values = super()._prepare_home_portal_values(counters)
         if request.env.user._is_public():
@@ -1351,6 +1374,8 @@ class LogisticsPortal(CustomerPortal):
             'seller': seller,
             'has_bank_details': has_bank_details,
             'currency_id': seller.currency_id or request.env.company.currency_id,
+            'cod_type_label': self._cod_settlement_seller_type_label,
+            'cod_type_badge': self._cod_settlement_seller_type_badge,
             'success': request.session.pop('success', None),
             'error': request.session.pop('error', None),
         })
