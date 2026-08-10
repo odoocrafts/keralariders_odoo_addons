@@ -794,7 +794,6 @@ class LogisticsPortal(CustomerPortal):
             'active_leg': active_leg,
             'active_leg_label': shipment.get_active_leg_label(),
             'preferred_drop_hub': preferred_drop_hub,
-            'can_depart_hub': shipment.can_depart_from_hub(delivery_executive),
             'can_skip_hub': shipment.can_skip_hub_local_delivery(delivery_executive),
             'is_hub_transfer': bool(active_leg and active_leg.operation_type == 'hub_transfer'),
             'show_pickup_address': shipment.is_pickup_address_context(delivery_executive),
@@ -950,27 +949,6 @@ class LogisticsPortal(CustomerPortal):
                 note=post.get('note'),
             )
             request.session['success'] = f"Shipment {shipment.name} marked dropped at {hub.name}. Awaiting hub receive."
-        except UserError as e:
-            request.session['error'] = str(e)
-        return request.redirect(f'/my/delivery/{shipment.id}')
-
-    @http.route(['/my/delivery/<int:shipment_id>/depart_hub'], type='http', auth="user", website=True, methods=['POST'])
-    def portal_my_delivery_depart_hub(self, shipment_id=None, **post):
-        delivery_executive = request.env['logistics.delivery.executive'].sudo().search(
-            [('user_id', '=', request.env.user.id)], limit=1
-        )
-        if not delivery_executive:
-            return request.redirect('/my')
-        shipment = request.env['logistics.shipment'].sudo().browse(shipment_id)
-        if not shipment.exists():
-            request.session['error'] = "Shipment not found."
-            return request.redirect('/my/deliveries')
-        try:
-            shipment.action_depart_from_hub(
-                actor_de=delivery_executive,
-                note=post.get('note'),
-            )
-            request.session['success'] = f"Departed hub for transfer of {shipment.name}."
         except UserError as e:
             request.session['error'] = str(e)
         return request.redirect(f'/my/delivery/{shipment.id}')
