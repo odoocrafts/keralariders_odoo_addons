@@ -412,6 +412,7 @@
                         <th>Payment Type</th>
                         <th>Charges</th>
                         <th>Status</th>
+                        <th>Time to Deliver</th>
                         <th class="text-end">Action</th>
                     </tr>
                 </thead>
@@ -428,6 +429,12 @@
                                 <span class="badge bg-secondary">
                                     <t t-esc="dict(shipment.fields_get(allfields=['state'])['state']['selection'])[shipment.state]"/>
                                 </span>
+                            </td>
+                            <td>
+                                <t t-if="shipment.delivery_duration_display">
+                                    <span t-esc="shipment.delivery_duration_display"/>
+                                </t>
+                                <t t-else="">—</t>
                             </td>
                             <td class="text-end">
                                 <a t-attf-href="/report/pdf/keralariders_logistics.action_report_shipment/#{shipment.id}" class="btn btn-sm btn-outline-primary me-1" title="Print AWB" target="_blank">

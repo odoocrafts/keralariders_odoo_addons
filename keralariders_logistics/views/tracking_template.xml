@@ -279,6 +279,9 @@
                                     <t t-if="payment_type_label and shipment.order_payment_type != 'na'">
                                         <span>Payment: <strong><t t-esc="payment_type_label"/></strong></span>
                                     </t>
+                                    <t t-if="shipment.delivery_duration_display">
+                                        <span>Time to deliver: <strong><t t-esc="shipment.delivery_duration_display"/></strong></span>
+                                    </t>
                                     <t t-if="last_update_display">
                                         <span>Updated: <strong><t t-esc="last_update_display"/></strong></span>
                                     </t>

@@ -141,6 +141,12 @@ class Shipment(models.Model):
         tracking=True,
     )
     current_hub_id = fields.Many2one('logistics.hub', string='Current Hub', tracking=True, index=True)
+    custodian_display = fields.Char(
+        string='Custodian',
+        compute='_compute_custodian_display',
+        store=True,
+        help='Readable custodian for list views, e.g. "Hub: Ernakulam" or "DE: Ashik".',
+    )
     active_leg_id = fields.Many2one('logistics.shipment.estimated.route', string='Active Route Leg')
     route_locked = fields.Boolean(
         string='Route Locked',
@@ -154,6 +160,25 @@ class Shipment(models.Model):
     def _compute_event_count(self):
         for rec in self:
             rec.event_count = len(rec.event_ids)
+
+    @api.depends('custodian_type', 'custodian_de_id', 'custodian_de_id.name', 'current_hub_id', 'current_hub_id.name')
+    def _compute_custodian_display(self):
+        for rec in self:
+            ctype = rec.custodian_type
+            if ctype == 'hub':
+                rec.custodian_display = (
+                    f"Hub: {rec.current_hub_id.name}" if rec.current_hub_id else 'Hub'
+                )
+            elif ctype == 'de':
+                rec.custodian_display = (
+                    f"DE: {rec.custodian_de_id.name}" if rec.custodian_de_id else 'Delivery Executive'
+                )
+            elif ctype == 'customer':
+                rec.custodian_display = 'Customer'
+            elif ctype == 'seller':
+                rec.custodian_display = 'Seller'
+            else:
+                rec.custodian_display = False
 
     def _lock_route(self):
         self.filtered(lambda s: not s.route_locked).write({'route_locked': True})
@@ -2079,6 +2104,48 @@ class Shipment(models.Model):
     pickup_requested_on = fields.Datetime(string='Pickup Requested On')
     picked_on = fields.Datetime(string='Picked On')
     delivered_on = fields.Datetime(string='Delivered On')
+    delivery_duration_hours = fields.Float(
+        string='Delivery Duration (Hours)',
+        compute='_compute_delivery_duration',
+        store=True,
+        help='Hours from pickup to customer delivery (outbound delivered only).',
+    )
+    delivery_duration_display = fields.Char(
+        string='Time to Deliver',
+        compute='_compute_delivery_duration',
+        store=True,
+        help='Human-readable pickup → delivery duration, e.g. "5h 20m" or "2d 3h".',
+    )
+
+    @api.depends('picked_on', 'delivered_on', 'actual_delivery_date', 'state', 'is_return_journey')
+    def _compute_delivery_duration(self):
+        for rec in self:
+            rec.delivery_duration_hours = 0.0
+            rec.delivery_duration_display = False
+            if rec.is_return_journey or rec.state != 'delivered':
+                continue
+            picked = rec.picked_on
+            delivered = rec.delivered_on or rec.actual_delivery_date
+            if not picked or not delivered:
+                continue
+            delta = delivered - picked
+            total_seconds = int(delta.total_seconds())
+            if total_seconds < 0:
+                continue
+            rec.delivery_duration_hours = total_seconds / 3600.0
+            rec.delivery_duration_display = rec._format_delivery_duration(total_seconds)
+
+    @staticmethod
+    def _format_delivery_duration(total_seconds):
+        """Format seconds as '5h 20m' (<1 day) or '2d 3h' (≥1 day)."""
+        days = total_seconds // 86400
+        hours = (total_seconds % 86400) // 3600
+        minutes = (total_seconds % 3600) // 60
+        if days:
+            return f"{days}d {hours}h"
+        if hours:
+            return f"{hours}h {minutes}m"
+        return f"{minutes}m"
 
     state = fields.Selection(delivery_states, string='Delivery Status', default='order_added', tracking=True)
 

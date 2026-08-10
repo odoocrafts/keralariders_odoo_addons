@@ -133,6 +133,7 @@
                                     <th>Payment Type</th>
                                     <th>Charges</th>
                                     <th>Status</th>
+                                    <th>Time to Deliver</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -148,6 +149,12 @@
                                             <span class="badge bg-secondary">
                                                 <t t-esc="dict(ship.fields_get(allfields=['state'])['state']['selection'])[ship.state]"/>
                                             </span>
+                                        </td>
+                                        <td>
+                                            <t t-if="ship.delivery_duration_display">
+                                                <span t-esc="ship.delivery_duration_display"/>
+                                            </t>
+                                            <t t-else="">—</t>
                                         </td>
                                     </tr>
                                 </t>

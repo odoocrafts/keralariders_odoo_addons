@@ -177,6 +177,7 @@
                 <field name="shipping_to_name" width="100" string="Shipping To"/>
                 <field name="delivery_executive_id" string="Delivery Exec." width="100"/>
                 <field name="pickup_executive_id" string="Pickup Exec." width="100" optional="show"/>
+                <field name="custodian_display" string="Custodian" width="120"/>
                 <field name="order_date" width="100"/>
                 <field name="shipping_from_district_id" string="Shipping From" width="100"/>
                 <field name="shipping_to_district_id" string="Shipping To" width="100"/>
@@ -193,6 +194,7 @@
                 <field name="cod_amount" string="COD Amount" width="100" sum="COD Amount" invisible="order_payment_type != 'cod'" options="{'fg_color': 'brown: cod_balance_amount > 0; green: cod_balance_amount &lt;=0 ;'}"/>
                 <field name="cod_balance_amount" string="COD Balance Amount" optional="hide" width="100" sum="COD Amount" invisible="order_payment_type != 'cod'"/>
                 <field name="estimated_delivery_date" string="Est. Del Date" width="100"/>
+                <field name="delivery_duration_display" string="Time to Deliver" width="100" optional="show"/>
                 <field name="delivery_charges_total" force_save="1" string="Delivery Charge" width="100" sum="Delivery Charges" options="{'fg_color': 'brown: not wallet_transaction_id; green: wallet_transaction_id;'}"/>
                 <field name="currency_id" column_invisible="1"/>
                 <field name="wallet_transaction_id" column_invisible="1"/>
@@ -334,6 +336,8 @@
                             <field name="delivery_executive_id"/>
                             <field name="estimated_delivery_date"/>
                             <field name="actual_delivery_date"/>
+                            <field name="delivery_duration_display" string="Time to Deliver" readonly="1"
+                                      invisible="not delivery_duration_display"/>
                             <field name="delivery_remarks"/>
                             <field name="source_hub_id" string="Source Hub" readonly="1" force_save="1"/>
                             <field name="destination_hub_id" string="Destination Hub" readonly="1" force_save="1"/>
