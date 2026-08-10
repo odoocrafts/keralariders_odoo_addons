@@ -1126,6 +1126,26 @@ class LogisticsPortal(CustomerPortal):
             ('active', '=', True),
         ])
 
+    def _hub_manager_sees_all_shipments(self, hubs):
+        """Main hub (Thrissur) managers see every shipment system-wide."""
+        return bool(hubs.filtered(lambda h: h.hub_type == 'main'))
+
+    def _hub_all_shipments_domain(self, hubs):
+        """Read-only list domain: related hubs, or unrestricted for main managers.
+
+        Normal managers: source, destination, or current hub is managed
+        (covers outbound and return journeys involving those hubs).
+        Main hub managers: no hub filter.
+        """
+        if self._hub_manager_sees_all_shipments(hubs):
+            return []
+        return [
+            '|', '|',
+            ('source_hub_id', 'in', hubs.ids),
+            ('destination_hub_id', 'in', hubs.ids),
+            ('current_hub_id', 'in', hubs.ids),
+        ]
+
     def _hub_pending_pickup_domain(self, hubs):
         """Shipments awaiting first pickup whose origin hub the user manages."""
         return [
@@ -1162,6 +1182,10 @@ class LogisticsPortal(CustomerPortal):
         unassigned_pickups = Shipment.search_count(
             pending_pickup_domain + [('pickup_executive_id', '=', False)]
         )
+        related_domain = self._hub_all_shipments_domain(hubs)
+        active_related = Shipment.search_count(related_domain + [
+            ('state', 'not in', ('delivered', 'cancelled', 'returned')),
+        ])
         values = {
             'page_name': 'hub',
             'hubs': hubs,
@@ -1169,6 +1193,8 @@ class LogisticsPortal(CustomerPortal):
             'awaiting_receive': awaiting_receive,
             'pending_pickups': pending_pickups,
             'unassigned_pickups': unassigned_pickups,
+            'active_related_shipments': active_related,
+            'sees_all_shipments': self._hub_manager_sees_all_shipments(hubs),
             'error': request.session.pop('error', None),
             'success': request.session.pop('success', None),
         }
@@ -1442,6 +1468,67 @@ class LogisticsPortal(CustomerPortal):
         except UserError as e:
             request.session['error'] = str(e)
         return request.redirect('/my/hub/pickups')
+
+    @http.route(
+        ['/my/hub/shipments', '/my/hub/shipments/page/<int:page>'],
+        type='http', auth="user", website=True,
+    )
+    def portal_my_hub_shipments(self, page=1, filter_status=None, search=None, **kw):
+        """Read-only shipments list for hub managers (no assign/dispatch/receive)."""
+        hubs = self._get_managed_hubs()
+        if not hubs:
+            return request.redirect('/my')
+        Shipment = request.env['logistics.shipment'].sudo()
+        domain = self._hub_all_shipments_domain(hubs)
+        sees_all = self._hub_manager_sees_all_shipments(hubs)
+
+        filter_status = (filter_status or '').strip() or None
+        search = (search or '').strip() or None
+        if filter_status:
+            valid_states = {s[0] for s in Shipment._fields['state'].selection}
+            if filter_status in valid_states:
+                domain = domain + [('state', '=', filter_status)]
+            else:
+                filter_status = None
+        if search:
+            domain = domain + [('name', 'ilike', search)]
+
+        shipment_count = Shipment.search_count(domain)
+        pager = portal_pager(
+            url="/my/hub/shipments",
+            url_args={
+                'filter_status': filter_status or None,
+                'search': search or None,
+            },
+            total=shipment_count,
+            page=page,
+            step=self._items_per_page,
+        )
+        shipments = Shipment.search(
+            domain,
+            order='create_date desc, id desc',
+            limit=self._items_per_page,
+            offset=pager['offset'],
+        )
+        status_options = [
+            (key, Shipment._PUBLIC_STATUS_LABELS.get(key) or label)
+            for key, label in Shipment._fields['state'].selection
+        ]
+        values = {
+            'page_name': 'hub_shipments',
+            'hubs': hubs,
+            'shipments': shipments,
+            'shipment_count': shipment_count,
+            'sees_all_shipments': sees_all,
+            'filter_status': filter_status,
+            'search': search or '',
+            'status_options': status_options,
+            'pager': pager,
+            'default_url': '/my/hub/shipments',
+            'error': request.session.pop('error', None),
+            'success': request.session.pop('success', None),
+        }
+        return request.render("keralariders_logistics.portal_my_hub_shipments", values)
 
     @http.route(['/my/cod_settlements', '/my/cod_settlements/page/<int:page>'], type='http', auth="user", website=True)
     def portal_my_cod_settlements(self, page=1, **kw):

@@ -71,6 +71,19 @@
                     <div class="col-md-4">
                         <div class="card shadow-sm h-100">
                             <div class="card-body">
+                                <h5 class="card-title">All shipments</h5>
+                                <p class="display-6 mb-0"><t t-esc="active_related_shipments"/></p>
+                                <p class="small text-muted mb-2">
+                                    <t t-if="sees_all_shipments">active system-wide</t>
+                                    <t t-else="">active related to your hub</t>
+                                </p>
+                                <a href="/my/hub/shipments" class="btn btn-outline-primary btn-sm">View orders</a>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card shadow-sm h-100">
+                            <div class="card-body">
                                 <h5 class="card-title">Receive scan</h5>
                                 <p class="text-muted">Scan or enter AWB to take hub custody</p>
                                 <a href="/my/hub/receive" class="btn btn-success btn-sm">Receive package</a>
@@ -430,6 +443,106 @@
                                                     <t t-else="">Assign</t>
                                                 </button>
                                             </form>
+                                        </td>
+                                    </tr>
+                                </t>
+                            </tbody>
+                        </table>
+                    </div>
+                    <t t-call="portal.pager"/>
+                </t>
+            </div>
+        </t>
+    </template>
+
+    <template id="portal_my_hub_shipments" name="Hub All Shipments">
+        <t t-call="portal.portal_layout">
+            <div class="container py-3">
+                <a href="/my/hub" class="btn btn-link ps-0 mb-2"><i class="fa fa-arrow-left"/> Back</a>
+                <div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
+                    <div>
+                        <h3 class="mb-0">All shipments</h3>
+                        <p class="text-muted small mb-0">
+                            View-only list
+                            <t t-if="sees_all_shipments"> (all hubs)</t>
+                            <t t-else=""> for your hub(s)</t>
+                            — <t t-esc="shipment_count"/> matching
+                        </p>
+                    </div>
+                </div>
+                <form action="/my/hub/shipments" method="get" class="row g-2 align-items-end mb-3">
+                    <div class="col-md-4">
+                        <label class="form-label small mb-1">Search AWB</label>
+                        <input type="text" name="search" class="form-control form-control-sm"
+                               placeholder="AWB number" t-att-value="search"/>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small mb-1">Status</label>
+                        <select name="filter_status" class="form-select form-select-sm">
+                            <option value="">All statuses</option>
+                            <t t-foreach="status_options" t-as="opt">
+                                <option t-att-value="opt[0]" t-att-selected="filter_status == opt[0]">
+                                    <t t-esc="opt[1]"/>
+                                </option>
+                            </t>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <button type="submit" class="btn btn-primary btn-sm me-1">Filter</button>
+                        <a href="/my/hub/shipments" class="btn btn-outline-secondary btn-sm">Clear</a>
+                    </div>
+                </form>
+                <t t-if="not shipments">
+                    <p class="alert alert-info">No shipments match your filters.</p>
+                </t>
+                <t t-else="">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle">
+                            <thead>
+                                <tr>
+                                    <th>AWB</th>
+                                    <th>Status</th>
+                                    <th>Seller</th>
+                                    <th>Customer / To</th>
+                                    <th>From ZIP / Hub</th>
+                                    <th>Dest hub</th>
+                                    <th>Custodian</th>
+                                    <th>Date</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <t t-foreach="shipments" t-as="shipment">
+                                    <tr>
+                                        <td>
+                                            <a t-attf-href="/track/#{shipment.tracking_token}" target="_blank" rel="noopener">
+                                                <strong><t t-esc="shipment.name"/></strong>
+                                            </a>
+                                        </td>
+                                        <td>
+                                            <span class="badge text-bg-secondary">
+                                                <t t-esc="shipment.get_tracking_status_label()"/>
+                                            </span>
+                                            <t t-if="shipment.is_return_journey">
+                                                <span class="badge text-bg-warning ms-1">Return</span>
+                                            </t>
+                                        </td>
+                                        <td><t t-esc="shipment.seller_id.name or '—'"/></td>
+                                        <td>
+                                            <t t-esc="shipment.shipping_to_name or '—'"/><br/>
+                                            <small class="text-muted"><t t-esc="shipment.shipping_to_zip or ''"/></small>
+                                        </td>
+                                        <td>
+                                            <t t-esc="shipment.shipping_from_zip or '—'"/>
+                                            <t t-if="shipment.source_hub_id">
+                                                <br/><small class="text-muted"><t t-esc="shipment.source_hub_id.name"/></small>
+                                            </t>
+                                        </td>
+                                        <td><t t-esc="shipment.destination_hub_id.name or '—'"/></td>
+                                        <td>
+                                            <small><t t-esc="shipment.custodian_display or '—'"/></small>
+                                        </td>
+                                        <td>
+                                            <small t-field="shipment.create_date" t-options='{"widget": "datetime"}'/>
                                         </td>
                                     </tr>
                                 </t>
