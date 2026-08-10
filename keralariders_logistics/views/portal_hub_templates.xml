@@ -64,7 +64,7 @@
                             <div class="card-body">
                                 <h5 class="card-title">Awaiting receive</h5>
                                 <p class="display-6"><t t-esc="awaiting_receive"/></p>
-                                <p class="small text-muted">Dropped by DE, not yet scanned in</p>
+                                <p class="small text-muted">waiting for scan</p>
                             </div>
                         </div>
                     </div>
