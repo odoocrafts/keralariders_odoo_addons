@@ -21,6 +21,8 @@ class ShipmentEvent(models.Model):
         ('depart_hub', 'Departed Hub'),
         ('de_self_assign', 'DE Self-Assign'),
         ('leg_assign', 'Leg Assign'),
+        ('de_accept_assignment', 'DE Accepted Assignment'),
+        ('de_reject_assignment', 'DE Rejected Assignment'),
         ('central_pass_through', 'Passed via Thrissur Hub'),
         ('skip_hub_local', 'Local Delivery (Skip Hub)'),
         ('out_for_delivery', 'Out for Delivery'),

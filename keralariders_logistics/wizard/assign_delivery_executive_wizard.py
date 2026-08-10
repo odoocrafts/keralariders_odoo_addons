@@ -58,7 +58,7 @@ class AssignDeliveryExecutiveWizard(models.TransientModel):
                     shipment.custodian_de_id = self.delivery_executive_id.id
                 continue
 
-            if leg.assigned_de_id and leg.assigned_de_id != self.delivery_executive_id and leg.state != 'planned':
+            if leg.assigned_de_id and leg.assigned_de_id != self.delivery_executive_id and leg.state not in ('planned', 'assigned'):
                 raise UserError(
                     _("Shipment %s leg '%s' is already assigned to %s. Clear the assignee first.")
                     % (shipment.name, leg.name, leg.assigned_de_id.name)
@@ -69,7 +69,11 @@ class AssignDeliveryExecutiveWizard(models.TransientModel):
                     % (self.delivery_executive_id.name, leg.operation_type, shipment.name)
                 )
 
-            # Assign on active leg without taking custody (hub dispatch / pickup still required)
+            # Soft assign on active leg — hub custody unchanged until DE accept / claim
+            if shipment.custodian_type == 'hub' and leg.operation_type in ('delivery', 'hub_transfer'):
+                shipment.action_assign_delivery_executive(self.delivery_executive_id)
+                continue
+
             start = False
             shipment._assign_leg_de(leg, self.delivery_executive_id, start=start)
             shipment.delivery_executive_id = self.delivery_executive_id.id

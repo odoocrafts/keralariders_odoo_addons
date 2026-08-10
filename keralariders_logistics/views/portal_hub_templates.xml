@@ -256,8 +256,9 @@
                                     <th>AWB</th>
                                     <th>Hub</th>
                                     <th>Status</th>
+                                    <th>Assignment</th>
                                     <th>To</th>
-                                    <th>Dispatch</th>
+                                    <th>Assign DE</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -266,6 +267,21 @@
                                         <td><t t-esc="shipment.name"/></td>
                                         <td><t t-esc="shipment.current_hub_id.name"/></td>
                                         <td><span class="badge text-bg-secondary"><t t-esc="dict(shipment.fields_get(allfields=['state'])['state']['selection']).get(shipment.state, shipment.state)"/></span></td>
+                                        <td>
+                                            <t t-set="pending_leg" t-value="shipment.active_leg_id"/>
+                                            <t t-if="shipment.is_pending_de_acceptance()">
+                                                <span class="badge text-bg-warning">Assigned (pending accept)</span>
+                                                <div class="small text-muted mt-1">
+                                                    <t t-esc="pending_leg.assigned_de_id.name"/>
+                                                </div>
+                                            </t>
+                                            <t t-elif="pending_leg and pending_leg.assigned_de_id">
+                                                <span class="badge text-bg-info"><t t-esc="pending_leg.assigned_de_id.name"/></span>
+                                            </t>
+                                            <t t-else="">
+                                                <span class="badge text-bg-secondary">Unassigned</span>
+                                            </t>
+                                        </td>
                                         <td>
                                             <t t-esc="shipment.shipping_to_name"/><br/>
                                             <small class="text-muted"><t t-esc="shipment.shipping_to_zip"/></small>
@@ -283,12 +299,10 @@
                                                         </option>
                                                     </t>
                                                 </select>
-                                                <t t-set="default_for_delivery" t-value="'1' if (not shipment.active_leg_id or shipment.active_leg_id.operation_type == 'delivery') else '0'"/>
-                                                <select name="for_delivery" class="form-select form-select-sm" style="min-width:120px;">
-                                                    <option value="1" t-att-selected="default_for_delivery == '1'">Out for delivery</option>
-                                                    <option value="0" t-att-selected="default_for_delivery == '0'">Hub transfer</option>
-                                                </select>
-                                                <button type="submit" class="btn btn-primary btn-sm">Dispatch</button>
+                                                <button type="submit" class="btn btn-primary btn-sm">
+                                                    <t t-if="shipment.is_pending_de_acceptance()">Re-assign</t>
+                                                    <t t-else="">Assign DE</t>
+                                                </button>
                                             </form>
                                         </td>
                                     </tr>

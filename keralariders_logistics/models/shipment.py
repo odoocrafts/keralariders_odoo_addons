@@ -227,6 +227,8 @@ class Shipment(models.Model):
         'depart_hub': 'Departed Hub',
         'de_self_assign': 'Assigned for Delivery',
         'leg_assign': 'Assigned',
+        'de_accept_assignment': 'Accepted by Delivery Executive',
+        'de_reject_assignment': 'Assignment Rejected',
         'central_pass_through': 'Passed via Hub',
         'skip_hub_local': 'Out for Local Delivery',
         'out_for_delivery': 'Out for Delivery',
@@ -617,6 +619,8 @@ class Shipment(models.Model):
         'hub_dispatch': 60,
         'depart_hub': 65,
         'leg_assign': 70,
+        'de_accept_assignment': 72,
+        'de_reject_assignment': 71,
         'de_self_assign': 75,
         'out_for_delivery': 80,
         'delivered': 90,
@@ -991,7 +995,11 @@ class Shipment(models.Model):
         return True
 
     def _assign_leg_de(self, leg, de, start=False):
-        """Assign DE to a leg and optionally start it."""
+        """Assign DE to a leg and optionally start it.
+
+        Soft reassignment is allowed while the leg is still planned/assigned
+        (pending accept). Once in_progress, another DE cannot take over here.
+        """
         self.ensure_one()
         if not leg or not de:
             raise UserError(_("Leg and delivery executive are required for assignment."))
@@ -1000,7 +1008,11 @@ class Shipment(models.Model):
                 _("Delivery executive %s is not eligible for %s legs.")
                 % (de.name, leg.operation_type)
             )
-        if leg.assigned_de_id and leg.assigned_de_id != de and leg.state not in ('planned',):
+        if (
+            leg.assigned_de_id
+            and leg.assigned_de_id != de
+            and leg.state not in ('planned', 'assigned')
+        ):
             raise UserError(
                 _("Leg '%s' is already assigned to %s.")
                 % (leg.name, leg.assigned_de_id.name)
@@ -1011,6 +1023,8 @@ class Shipment(models.Model):
         }
         if start:
             vals['started_at'] = fields.Datetime.now()
+        else:
+            vals['started_at'] = False
         leg.write(vals)
         self.active_leg_id = leg.id
         return leg
@@ -1262,8 +1276,19 @@ class Shipment(models.Model):
 
         Custody remains with the DE until hub_receive — hub manager scan is
         the source of truth that transfers custodian_type to hub.
+
+        Seller/return pickup legs cannot drop at hub: take the package to the
+        hub and let the hub manager Receive AWB. Hub-transfer drivers may still
+        drop at the destination hub.
         """
         for shipment in self:
+            if shipment.is_pickup_drop_blocked():
+                raise UserError(
+                    _("Shipment %s is on a pickup leg. Do not drop at hub — "
+                      "bring the package to the hub; the hub manager will scan "
+                      "the AWB to receive it into hub custody.")
+                    % shipment.name
+                )
             if shipment.custodian_type != 'de':
                 raise UserError(
                     _("Shipment %s must be in DE custody to drop at hub (current: %s).")
@@ -1387,7 +1412,12 @@ class Shipment(models.Model):
 
     def action_hub_dispatch(self, delivery_executive, hub=None, scanned_code=None, note=None,
                             for_delivery=True, skip_leg_assign=False, event_type_override=None):
-        """Hub assigns a DE and releases custody (dispatch / out for delivery or transfer)."""
+        """Release hub custody to a DE (after accept / self-claim).
+
+        Prefer ``action_assign_delivery_executive`` for hub-manager soft assign
+        (no custody change). This method transfers custody and moves state to
+        ``out_for_delivery`` or ``in_transit``.
+        """
         if not delivery_executive:
             raise UserError(_("A delivery executive is required to dispatch."))
         for shipment in self:
@@ -1459,6 +1489,178 @@ class Shipment(models.Model):
             })
             shipment._lock_route()
         return True
+
+    def action_assign_delivery_executive(self, delivery_executive, note=None, for_delivery=None):
+        """Hub soft-assign DE for delivery / hub_transfer — no custody change.
+
+        Package stays in hub inventory (``custodian_type='hub'``) until the DE
+        accepts (``action_de_accept_assignment``) or claims via QR
+        (``action_de_self_assign``, which accepts immediately).
+        """
+        if not delivery_executive:
+            raise UserError(_("A delivery executive is required for assignment."))
+        if not delivery_executive.active:
+            raise UserError(_("Delivery executive %s is inactive.") % delivery_executive.name)
+
+        for shipment in self:
+            if shipment.custodian_type != 'hub':
+                raise UserError(
+                    _("Shipment %s must be in hub custody to assign a DE (current: %s).")
+                    % (shipment.name, shipment.custodian_type)
+                )
+            if not shipment.current_hub_id:
+                raise UserError(_("Current hub is missing on shipment %s.") % shipment.name)
+            if shipment.state in ('delivered', 'cancelled', 'returned'):
+                raise UserError(
+                    _("Shipment %s cannot be assigned from state '%s'.")
+                    % (shipment.name, shipment.state)
+                )
+
+            shipment._sync_active_leg()
+            leg = shipment.active_leg_id or shipment._get_next_actionable_leg()
+            if leg and leg.operation_type == 'pickup':
+                shipment._sync_active_leg()
+                leg = shipment.active_leg_id
+
+            if not leg:
+                raise UserError(
+                    _("No actionable delivery/transfer leg on shipment %s.")
+                    % shipment.name
+                )
+            if leg.operation_type == 'pickup':
+                raise UserError(
+                    _("Use pickup assignment for shipment %s (pickup leg still active).")
+                    % shipment.name
+                )
+            if leg.state in ('done', 'skipped', 'in_progress'):
+                raise UserError(
+                    _("Leg '%s' on shipment %s cannot be reassigned in state '%s'.")
+                    % (leg.name, shipment.name, leg.state)
+                )
+            if not shipment._de_eligible_for_leg(delivery_executive, leg):
+                raise UserError(
+                    _("Delivery executive %s is not eligible for %s legs.")
+                    % (delivery_executive.name, leg.operation_type)
+                )
+
+            # Soft assign / reassign while still pending accept (assigned, not started)
+            previous = leg.assigned_de_id
+            shipment._assign_leg_de(leg, delivery_executive, start=False)
+            shipment.delivery_executive_id = delivery_executive.id
+
+            op_note = note
+            if not op_note:
+                if previous and previous != delivery_executive:
+                    op_note = _(
+                        "Reassigned to %s (pending accept). Previously: %s."
+                    ) % (delivery_executive.name, previous.name)
+                else:
+                    op_note = _(
+                        "Assigned to %s for %s — pending DE accept. Hub keeps custody."
+                    ) % (delivery_executive.name, leg.operation_type)
+
+            shipment._create_custody_event(
+                'leg_assign',
+                to_custodian='hub',
+                hub=shipment.current_hub_id,
+                actor_de=delivery_executive,
+                note=op_note,
+                leg=leg,
+            )
+        return True
+
+    def is_pending_de_acceptance(self, de=None):
+        """True when hub holds custody and a DE is soft-assigned awaiting accept."""
+        self.ensure_one()
+        if self.custodian_type != 'hub' or not self.current_hub_id:
+            return False
+        if self.state in ('delivered', 'cancelled', 'returned'):
+            return False
+        leg = self.active_leg_id
+        if not leg or leg.state != 'assigned' or not leg.assigned_de_id:
+            return False
+        if leg.operation_type == 'pickup':
+            return False
+        if de and leg.assigned_de_id != de:
+            return False
+        return True
+
+    def action_de_accept_assignment(self, de, scanned_code=None, note=None):
+        """DE accepts hub soft-assign → start leg and take custody (dispatch)."""
+        if not de:
+            raise UserError(_("A delivery executive is required to accept assignment."))
+        for shipment in self:
+            if not shipment.is_pending_de_acceptance(de):
+                raise UserError(
+                    _("No pending assignment for you on shipment %s.")
+                    % shipment.name
+                )
+            leg = shipment.active_leg_id
+            for_delivery = leg.operation_type == 'delivery'
+            shipment._start_leg(leg, de=de)
+            shipment._create_custody_event(
+                'de_accept_assignment',
+                to_custodian='hub',
+                hub=shipment.current_hub_id,
+                actor_de=de,
+                scanned_code=scanned_code or shipment.name,
+                note=note or _("Assignment accepted by %s.") % de.name,
+                leg=leg,
+            )
+            shipment.action_hub_dispatch(
+                delivery_executive=de,
+                hub=shipment.current_hub_id,
+                scanned_code=scanned_code or shipment.name,
+                note=note or _("Assignment accepted — custody transferred to %s.") % de.name,
+                for_delivery=for_delivery,
+                skip_leg_assign=True,
+            )
+        return True
+
+    def action_de_reject_assignment(self, de, note=None):
+        """DE rejects hub soft-assign — clear assignee; hub keeps custody."""
+        if not de:
+            raise UserError(_("A delivery executive is required to reject assignment."))
+        for shipment in self:
+            if not shipment.is_pending_de_acceptance(de):
+                raise UserError(
+                    _("No pending assignment for you on shipment %s.")
+                    % shipment.name
+                )
+            leg = shipment.active_leg_id
+            shipment._create_custody_event(
+                'de_reject_assignment',
+                to_custodian='hub',
+                hub=shipment.current_hub_id,
+                actor_de=de,
+                note=note or _("Assignment rejected by %s. Hub keeps custody.") % de.name,
+                leg=leg,
+            )
+            leg.write({
+                'assigned_de_id': False,
+                'state': 'planned',
+                'started_at': False,
+            })
+            if shipment.delivery_executive_id == de:
+                shipment.delivery_executive_id = False
+            # Custody unchanged: hub
+        return True
+
+    def is_pickup_drop_blocked(self):
+        """True when DE must not use Drop at Hub (seller/return pickup → hub receive).
+
+        Hub-transfer legs may still drop at the destination hub.
+        """
+        self.ensure_one()
+        leg = self.active_leg_id
+        if leg and leg.operation_type == 'hub_transfer':
+            return False
+        if leg and leg.operation_type == 'pickup':
+            return True
+        # After mark picked, before hub receive completes the pickup leg
+        if self.state in ('picked', 'return_picked'):
+            return True
+        return False
 
     def is_pickup_address_context(self, de=None):
         """True when DE portal should show seller/pickup address (not customer).

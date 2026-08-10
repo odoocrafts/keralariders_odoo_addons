@@ -255,6 +255,9 @@
                                 <t t-set="leg_label" t-value="shipment.get_active_leg_label()"/>
                                 <span t-if="leg_label" class="badge text-bg-info text-wrap"><t t-esc="leg_label"/></span>
                                 <span t-else="" class="text-muted">—</span>
+                                <t t-if="shipment.is_pending_de_acceptance(delivery_executive)">
+                                    <br/><span class="badge text-bg-warning mt-1">Pending accept</span>
+                                </t>
                             </td>
                             <td><span t-field="shipment.total_weight"/> kg</td>
                             <td>
@@ -267,7 +270,12 @@
                                 </span>
                             </td>
                             <td class="text-end">
-                                <a t-attf-href="/my/delivery/#{shipment.id}" class="btn btn-sm btn-primary">View Details</a>
+                                <t t-if="shipment.is_pending_de_acceptance(delivery_executive)">
+                                    <a t-attf-href="/my/delivery/#{shipment.id}" class="btn btn-sm btn-warning">Accept / Reject</a>
+                                </t>
+                                <t t-else="">
+                                    <a t-attf-href="/my/delivery/#{shipment.id}" class="btn btn-sm btn-primary">View Details</a>
+                                </t>
                             </td>
                         </tr>
                     </t>
@@ -366,6 +374,35 @@
                         </div>
                     </div>
 
+                    <!-- Pending hub assignment: Accept / Reject (custody still at hub) -->
+                    <t t-if="pending_accept">
+                        <hr/>
+                        <h4 class="mb-3 text-primary">
+                            <i class="fa fa-handshake-o"/> Assignment Pending
+                        </h4>
+                        <p class="text-muted small mb-3">
+                            Hub assigned this package to you. Accept to take custody, or reject
+                            so the hub can reassign.
+                        </p>
+                        <div class="d-flex flex-column flex-sm-row gap-2">
+                            <form t-attf-action="/my/delivery/#{shipment.id}/accept_assignment" method="post" class="flex-fill">
+                                <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                                <input type="hidden" name="scanned_code" t-att-value="shipment.name"/>
+                                <button type="submit" class="btn btn-lg btn-success w-100 fw-bold"
+                                        onclick="return confirm('Accept assignment and take custody of this package?');">
+                                    <i class="fa fa-check"/> Accept
+                                </button>
+                            </form>
+                            <form t-attf-action="/my/delivery/#{shipment.id}/reject_assignment" method="post" class="flex-fill">
+                                <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                                <button type="submit" class="btn btn-lg btn-outline-danger w-100"
+                                        onclick="return confirm('Reject this assignment? Hub will keep custody.');">
+                                    <i class="fa fa-times"/> Reject
+                                </button>
+                            </form>
+                        </div>
+                    </t>
+
                     <t t-if="shipment.state in ['pickup_requested', 'order_added']">
                         <hr/>
                         <h4 class="mb-3 text-primary">Confirm Pickup</h4>
@@ -459,8 +496,23 @@
                         </form>
                     </t>
 
-                    <!-- Pickup / general drop (non transfer) -->
-                    <t t-if="shipment.custodian_type == 'de' and shipment.state in ['picked', 'return_picked', 'in_transit'] and not is_hub_transfer">
+                    <!-- Pickup after mark picked: hub manager Receive AWB (no DE Drop at Hub) -->
+                    <t t-if="shipment.custodian_type == 'de' and pickup_drop_blocked and not is_hub_transfer">
+                        <hr/>
+                        <div class="alert alert-info mb-0">
+                            <h5 class="alert-heading mb-2">
+                                <i class="fa fa-building"/> Bring to Hub
+                            </h5>
+                            <p class="mb-0 small">
+                                After pickup, take the package to the hub. The hub manager will scan
+                                the AWB to receive it into hub custody. Drop at Hub is not available
+                                for pickup legs.
+                            </p>
+                        </div>
+                    </t>
+
+                    <!-- Pickup / general drop (non transfer) — only when not seller/return pickup -->
+                    <t t-if="shipment.custodian_type == 'de' and shipment.state in ['picked', 'return_picked', 'in_transit'] and not is_hub_transfer and not pickup_drop_blocked">
                         <hr/>
                         <h4 class="mb-3 text-warning">Drop at Hub</h4>
                         <p class="text-muted small">Marks package as dropped. Hub manager receive scan is required to transfer custody to the hub.</p>

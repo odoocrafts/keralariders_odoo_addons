@@ -765,14 +765,21 @@ class LogisticsPortal(CustomerPortal):
         if not shipment:
             return request.redirect('/my/deliveries')
 
-        # Prefer claim page when DE is eligible to self-assign
-        if shipment.can_de_self_assign(delivery_executive) and not kw.get('view'):
+        # Prefer claim page when DE can self-assign an *unassigned* hub package.
+        # Soft-assigned pending accept stays on detail with Accept / Reject.
+        if (
+            shipment.can_de_self_assign(delivery_executive)
+            and not kw.get('view')
+            and not shipment.is_pending_de_acceptance(delivery_executive)
+        ):
             return request.redirect(f'/my/delivery/{shipment.id}/claim')
 
         shipment._sync_active_leg()
         active_leg = shipment.active_leg_id
         hubs = shipment.get_portal_drop_hub_ids()
         preferred_drop_hub = shipment.get_preferred_portal_drop_hub()
+        pending_accept = shipment.is_pending_de_acceptance(delivery_executive)
+        pickup_drop_blocked = shipment.is_pickup_drop_blocked()
 
         tracking_events = shipment.get_tracking_timeline(newest_first=False)
 
@@ -782,6 +789,8 @@ class LogisticsPortal(CustomerPortal):
             'hubs': hubs,
             'delivery_executive': delivery_executive,
             'can_self_assign': shipment.can_de_self_assign(delivery_executive),
+            'pending_accept': pending_accept,
+            'pickup_drop_blocked': pickup_drop_blocked,
             'active_leg': active_leg,
             'active_leg_label': shipment.get_active_leg_label(),
             'preferred_drop_hub': preferred_drop_hub,
@@ -835,6 +844,60 @@ class LogisticsPortal(CustomerPortal):
             'success': request.session.pop('success', None),
         }
         return request.render("keralariders_logistics.portal_my_delivery_claim", values)
+
+    @http.route(
+        ['/my/delivery/<int:shipment_id>/accept_assignment'],
+        type='http', auth="user", website=True, methods=['POST'],
+    )
+    def portal_my_delivery_accept_assignment(self, shipment_id=None, **post):
+        delivery_executive = request.env['logistics.delivery.executive'].sudo().search(
+            [('user_id', '=', request.env.user.id)], limit=1
+        )
+        if not delivery_executive:
+            return request.redirect('/my')
+        shipment = request.env['logistics.shipment'].sudo().browse(shipment_id)
+        if not shipment.exists():
+            request.session['error'] = "Shipment not found."
+            return request.redirect('/my/deliveries')
+        try:
+            shipment.action_de_accept_assignment(
+                de=delivery_executive,
+                scanned_code=post.get('scanned_code') or shipment.name,
+                note=post.get('note'),
+            )
+            request.session['success'] = (
+                f"Accepted {shipment.name}. Package is now in your custody."
+            )
+        except UserError as e:
+            request.session['error'] = str(e)
+        return request.redirect(f'/my/delivery/{shipment.id}')
+
+    @http.route(
+        ['/my/delivery/<int:shipment_id>/reject_assignment'],
+        type='http', auth="user", website=True, methods=['POST'],
+    )
+    def portal_my_delivery_reject_assignment(self, shipment_id=None, **post):
+        delivery_executive = request.env['logistics.delivery.executive'].sudo().search(
+            [('user_id', '=', request.env.user.id)], limit=1
+        )
+        if not delivery_executive:
+            return request.redirect('/my')
+        shipment = request.env['logistics.shipment'].sudo().browse(shipment_id)
+        if not shipment.exists():
+            request.session['error'] = "Shipment not found."
+            return request.redirect('/my/deliveries')
+        try:
+            shipment.action_de_reject_assignment(
+                de=delivery_executive,
+                note=post.get('note'),
+            )
+            request.session['success'] = (
+                f"Rejected assignment for {shipment.name}. Hub keeps custody."
+            )
+            return request.redirect('/my/deliveries')
+        except UserError as e:
+            request.session['error'] = str(e)
+            return request.redirect(f'/my/delivery/{shipment.id}')
 
     @http.route(['/my/delivery/<int:shipment_id>/mark_picked'], type='http', auth="user", website=True, methods=['POST'])
     def portal_my_delivery_mark_picked(self, shipment_id=None, **post):
@@ -1063,10 +1126,19 @@ class LogisticsPortal(CustomerPortal):
             ('custodian_type', '=', 'hub'),
             ('current_hub_id', 'in', hubs.ids),
         ])
+        # DE custody at managed hubs, plus picked packages headed to source hub
+        # (no DE "drop" required — hub manager Receive AWB takes custody).
         awaiting_receive = Shipment.search_count([
+            '|',
+            '&',
             ('current_hub_id', 'in', hubs.ids),
             ('custodian_type', '=', 'de'),
             ('state', 'in', ('picked', 'return_picked', 'in_transit')),
+            '&',
+            ('source_hub_id', 'in', hubs.ids),
+            ('custodian_type', '=', 'de'),
+            ('current_hub_id', '=', False),
+            ('state', 'in', ('picked', 'return_picked')),
         ])
         pending_pickup_domain = self._hub_pending_pickup_domain(hubs)
         pending_pickups = Shipment.search_count(pending_pickup_domain)
@@ -1210,6 +1282,7 @@ class LogisticsPortal(CustomerPortal):
 
     @http.route(['/my/hub/dispatch/<int:shipment_id>'], type='http', auth="user", website=True, methods=['POST'])
     def portal_my_hub_dispatch(self, shipment_id=None, **post):
+        """Hub inventory: soft-assign DE (custody stays at hub until DE accepts)."""
         hubs = self._get_managed_hubs()
         if not hubs:
             return request.redirect('/my')
@@ -1222,14 +1295,12 @@ class LogisticsPortal(CustomerPortal):
         if not de.exists():
             request.session['error'] = "Please select a delivery executive."
             return request.redirect('/my/hub/inventory')
-        for_delivery = post.get('for_delivery', '1') == '1'
         try:
-            shipment.action_hub_dispatch(
-                delivery_executive=de,
-                hub=shipment.current_hub_id,
-                for_delivery=for_delivery,
+            shipment.action_assign_delivery_executive(delivery_executive=de)
+            request.session['success'] = (
+                f"Assigned {shipment.name} to {de.name} (pending accept). "
+                f"Package stays in hub inventory until the DE accepts."
             )
-            request.session['success'] = f"Dispatched {shipment.name} to {de.name}."
         except UserError as e:
             request.session['error'] = str(e)
         return request.redirect('/my/hub/inventory')

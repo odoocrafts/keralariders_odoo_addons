@@ -1,6 +1,6 @@
 {
     'name': 'Kerala Riders Logistics',
-    'version': '1.4.3',
+    'version': '1.4.4',
     'category': 'Operations/Logistics',
     'summary': 'Last-mile delivery management platform for Kerala Riders',
     'description': """
