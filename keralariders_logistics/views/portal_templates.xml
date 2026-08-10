@@ -229,6 +229,13 @@
                 <t t-set="title">COD Transactions &amp; Settlements</t>
             </t>
             
+            <t t-if="error">
+                <div class="alert alert-danger" role="alert"><t t-esc="error"/></div>
+            </t>
+            <t t-if="success">
+                <div class="alert alert-success" role="alert"><t t-esc="success"/></div>
+            </t>
+
             <div class="row mt-4 mb-5">
                 <div class="col-md-4">
                     <div class="card bg-success text-white shadow-sm mb-4">
@@ -236,9 +243,80 @@
                             <h5>Pending COD Balance</h5>
                             <h2><span t-esc="cod_balance" t-options='{"widget": "monetary", "display_currency": currency_id}'/></h2>
                             <p class="mb-0 mt-2 small opacity-75">This amount is yet to be settled to your bank account.</p>
+                            <t t-if="has_bank_details and withdrawable_balance &gt; 0">
+                                <button type="button" class="btn btn-light mt-3" data-bs-toggle="modal" data-bs-target="#codWithdrawModal">
+                                    Request COD Withdrawal
+                                </button>
+                            </t>
+                            <t t-elif="not has_bank_details">
+                                <p class="mb-0 mt-3 small">Update your bank details to request a withdrawal.</p>
+                            </t>
+                            <t t-elif="draft_withdrawals">
+                                <p class="mb-0 mt-3 small">A withdrawal request is pending admin approval.</p>
+                            </t>
+                        </div>
+                    </div>
+
+                    <!-- Withdrawal request modal -->
+                    <div class="modal fade" id="codWithdrawModal" tabindex="-1" aria-labelledby="codWithdrawModalLabel" aria-hidden="true">
+                        <div class="modal-dialog">
+                            <div class="modal-content text-dark">
+                                <form action="/my/cod_settlements/withdraw" method="post">
+                                    <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                                    <div class="modal-header">
+                                        <h5 class="modal-title" id="codWithdrawModalLabel">Request COD Withdrawal</h5>
+                                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"/>
+                                    </div>
+                                    <div class="modal-body">
+                                        <p class="text-muted small">
+                                            Available to withdraw:
+                                            <strong t-esc="withdrawable_balance" t-options='{"widget": "monetary", "display_currency": currency_id}'/>
+                                        </p>
+                                        <div class="form-floating mb-3">
+                                            <input type="number" step="0.01" min="0.01"
+                                                   t-att-max="withdrawable_balance"
+                                                   t-att-value="withdrawable_balance"
+                                                   name="amount" id="withdraw_amount"
+                                                   class="form-control" required="required"/>
+                                            <label for="withdraw_amount">Amount</label>
+                                        </div>
+                                        <p class="small text-muted mb-0">
+                                            Funds will be paid to
+                                            <t t-esc="seller.bank_account_name"/> /
+                                            <t t-esc="seller.bank_account_number"/> /
+                                            <t t-esc="seller.bank_ifsc"/>.
+                                            The request stays in draft until an admin approves it.
+                                        </p>
+                                    </div>
+                                    <div class="modal-footer">
+                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                        <button type="submit" class="btn btn-success">Submit Request</button>
+                                    </div>
+                                </form>
+                            </div>
                         </div>
                     </div>
                     
+                    <div class="card shadow-sm mb-4" t-if="draft_withdrawals">
+                        <div class="card-header bg-white">
+                            <h5 class="mb-0">Pending Withdrawal Requests</h5>
+                        </div>
+                        <ul class="list-group list-group-flush">
+                            <t t-foreach="draft_withdrawals" t-as="draft">
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <strong><span t-field="draft.name"/></strong><br/>
+                                        <small class="text-muted"><span t-field="draft.transfer_date" t-options='{"widget": "date"}'/></small>
+                                    </div>
+                                    <div class="text-end">
+                                        <span class="fw-bold" t-field="draft.amount" t-options='{"widget": "monetary", "display_currency": draft.currency_id}'/><br/>
+                                        <span class="badge bg-warning text-dark">Draft</span>
+                                    </div>
+                                </li>
+                            </t>
+                        </ul>
+                    </div>
+
                     <div class="card shadow-sm mb-4">
                         <div class="card-header bg-white">
                             <h5 class="mb-0">Recent Settlements</h5>
@@ -248,7 +326,11 @@
                                 <li class="list-group-item d-flex justify-content-between align-items-center">
                                     <div>
                                         <strong><span t-field="clearance.name"/></strong><br/>
-                                        <small class="text-muted"><span t-field="clearance.transfer_date" t-options='{"widget": "date"}'/></small>
+                                        <small class="text-muted">
+                                            <span t-field="clearance.transfer_date" t-options='{"widget": "date"}'/>
+                                            ·
+                                            <t t-esc="dict(clearance.fields_get(allfields=['transfer_type'])['transfer_type']['selection']).get(clearance.transfer_type, clearance.transfer_type)"/>
+                                        </small>
                                     </div>
                                     <div class="text-end">
                                         <span class="text-success fw-bold" t-field="clearance.amount" t-options='{"widget": "monetary", "display_currency": clearance.currency_id}'/>
@@ -280,14 +362,18 @@
                                     <td>
                                         <span t-esc="tx.reference or tx.name or '-'"/>
                                         <div class="small text-muted" t-if="tx.shipment_id">Shipment: <span t-field="tx.shipment_id.name"/></div>
+                                        <div class="small" t-if="tx.state == 'draft'">
+                                            <span class="badge bg-warning text-dark">Awaiting approval</span>
+                                        </div>
                                     </td>
                                     <td>
-                                        <span t-attf-class="badge #{'bg-success' if tx.transfer_type == 'cod_payment' else 'bg-primary'}">
+                                        <t t-set="type_badge" t-value="'bg-success' if tx.transfer_type == 'cod_payment' else 'bg-warning text-dark' if tx.state == 'draft' else 'bg-primary'"/>
+                                        <span t-attf-class="badge #{type_badge}">
                                             <span t-esc="dict(tx.fields_get(allfields=['transfer_type'])['transfer_type']['selection'])[tx.transfer_type]"/>
                                         </span>
                                     </td>
                                     <td class="text-end">
-                                        <span t-attf-class="{'text-success' if tx.transfer_type == 'cod_payment' else 'text-primary'}" t-field="tx.amount" t-options='{"widget": "monetary", "display_currency": tx.currency_id}'/>
+                                        <span t-attf-class="#{'text-success' if tx.transfer_type == 'cod_payment' else 'text-primary'}" t-field="tx.amount" t-options='{"widget": "monetary", "display_currency": tx.currency_id}'/>
                                     </td>
                                 </tr>
                             </t>

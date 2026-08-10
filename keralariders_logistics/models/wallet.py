@@ -114,7 +114,9 @@ class WalletRechargeRequest(models.Model):
             if vals.get('name', _('New')) == _('New'):
                 vals['name'] = self.env['ir.sequence'].sudo().next_by_code('logistics.wallet.recharge.request') or _('New')
         records = super(WalletRechargeRequest, self).create(vals_list)
-        records.filtered(lambda r: r.state == 'pending_approval')._schedule_admin_approval_activities()
+        pending = records.filtered(lambda r: r.state == 'pending_approval')
+        pending._schedule_admin_approval_activities()
+        pending._notify_admins_recharge_request()
         return records
     
     request_date = fields.Datetime(string="Request Date", default=fields.Datetime.now)
@@ -191,6 +193,42 @@ class WalletRechargeRequest(models.Model):
                 )
         return activities
 
+    def _notify_admins_recharge_request(self):
+        """Email / inbox notify logistics admins about a new wallet recharge request."""
+        try:
+            admin_users = self._get_logistics_admin_users()
+        except AccessError:
+            _logger.warning(
+                "Could not resolve logistics admin users for recharge email "
+                "(insufficient rights for %s); skipping mail.",
+                self.env.user.login,
+                exc_info=True,
+            )
+            return
+        partners = admin_users.mapped('partner_id').filtered(lambda p: p.email)
+        if not partners:
+            return
+        for request in self:
+            amount = request.currency_id.format(request.requested_amount) if request.currency_id else request.requested_amount
+            body = _(
+                "<p>A seller submitted a wallet recharge request.</p>"
+                "<ul>"
+                "<li><strong>Seller:</strong> %(seller)s</li>"
+                "<li><strong>Amount:</strong> %(amount)s</li>"
+                "<li><strong>Reference:</strong> %(reference)s</li>"
+                "</ul>"
+                "<p>Please verify the payment and approve or cancel the request.</p>",
+                seller=request.seller_id.display_name or '',
+                amount=amount,
+                reference=request.name or '',
+            )
+            request.sudo().message_notify(
+                partner_ids=partners.ids,
+                subject=_('Wallet recharge pending approval — %s') % (request.name or ''),
+                body=body,
+                email_layout_xmlid='mail.mail_notification_light',
+            )
+
     def _complete_admin_approval_activities(self, feedback):
         """Mark open automated To-Do activities on these requests as done."""
         self.sudo().activity_feedback(
@@ -222,6 +260,7 @@ class WalletRechargeRequest(models.Model):
     def action_reset(self):
         self.state = 'pending_approval'
         self._schedule_admin_approval_activities()
+        self._notify_admins_recharge_request()
 
 
     def action_view_wallet_transaction(self):

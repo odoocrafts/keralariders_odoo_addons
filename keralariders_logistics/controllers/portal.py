@@ -28,11 +28,8 @@ class LogisticsPortal(CustomerPortal):
             else:
                 values['wallet_balance'] = "0.00"
                 
-            cod_transfers = request.env['logistics.account.transfer'].sudo().search([
-                ('related_seller_id', '=', seller.id),
-                ('transfer_type', 'in', ['cod_payment', 'cod_clearance'])
-            ])
-            cod_balance_val = sum(t.amount if t.transfer_type == 'cod_payment' else -t.amount for t in cod_transfers)
+            Transfer = request.env['logistics.account.transfer'].sudo()
+            cod_balance_val = Transfer.get_seller_cod_pending_balance(seller)
             symbol = wallet.currency_id.symbol if wallet else '₹'
             values['cod_balance'] = f"{symbol} {cod_balance_val:,.2f}"
                 
@@ -1303,7 +1300,11 @@ class LogisticsPortal(CustomerPortal):
             return request.redirect('/my')
 
         Transfer = request.env['logistics.account.transfer'].sudo()
-        domain = [('related_seller_id', '=', seller.id), ('transfer_type', 'in', ['cod_payment', 'cod_clearance'])]
+        domain = [
+            ('related_seller_id', '=', seller.id),
+            ('transfer_type', 'in', ['cod_payment', 'cod_clearance', 'cod_withdrawal', 'other']),
+            ('state', 'in', ['draft', 'posted']),
+        ]
         
         # count for pager
         transfer_count = Transfer.search_count(domain)
@@ -1319,15 +1320,24 @@ class LogisticsPortal(CustomerPortal):
         # content according to pager
         transfers = Transfer.search(domain, order='transfer_date desc, id desc', limit=20, offset=pager['offset'])
         
-        # Pending balance
-        all_transfers = Transfer.search(domain)
-        cod_balance = sum(t.amount if t.transfer_type == 'cod_payment' else -t.amount for t in all_transfers)
+        cod_balance = Transfer.get_seller_cod_pending_balance(seller)
+        withdrawable = Transfer.get_seller_cod_withdrawable_balance(seller)
+        draft_withdrawals = Transfer.search([
+            ('related_seller_id', '=', seller.id),
+            ('transfer_type', '=', 'cod_withdrawal'),
+            ('state', '=', 'draft'),
+        ], order='transfer_date desc, id desc')
         
-        # Recent Clearances
+        # Recent Settlements: posted clearances + withdrawals (+ legacy other payouts)
         recent_clearances = Transfer.search([
             ('related_seller_id', '=', seller.id),
-            ('transfer_type', '=', 'cod_clearance')
+            ('transfer_type', 'in', ['cod_clearance', 'cod_withdrawal', 'other']),
+            ('state', '=', 'posted'),
         ], order='transfer_date desc, id desc', limit=5)
+
+        has_bank_details = bool(
+            seller.bank_account_name and seller.bank_account_number and seller.bank_ifsc
+        )
         
         values.update({
             'transfers': transfers,
@@ -1335,9 +1345,36 @@ class LogisticsPortal(CustomerPortal):
             'pager': pager,
             'default_url': '/my/cod_settlements',
             'cod_balance': cod_balance,
+            'withdrawable_balance': withdrawable,
+            'draft_withdrawals': draft_withdrawals,
             'recent_clearances': recent_clearances,
             'seller': seller,
+            'has_bank_details': has_bank_details,
             'currency_id': seller.currency_id or request.env.company.currency_id,
+            'success': request.session.pop('success', None),
+            'error': request.session.pop('error', None),
         })
         
         return request.render("keralariders_logistics.portal_my_cod_settlements", values)
+
+    @http.route(['/my/cod_settlements/withdraw'], type='http', auth="user", website=True, methods=['POST'])
+    def portal_cod_withdrawal_request(self, **post):
+        partner = request.env.user.partner_id
+        seller = request.env['logistics.seller'].sudo().search([('partner_id', '=', partner.id)], limit=1)
+        if not seller:
+            return request.redirect('/my')
+        try:
+            amount = float(post.get('amount') or 0)
+            transfer = request.env['logistics.account.transfer'].sudo().action_create_cod_withdrawal(
+                seller=seller,
+                amount=amount,
+            )
+            request.session['success'] = _(
+                "COD withdrawal request %(ref)s for %(amount)s submitted. "
+                "It will remain in draft until a logistics admin approves it.",
+                ref=transfer.name,
+                amount=transfer.currency_id.format(transfer.amount) if transfer.currency_id else transfer.amount,
+            )
+        except (UserError, AccessError, ValueError) as e:
+            request.session['error'] = str(e)
+        return request.redirect('/my/cod_settlements')

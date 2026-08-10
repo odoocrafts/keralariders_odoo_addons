@@ -1,5 +1,12 @@
+import logging
+
 from odoo import models, fields, api, _
-from odoo.exceptions import UserError
+from odoo.exceptions import AccessError, UserError
+
+_logger = logging.getLogger(__name__)
+
+# Transfers that settle COD to the seller (reduce portal pending when posted).
+_COD_SETTLEMENT_TYPES = ('cod_clearance', 'cod_withdrawal', 'other')
 
 
 class BankCashAccount(models.Model):
@@ -107,7 +114,23 @@ class BankCashAccountTransfer(models.Model):
     _description = 'Bank/Cash Account Transfer'
     _inherit = ['mail.thread', 'mail.activity.mixin']
 
+    _ACTIVITY_TYPE_TODO = 'mail.mail_activity_data_todo'
+
     name = fields.Char(string="Reference", copy=False, default=lambda self: _('New'), readonly="1")
+    state = fields.Selection(
+        selection=[
+            ('draft', 'Draft'),
+            ('posted', 'Posted'),
+            ('cancelled', 'Cancelled'),
+        ],
+        string='Status',
+        default='posted',
+        required=True,
+        tracking=True,
+        copy=False,
+        index=True,
+        help='Draft transfers (e.g. COD withdrawals) do not post ledger transactions until approved.',
+    )
 
     @api.model_create_multi
     def create(self, vals_list):
@@ -128,6 +151,9 @@ class BankCashAccountTransfer(models.Model):
                     # Propagate banking link onto underlying COD payments for clearance
                     for payment in deposit.hub_deposit_payment_transfer_ids:
                         payment.hub_banking_transfer_id = rec.id
+            if rec.transfer_type == 'cod_withdrawal' and rec.state == 'draft':
+                rec._schedule_admin_approval_activities()
+                rec._notify_admins_cod_withdrawal_request()
         return recs
 
     transfer_type = fields.Selection(
@@ -136,6 +162,7 @@ class BankCashAccountTransfer(models.Model):
             ('hub_deposit', 'Hub Deposit (DE → Hub)'),
             ('hub_banking', 'Hub Banking (Hub → Company)'),
             ('cod_clearance', 'COD Clearance (Company → Seller)'),
+            ('cod_withdrawal', 'COD Withdrawal (Company → Seller)'),
             ('other', 'Other'),
         ],
         default='other',
@@ -174,6 +201,7 @@ class BankCashAccountTransfer(models.Model):
     def _onchange_transfer_type(self):
         defaults = {
             'cod_clearance': 'COD Clearance',
+            'cod_withdrawal': 'COD Withdrawal',
             'hub_deposit': 'Hub Deposit (DE → Hub)',
             'hub_banking': 'Hub Banking (Hub → Company)',
             'cod_payment': 'COD Payment',
@@ -191,20 +219,28 @@ class BankCashAccountTransfer(models.Model):
         compute="_compute_transaction_ids", store=True,
     )
 
-    @api.depends('from_account_id', 'to_account_id', 'amount')
+    @api.depends('from_account_id', 'to_account_id', 'amount', 'state')
     def _compute_transaction_ids(self):
+        """Post debit/credit lines only for posted transfers (draft = no ledger impact)."""
         for rec in self:
-            if rec.from_account_id and rec.to_account_id:
-                rec.transaction_ids = [(2, tid) for tid in rec.transaction_ids.ids]
-                debit_values = {
-                    'account_id': rec.from_account_id.id,
-                    'amount': -rec.amount,
-                }
-                credit_values = {
-                    'account_id': rec.to_account_id.id,
-                    'amount': rec.amount,
-                }
-                rec.transaction_ids = [(0, 0, debit_values), (0, 0, credit_values)]
+            commands = [(2, tid) for tid in rec.transaction_ids.ids]
+            if (
+                rec.state == 'posted'
+                and rec.from_account_id
+                and rec.to_account_id
+                and rec.amount
+            ):
+                commands.extend([
+                    (0, 0, {
+                        'account_id': rec.from_account_id.id,
+                        'amount': -rec.amount,
+                    }),
+                    (0, 0, {
+                        'account_id': rec.to_account_id.id,
+                        'amount': rec.amount,
+                    }),
+                ])
+            rec.transaction_ids = commands
 
     related_seller_id = fields.Many2one('logistics.seller', string="Related Seller")
 
@@ -438,8 +474,219 @@ class BankCashAccountTransfer(models.Model):
             'reference': _('COD Clearance to %s') % seller.name,
             'description': note or _('Company → Seller COD clearance.'),
             'related_seller_id': seller.id,
+            'state': 'posted',
             'cod_clearance_payment_transfer_ids': [(6, 0, payment_transfers.ids)],
         })
+
+    @api.model
+    def _seller_cod_balance_parts(self, seller):
+        """Return (gross_payments, posted_settlements, draft_withdrawals) for a seller."""
+        Transfer = self.sudo()
+        payments = Transfer.search([
+            ('related_seller_id', '=', seller.id),
+            ('transfer_type', '=', 'cod_payment'),
+            ('state', '=', 'posted'),
+        ])
+        settlements = Transfer.search([
+            ('related_seller_id', '=', seller.id),
+            ('transfer_type', 'in', list(_COD_SETTLEMENT_TYPES)),
+            ('state', '=', 'posted'),
+        ])
+        draft_withdrawals = Transfer.search([
+            ('related_seller_id', '=', seller.id),
+            ('transfer_type', '=', 'cod_withdrawal'),
+            ('state', '=', 'draft'),
+        ])
+        return (
+            sum(payments.mapped('amount')),
+            sum(settlements.mapped('amount')),
+            sum(draft_withdrawals.mapped('amount')),
+        )
+
+    @api.model
+    def get_seller_cod_pending_balance(self, seller):
+        """Pending COD still owed to the seller's bank (payments − posted settlements)."""
+        payments, settlements, _draft = self._seller_cod_balance_parts(seller)
+        return max(0.0, payments - settlements)
+
+    @api.model
+    def get_seller_cod_withdrawable_balance(self, seller):
+        """Amount available for a new withdrawal request (pending − draft withdrawals)."""
+        payments, settlements, draft = self._seller_cod_balance_parts(seller)
+        return max(0.0, payments - settlements - draft)
+
+    @api.model
+    def action_create_cod_withdrawal(self, seller, amount, note=None):
+        """Seller portal: create a draft COD withdrawal (no ledger lines until approved)."""
+        if not seller:
+            raise UserError(_("Seller is required for COD withdrawal."))
+        if not (seller.bank_account_name and seller.bank_account_number and seller.bank_ifsc):
+            raise UserError(_(
+                "Please update your bank details (account name, number, and IFSC) "
+                "before requesting a COD withdrawal."
+            ))
+        company_account = self.env['logistics.account'].get_company_cod_account()
+        if not company_account:
+            raise UserError(_("No Company COD account configured."))
+        seller_account = seller.seller_account_id
+        if not seller_account:
+            seller_account = self.env['logistics.account'].sudo().create({
+                'name': f'{seller.name} Seller',
+                'account_type': 'seller',
+                'seller_id': seller.id,
+                'reference': 'Auto-created seller COD settlement account',
+            })
+            seller.sudo().seller_account_id = seller_account.id
+        available = self.get_seller_cod_withdrawable_balance(seller)
+        if amount is None:
+            amount = available
+        try:
+            amount = float(amount)
+        except (TypeError, ValueError):
+            raise UserError(_("Invalid withdrawal amount."))
+        if amount <= 0:
+            raise UserError(_("Withdrawal amount must be positive."))
+        if amount > available + 1e-6:
+            raise UserError(_(
+                "Withdrawal amount (%(amount)s) exceeds available COD balance (%(available)s).",
+                amount=amount,
+                available=available,
+            ))
+        bank_ref = _(
+            "%(name)s / %(number)s / %(ifsc)s / %(bank)s",
+            name=seller.bank_account_name or '',
+            number=seller.bank_account_number or '',
+            ifsc=seller.bank_ifsc or '',
+            bank=seller.bank_name or '',
+        )
+        return self.sudo().create({
+            'transfer_type': 'cod_withdrawal',
+            'state': 'draft',
+            'from_account_id': company_account.id,
+            'to_account_id': seller_account.id,
+            'amount': amount,
+            'transfer_date': fields.Date.context_today(self),
+            'reference': _('COD Withdrawal — %s') % seller.name,
+            'description': note or _(
+                "Seller COD withdrawal request to bank: %s"
+            ) % bank_ref,
+            'related_seller_id': seller.id,
+        })
+
+    def _get_logistics_admin_users(self):
+        """Internal users in logistics admin group (excludes portal/public/system)."""
+        admin_group = self.env.ref('keralariders_logistics.group_logistics_admin', raise_if_not_found=False)
+        if not admin_group:
+            return self.env['res.users']
+        root_user = self.env.ref('base.user_root', raise_if_not_found=False)
+        return admin_group.sudo().user_ids.filtered(
+            lambda u: u.active and not u.share and (not root_user or u != root_user)
+        )
+
+    def _schedule_admin_approval_activities(self):
+        """Create one To-Do activity per logistics admin for draft COD withdrawals."""
+        try:
+            admin_users = self._get_logistics_admin_users()
+        except AccessError:
+            _logger.warning(
+                "Could not resolve logistics admin users for COD withdrawal activities "
+                "(insufficient rights for %s); skipping activity schedule.",
+                self.env.user.login,
+                exc_info=True,
+            )
+            return self.env['mail.activity']
+        if not admin_users:
+            return self.env['mail.activity']
+        activities = self.env['mail.activity']
+        for transfer in self:
+            amount = transfer.currency_id.format(transfer.amount) if transfer.currency_id else transfer.amount
+            note = _(
+                "Seller: %(seller)s<br/>"
+                "Amount: %(amount)s<br/>"
+                "Reference: %(reference)s<br/>"
+                "Bank: %(bank)s",
+                seller=transfer.related_seller_id.display_name or '',
+                amount=amount,
+                reference=transfer.name or '',
+                bank=' / '.join(filter(None, [
+                    transfer.related_seller_id.bank_account_name,
+                    transfer.related_seller_id.bank_account_number,
+                    transfer.related_seller_id.bank_ifsc,
+                    transfer.related_seller_id.bank_name,
+                ])) or _('Not set'),
+            )
+            for user in admin_users:
+                activities |= transfer.sudo().activity_schedule(
+                    self._ACTIVITY_TYPE_TODO,
+                    summary=_('COD withdrawal pending approval'),
+                    note=note,
+                    user_id=user.id,
+                )
+        return activities
+
+    def _complete_admin_approval_activities(self, feedback):
+        self.sudo().activity_feedback(
+            [self._ACTIVITY_TYPE_TODO],
+            feedback=feedback,
+        )
+
+    def _notify_admins_cod_withdrawal_request(self):
+        """Email / inbox notify logistics admins about a new COD withdrawal request."""
+        try:
+            admin_users = self._get_logistics_admin_users()
+        except AccessError:
+            _logger.warning(
+                "Could not resolve logistics admin users for COD withdrawal email "
+                "(insufficient rights for %s); skipping mail.",
+                self.env.user.login,
+                exc_info=True,
+            )
+            return
+        partners = admin_users.mapped('partner_id').filtered(lambda p: p.email)
+        if not partners:
+            return
+        for transfer in self:
+            amount = transfer.currency_id.format(transfer.amount) if transfer.currency_id else transfer.amount
+            body = _(
+                "<p>A seller requested a COD withdrawal.</p>"
+                "<ul>"
+                "<li><strong>Seller:</strong> %(seller)s</li>"
+                "<li><strong>Amount:</strong> %(amount)s</li>"
+                "<li><strong>Reference:</strong> %(reference)s</li>"
+                "</ul>"
+                "<p>Please review and approve or cancel the draft transfer.</p>",
+                seller=transfer.related_seller_id.display_name or '',
+                amount=amount,
+                reference=transfer.name or '',
+            )
+            transfer.sudo().message_notify(
+                partner_ids=partners.ids,
+                subject=_('COD withdrawal pending approval — %s') % (transfer.name or ''),
+                body=body,
+                email_layout_xmlid='mail.mail_notification_light',
+            )
+
+    def action_approve(self):
+        """Approve draft transfer: post ledger transactions and complete activities."""
+        for rec in self:
+            if rec.state != 'draft':
+                raise UserError(_("Only draft transfers can be approved."))
+            if rec.amount <= 0:
+                raise UserError(_("Transfer amount must be positive."))
+            rec.write({'state': 'posted'})
+            if rec.transfer_type == 'cod_withdrawal':
+                rec._complete_admin_approval_activities(_('Approved'))
+        return True
+
+    def action_cancel_draft(self):
+        """Cancel a draft transfer without posting ledger lines."""
+        for rec in self:
+            if rec.state != 'draft':
+                raise UserError(_("Only draft transfers can be cancelled."))
+            rec.write({'state': 'cancelled'})
+            if rec.transfer_type == 'cod_withdrawal':
+                rec._complete_admin_approval_activities(_('Cancelled'))
+        return True
 
 
 class BankCashAccountTransaction(models.Model):

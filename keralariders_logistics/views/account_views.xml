@@ -209,6 +209,10 @@
                 <field name="transfer_date" width="100" string="Date"/>
                 <field name="name" width="100" options='{"bg_color": "#e1fade: cod_clearance_transfer_id != False; #fffad6: not cod_clearance_transfer_id;  #d2c5ed: transfer_type!=&apos;cod_payment&apos;;"}'/>              
                 <field name="transfer_type" widget="badge" width="100"/>
+                <field name="state" widget="badge" width="80"
+                         decoration-info="state == 'draft'"
+                         decoration-success="state == 'posted'"
+                         decoration-muted="state == 'cancelled'"/>
                 <field name="related_seller_id" width="100"/>
                 <field name="shipment_id" width="100"/>
                 <field name="from_account_id" width="100"/>
@@ -228,6 +232,13 @@
         <field name="model">logistics.account.transfer</field>
         <field name="arch" type="xml">
             <form string="Account Transfer">
+                <header>
+                    <button name="action_approve" type="object" string="Approve"
+                            class="btn-primary" invisible="state != 'draft'"/>
+                    <button name="action_cancel_draft" type="object" string="Cancel"
+                            invisible="state != 'draft'" confirm="Cancel this draft transfer?"/>
+                    <field name="state" widget="statusbar" statusbar_visible="draft,posted"/>
+                </header>
                 <sheet>
                     <div class="oe_title" >
                         <h1 class="text-primary">
@@ -238,15 +249,15 @@
                         <group>
 
                             <field name="id" invisible="1"/>
-                            <field name="transfer_date"/>
+                            <field name="transfer_date" readonly="state != 'draft'"/>
                             <field name="transfer_type" readonly="1" force_save="1"/>
-                            <field name="from_account_id"/>
-                            <field name="to_account_id"/>
-                            <field name="amount" string="Amount" sum="Amount"/>
-                            <field name="reference"/>
-                            <field name="related_seller_id"/>
-                            <field name="hub_id" invisible="transfer_type not in ('hub_deposit', 'hub_banking')"/>
-                            <field name="shipment_id" invisible="transfer_type in ('cod_clearance', 'hub_deposit', 'hub_banking')"/>
+                            <field name="from_account_id" readonly="state != 'draft'"/>
+                            <field name="to_account_id" readonly="state != 'draft'"/>
+                            <field name="amount" string="Amount" sum="Amount" readonly="state != 'draft'"/>
+                            <field name="reference" readonly="state != 'draft'"/>
+                            <field name="related_seller_id" readonly="state != 'draft'"/>
+                            <field name="hub_id" invisible="transfer_type not in ('hub_deposit', 'hub_banking')" readonly="state != 'draft'"/>
+                            <field name="shipment_id" invisible="transfer_type in ('cod_clearance', 'hub_deposit', 'hub_banking', 'cod_withdrawal')" readonly="state != 'draft'"/>
                             <field name="hub_deposit_transfer_id" invisible="not hub_deposit_transfer_id" readonly="1" force_save="1"/>
                             <field name="hub_banking_transfer_id" invisible="not hub_banking_transfer_id" readonly="1" force_save="1"/>
                             <field name="cod_clearance_transfer_id" invisible="not cod_clearance_transfer_id" readonly="1" force_save="1"/>
@@ -284,6 +295,7 @@
             <kanban default_group_by="transfer_type" records_draggable="0" quick_create="0">
                 <field name="name"/>
                 <field name="transfer_type"/>
+                <field name="state"/>
                 <field name="transfer_date"/>
                 <field name="amount"/>
                 <field name="currency_id"/>
@@ -303,7 +315,10 @@
                                     <field name="name"/>
                                 </strong>
 
-                                <field name="transfer_type" widget="badge"/>
+                                <div>
+                                    <field name="transfer_type" widget="badge"/>
+                                    <field name="state" widget="badge"/>
+                                </div>
                             </div>
 
                             <div class="text-muted">
@@ -381,6 +396,18 @@
 
                 <separator/>
 
+                <filter name="draft"
+                        string="Draft"
+                        domain="[('state', '=', 'draft')]"/>
+                <filter name="posted"
+                        string="Posted"
+                        domain="[('state', '=', 'posted')]"/>
+                <filter name="cod_withdrawal"
+                        string="COD Withdrawals"
+                        domain="[('transfer_type', '=', 'cod_withdrawal')]"/>
+
+                <separator/>
+
                 <!-- Related Records -->
 
                 <separator/>
@@ -402,6 +429,10 @@
                     <filter string="Transfer Type"
                             name="group_transfer_type"
                             context="{'group_by': 'transfer_type'}"/>
+
+                    <filter string="Status"
+                            name="group_state"
+                            context="{'group_by': 'state'}"/>
 
                     <filter string="From Account"
                             name="group_from_account"
@@ -652,11 +683,11 @@
     </record>
 
     <record id="action_logistics_account_transfer_other" model="ir.actions.act_window">
-        <field name="name">Other Transfers</field>
+        <field name="name">Other / COD Withdrawals</field>
         <field name="res_model">logistics.account.transfer</field>
         <field name="view_mode">list,form</field>
         <field name="view_id" ref="view_logistics_account_transfer_tree"/>
-        <field name="domain">[('transfer_type', '=', 'other')]</field>
+        <field name="domain">[('transfer_type', 'in', ['other', 'cod_withdrawal'])]</field>
         <field name="context">{'default_transfer_type': 'other'}</field>
         <field name="search_view_id" ref="view_logistics_account_transfer_search"/>
     </record>
@@ -714,7 +745,7 @@
                 active="False"
     />
     <menuitem id="menu_logistics_account_transfer_other"
-                name="Other Transfers"
+                name="Other / COD Withdrawals"
                 parent="menu_logistics_account_transfers"
                 sequence="30"
                 action="action_logistics_account_transfer_other"
