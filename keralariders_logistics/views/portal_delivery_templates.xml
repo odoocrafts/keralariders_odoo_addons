@@ -421,19 +421,9 @@
                             <small class="text-muted ms-2" t-if="active_leg_label"><t t-esc="active_leg_label"/></small>
                         </h4>
                         <p class="text-muted small mb-3">
-                            After claim/dispatch you hold the package. Depart the source hub if still there,
-                            then drop at the destination hub for hub-manager receive.
+                            After claim/dispatch you hold the package. Drop at the destination hub
+                            for hub-manager receive.
                         </p>
-
-                        <t t-if="can_depart_hub">
-                            <form t-attf-action="/my/delivery/#{shipment.id}/depart_hub" method="post" class="mb-3">
-                                <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
-                                <button type="submit" class="btn btn-outline-primary w-100"
-                                        onclick="return confirm('Confirm departure from source hub?');">
-                                    <i class="fa fa-sign-out"/> Depart from Hub
-                                </button>
-                            </form>
-                        </t>
 
                         <h5 class="mb-2 text-warning">Arrive / Drop at Destination Hub</h5>
                         <p class="text-muted small">Signals drop intent. Destination hub manager must Receive to take custody.</p>
