@@ -223,7 +223,7 @@
                     <tr class="active">
                         <th>AWB / Ref</th>
                         <th>Date</th>
-                        <th>Shipping To</th>
+                        <th>Pickup / Deliver To</th>
                         <th>Task / Leg</th>
                         <th>Weight</th>
                         <th>Payment Type</th>
@@ -236,7 +236,21 @@
                         <tr>
                             <td><a t-attf-href="/my/delivery/#{shipment.id}"><span t-field="shipment.name"/></a></td>
                             <td><span t-field="shipment.order_date"/></td>
-                            <td><span t-field="shipment.shipping_to_name"/><br/><small class="text-muted"><span t-field="shipment.shipping_to_mobile"/></small></td>
+                            <td>
+                                <t t-if="shipment.is_pickup_address_context(delivery_executive)">
+                                    <span t-esc="shipment.shipping_from_name or (shipment.seller_id.name if shipment.seller_id else '')"/><br/>
+                                    <small class="text-muted">
+                                        PIN <t t-esc="shipment.shipping_from_zip or '—'"/>
+                                        <t t-if="shipment.seller_id and shipment.seller_id.phone">
+                                            · <t t-esc="shipment.seller_id.phone"/>
+                                        </t>
+                                    </small>
+                                </t>
+                                <t t-else="">
+                                    <span t-field="shipment.shipping_to_name"/><br/>
+                                    <small class="text-muted"><span t-field="shipment.shipping_to_mobile"/></small>
+                                </t>
+                            </td>
                             <td>
                                 <t t-set="leg_label" t-value="shipment.get_active_leg_label()"/>
                                 <span t-if="leg_label" class="badge text-bg-info text-wrap"><t t-esc="leg_label"/></span>
@@ -294,6 +308,21 @@
                                 <h5>Deliver To Seller</h5>
                                 <p>
                                     <strong>Name:</strong> <span t-field="shipment.shipping_from_name"/><br/>
+                                    <t t-if="shipment.seller_id and shipment.seller_id.phone">
+                                        <strong>Phone:</strong> <span t-esc="shipment.seller_id.phone"/><br/>
+                                    </t>
+                                    <strong>Address:</strong> <span t-field="shipment.shipping_from_address"/><br/>
+                                    <span t-field="shipment.shipping_from_district_id.name"/>, <span t-field="shipment.shipping_from_state_id.name"/> - <span t-field="shipment.shipping_from_zip"/>
+                                </p>
+                            </t>
+                            <t t-elif="show_pickup_address">
+                                <h5>Pickup from (Seller)</h5>
+                                <p>
+                                    <strong>Name:</strong>
+                                    <span t-esc="shipment.shipping_from_name or (shipment.seller_id.name if shipment.seller_id else '')"/><br/>
+                                    <t t-if="shipment.seller_id and shipment.seller_id.phone">
+                                        <strong>Phone:</strong> <span t-esc="shipment.seller_id.phone"/><br/>
+                                    </t>
                                     <strong>Address:</strong> <span t-field="shipment.shipping_from_address"/><br/>
                                     <span t-field="shipment.shipping_from_district_id.name"/>, <span t-field="shipment.shipping_from_state_id.name"/> - <span t-field="shipment.shipping_from_zip"/>
                                 </p>
@@ -301,7 +330,7 @@
                             <t t-else="">
                                 <h5>
                                     <t t-if="shipment.is_return_journey">Customer (Return Pickup)</t>
-                                    <t t-else="">Customer Information</t>
+                                    <t t-else="">Deliver to (Customer)</t>
                                 </h5>
                                 <p>
                                     <strong>Name:</strong> <span t-field="shipment.shipping_to_name"/><br/>
@@ -544,9 +573,20 @@
                         <p class="mb-1"><strong>Status:</strong>
                             <t t-esc="dict(shipment.fields_get(allfields=['state'])['state']['selection'])[shipment.state]"/>
                         </p>
-                        <p class="mb-1"><strong>To:</strong> <t t-esc="shipment.shipping_to_name"/> —
-                            <t t-esc="shipment.shipping_to_zip"/>
-                        </p>
+                        <t t-if="leg and leg.operation_type == 'pickup'">
+                            <p class="mb-1"><strong>Pickup from (Seller):</strong>
+                                <t t-esc="shipment.shipping_from_name or (shipment.seller_id.name if shipment.seller_id else '')"/> —
+                                <t t-esc="shipment.shipping_from_zip or '—'"/>
+                            </p>
+                            <t t-if="shipment.seller_id and shipment.seller_id.phone">
+                                <p class="mb-1"><strong>Phone:</strong> <t t-esc="shipment.seller_id.phone"/></p>
+                            </t>
+                        </t>
+                        <t t-else="">
+                            <p class="mb-1"><strong>Deliver to (Customer):</strong> <t t-esc="shipment.shipping_to_name"/> —
+                                <t t-esc="shipment.shipping_to_zip"/>
+                            </p>
+                        </t>
                         <t t-if="leg">
                             <p class="mb-1"><strong>Next leg:</strong>
                                 <t t-if="leg.operation_type == 'hub_transfer'">

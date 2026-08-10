@@ -749,6 +749,7 @@ class LogisticsPortal(CustomerPortal):
             'default_url': '/my/deliveries',
             'searchbar_sortings': searchbar_sortings,
             'sortby': sortby,
+            'delivery_executive': delivery_executive,
             'error': request.session.pop('error', None),
             'success': request.session.pop('success', None),
         }
@@ -787,6 +788,7 @@ class LogisticsPortal(CustomerPortal):
             'can_depart_hub': shipment.can_depart_from_hub(delivery_executive),
             'can_skip_hub': shipment.can_skip_hub_local_delivery(delivery_executive),
             'is_hub_transfer': bool(active_leg and active_leg.operation_type == 'hub_transfer'),
+            'show_pickup_address': shipment.is_pickup_address_context(delivery_executive),
             'tracking_events': tracking_events,
             'error': request.session.pop('error', None),
             'success': request.session.pop('success', None),

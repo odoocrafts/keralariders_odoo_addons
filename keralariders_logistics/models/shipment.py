@@ -1460,6 +1460,32 @@ class Shipment(models.Model):
             shipment._lock_route()
         return True
 
+    def is_pickup_address_context(self, de=None):
+        """True when DE portal should show seller/pickup address (not customer).
+
+        Forward pickup leg / early pickup states / assigned pickup executive.
+        Return journeys still pick up from the customer (shipping_to_*).
+        Delivery / OFD / last-mile always use customer address.
+        """
+        self.ensure_one()
+        if self.is_return_journey:
+            return False
+        if self.state in ('out_for_delivery', 'delivered', 'returned'):
+            return False
+        leg = self.active_leg_id
+        if leg and leg.operation_type == 'delivery':
+            return False
+        if leg and leg.operation_type == 'pickup':
+            return True
+        if self.state in ('pickup_requested', 'order_added'):
+            return True
+        if de and self.pickup_executive_id == de and (
+            not leg or leg.operation_type == 'pickup'
+            or self.state in ('pickup_requested', 'order_added')
+        ):
+            return True
+        return False
+
     def get_active_leg_label(self):
         """Human-readable active leg label for portal / My Tasks."""
         self.ensure_one()
