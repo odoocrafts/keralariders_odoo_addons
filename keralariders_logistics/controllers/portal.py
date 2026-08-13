@@ -707,16 +707,34 @@ class LogisticsPortal(CustomerPortal):
             
             same_district = (origin_district_id == dest_district_id)
             package_id = None
-            if request.session.uid:
-                seller = request.env['logistics.seller'].sudo().search([('user_id', '=', request.session.uid)], limit=1)
-                if seller and seller.delivery_package_id:
+            # user_id on logistics.seller is computed and not stored, so search by partner_id.
+            if not request.env.user._is_public():
+                partner = request.env.user.partner_id
+                seller = request.env['logistics.seller'].sudo().search(
+                    [('partner_id', '=', partner.id)], limit=1
+                )
+                if not seller:
+                    return request.redirect(
+                        '/my/calculator?error=Seller account not found for this user.'
+                    )
+                if seller.delivery_package_id:
                     package_id = seller.delivery_package_id.id
-                    
-            charge = request.env['logistics.delivery.charges'].sudo().calculate_delivery_charge(weight, same_district, package_id=package_id)
-            
+
+            charge = request.env['logistics.delivery.charges'].sudo().calculate_delivery_charge(
+                weight, same_district, package_id=package_id
+            )
+
             return request.redirect(f'/my/calculator?result={charge}')
-        except Exception as e:
+        except (ValueError, TypeError):
+            return request.redirect(
+                '/my/calculator?error=Please enter a valid weight and select both districts.'
+            )
+        except UserError as e:
             return request.redirect(f'/my/calculator?error={e}')
+        except Exception:
+            return request.redirect(
+                '/my/calculator?error=Unable to calculate delivery charge. Please try again.'
+            )
 
     @http.route(['/my/deliveries', '/my/deliveries/page/<int:page>'], type='http', auth="user", website=True)
     def portal_my_deliveries(self, page=1, date_begin=None, date_end=None, sortby=None, **kw):
