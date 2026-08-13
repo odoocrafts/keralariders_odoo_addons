@@ -1,3 +1,5 @@
+from urllib.parse import urlencode
+
 from odoo import http, fields, _
 from odoo.addons.portal.controllers.portal import CustomerPortal, pager as portal_pager
 from odoo.http import request
@@ -688,23 +690,97 @@ class LogisticsPortal(CustomerPortal):
             
         return request.redirect('/my/shipments')
 
+    @staticmethod
+    def _calculator_redirect(error=None, result=None, origin_id=None, dest_id=None, weight=None):
+        """Redirect back to the calculator, preserving submitted form values."""
+        params = {}
+        if error:
+            params['error'] = error
+        if result is not None:
+            params['result'] = f"{float(result):.2f}"
+        if origin_id:
+            params['origin_id'] = origin_id
+        if dest_id:
+            params['dest_id'] = dest_id
+        if weight not in (None, ''):
+            params['weight'] = weight
+        qs = urlencode(params)
+        return request.redirect(f'/my/calculator?{qs}' if qs else '/my/calculator')
+
+    @staticmethod
+    def _format_calculator_weight(weight):
+        """Human-readable weight for the result card, e.g. '1.5 kg'."""
+        try:
+            value = float(weight)
+        except (TypeError, ValueError):
+            return False
+        formatted = f"{value:.3f}".rstrip('0').rstrip('.')
+        return f"{formatted} kg"
+
     @http.route(['/my/calculator'], type='http', auth="public", website=True)
     def portal_my_calculator(self, **kw):
         districts = request.env['logistics.district'].sudo().search([])
+        origin_id = dest_id = False
+        try:
+            if kw.get('origin_id'):
+                origin_id = int(kw['origin_id'])
+            if kw.get('dest_id'):
+                dest_id = int(kw['dest_id'])
+        except (ValueError, TypeError):
+            origin_id = dest_id = False
+
+        origin_name = dest_name = False
+        District = request.env['logistics.district'].sudo()
+        if origin_id:
+            origin = District.browse(origin_id)
+            if origin.exists():
+                origin_name = origin.name
+            else:
+                origin_id = False
+        if dest_id:
+            dest = District.browse(dest_id)
+            if dest.exists():
+                dest_name = dest.name
+            else:
+                dest_id = False
+
+        result = kw.get('result') or None
+        if result is not None:
+            try:
+                result = f"{float(result):.2f}"
+            except (ValueError, TypeError):
+                pass
+
+        weight = kw.get('weight') or ''
         return request.render("keralariders_logistics.portal_my_calculator", {
             'page_name': 'calculator',
             'districts': districts,
-            'result': kw.get('result', None),
-            'error': kw.get('error', None)
+            'result': result,
+            'error': kw.get('error') or None,
+            'origin_id': origin_id,
+            'dest_id': dest_id,
+            'origin_name': origin_name,
+            'dest_name': dest_name,
+            'weight': weight,
+            'weight_display': self._format_calculator_weight(weight) if weight else False,
+            'same_district': bool(origin_id and dest_id and origin_id == dest_id),
         })
 
     @http.route(['/my/calculator/calculate'], type='http', auth="public", website=True, methods=['POST'])
     def portal_my_calculator_calculate(self, **post):
+        origin_raw = post.get('origin_district_id')
+        dest_raw = post.get('dest_district_id')
+        weight_raw = post.get('weight')
+        form_kw = {
+            'origin_id': origin_raw or None,
+            'dest_id': dest_raw or None,
+            'weight': weight_raw,
+        }
         try:
-            weight = float(post.get('weight', 0))
-            origin_district_id = int(post.get('origin_district_id'))
-            dest_district_id = int(post.get('dest_district_id'))
-            
+            weight = float(weight_raw or 0)
+            origin_district_id = int(origin_raw)
+            dest_district_id = int(dest_raw)
+
             same_district = (origin_district_id == dest_district_id)
             package_id = None
             # user_id on logistics.seller is computed and not stored, so search by partner_id.
@@ -714,8 +790,9 @@ class LogisticsPortal(CustomerPortal):
                     [('partner_id', '=', partner.id)], limit=1
                 )
                 if not seller:
-                    return request.redirect(
-                        '/my/calculator?error=Seller account not found for this user.'
+                    return self._calculator_redirect(
+                        error='Seller account not found for this user.',
+                        **form_kw,
                     )
                 if seller.delivery_package_id:
                     package_id = seller.delivery_package_id.id
@@ -724,16 +801,18 @@ class LogisticsPortal(CustomerPortal):
                 weight, same_district, package_id=package_id
             )
 
-            return request.redirect(f'/my/calculator?result={charge}')
+            return self._calculator_redirect(result=charge, **form_kw)
         except (ValueError, TypeError):
-            return request.redirect(
-                '/my/calculator?error=Please enter a valid weight and select both districts.'
+            return self._calculator_redirect(
+                error='Please enter a valid weight and select both districts.',
+                **form_kw,
             )
         except UserError as e:
-            return request.redirect(f'/my/calculator?error={e}')
+            return self._calculator_redirect(error=str(e), **form_kw)
         except Exception:
-            return request.redirect(
-                '/my/calculator?error=Unable to calculate delivery charge. Please try again.'
+            return self._calculator_redirect(
+                error='Unable to calculate delivery charge. Please try again.',
+                **form_kw,
             )
 
     @http.route(['/my/deliveries', '/my/deliveries/page/<int:page>'], type='http', auth="user", website=True)

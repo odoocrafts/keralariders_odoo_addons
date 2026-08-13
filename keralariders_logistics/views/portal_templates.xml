@@ -588,9 +588,31 @@
                                     <div class="alert alert-danger" role="alert"><t t-esc="error"/></div>
                                 </t>
                                 <t t-if="result">
-                                    <div class="alert alert-success text-center py-4" role="alert">
-                                        <h5 class="mb-2">Estimated Delivery Charge</h5>
-                                        <h1 class="mb-0 display-4">₹ <t t-esc="result"/></h1>
+                                    <div class="alert alert-success mb-4 py-4" role="alert">
+                                        <t t-if="origin_name and dest_name">
+                                            <div class="d-flex align-items-center justify-content-center flex-wrap gap-3 mb-3">
+                                                <div class="text-center">
+                                                    <div class="small text-uppercase text-muted">Origin</div>
+                                                    <div class="fs-5 fw-semibold"><t t-esc="origin_name"/></div>
+                                                </div>
+                                                <div class="text-muted fs-4 lh-1" aria-hidden="true">→</div>
+                                                <div class="text-center">
+                                                    <div class="small text-uppercase text-muted">Destination</div>
+                                                    <div class="fs-5 fw-semibold"><t t-esc="dest_name"/></div>
+                                                </div>
+                                            </div>
+                                            <div class="d-flex justify-content-center align-items-center flex-wrap gap-2 mb-3">
+                                                <span t-if="weight_display" class="badge rounded-pill text-bg-success fs-6 px-3 py-2">
+                                                    <t t-esc="weight_display"/>
+                                                </span>
+                                                <span t-if="same_district" class="badge rounded-pill text-bg-light text-success border fs-6 px-3 py-2">Same district</span>
+                                                <span t-else="" class="badge rounded-pill text-bg-light text-secondary border fs-6 px-3 py-2">Different district</span>
+                                            </div>
+                                        </t>
+                                        <div class="text-center">
+                                            <div class="small text-uppercase text-muted mb-1">Estimated Delivery Charge</div>
+                                            <div class="display-5 fw-bold mb-0">₹ <t t-esc="result"/></div>
+                                        </div>
                                     </div>
                                 </t>
                                 
@@ -602,7 +624,9 @@
                                             <select name="origin_district_id" class="form-select" required="1">
                                                 <option value="">Select Origin...</option>
                                                 <t t-foreach="districts" t-as="district">
-                                                    <option t-att-value="district.id"><t t-esc="district.name"/></option>
+                                                    <option t-att-value="district.id" t-att-selected="origin_id and district.id == origin_id">
+                                                        <t t-esc="district.name"/>
+                                                    </option>
                                                 </t>
                                             </select>
                                         </div>
@@ -611,14 +635,16 @@
                                             <select name="dest_district_id" class="form-select" required="1">
                                                 <option value="">Select Destination...</option>
                                                 <t t-foreach="districts" t-as="district">
-                                                    <option t-att-value="district.id"><t t-esc="district.name"/></option>
+                                                    <option t-att-value="district.id" t-att-selected="dest_id and district.id == dest_id">
+                                                        <t t-esc="district.name"/>
+                                                    </option>
                                                 </t>
                                             </select>
                                         </div>
                                     </div>
                                     <div class="mb-4">
                                         <label class="form-label">Package Weight (Kg)</label>
-                                        <input type="number" step="0.001" name="weight" class="form-control form-control-lg" required="1"/>
+                                        <input type="number" step="0.001" name="weight" class="form-control form-control-lg" required="1" t-att-value="weight or None"/>
                                     </div>
                                     <button type="submit" class="btn btn-primary btn-lg w-100">Calculate Charge</button>
                                 </form>
