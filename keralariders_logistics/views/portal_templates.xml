@@ -210,12 +210,52 @@
                         Once you have successfully completed the payment on your UPI app, click the button below to confirm.
                     </p>
                     
-                    <form action="/my/wallet/recharge/confirm" method="post" class="d-inline-block">
+                    <form action="/my/wallet/recharge/confirm" method="post" class="d-inline-block" id="wallet_recharge_confirm_form">
                         <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
                         <input type="hidden" name="amount" t-att-value="amount"/>
-                        <a href="/my/wallet" class="btn btn-outline-secondary me-2">Cancel</a>
-                        <button type="submit" class="btn btn-primary">I Have Paid</button>
+                        <input type="hidden" name="recharge_token" t-att-value="recharge_token"/>
+                        <a href="/my/wallet" class="btn btn-outline-secondary me-2" id="wallet_recharge_cancel_btn">Cancel</a>
+                        <button type="submit" class="btn btn-primary" id="wallet_recharge_paid_btn">
+                            <span class="o_recharge_paid_label">I Have Paid</span>
+                            <span class="o_recharge_paid_loading d-none">
+                                <i class="fa fa-spinner fa-spin me-1"/> Processing...
+                            </span>
+                        </button>
                     </form>
+                    <script>
+                        (function () {
+                            var form = document.getElementById('wallet_recharge_confirm_form');
+                            if (!form) {
+                                return;
+                            }
+                            form.addEventListener('submit', function (ev) {
+                                if (form.dataset.submitted === '1') {
+                                    ev.preventDefault();
+                                    return false;
+                                }
+                                form.dataset.submitted = '1';
+                                var paidBtn = document.getElementById('wallet_recharge_paid_btn');
+                                var cancelBtn = document.getElementById('wallet_recharge_cancel_btn');
+                                if (paidBtn) {
+                                    paidBtn.disabled = true;
+                                    paidBtn.setAttribute('aria-busy', 'true');
+                                    var label = paidBtn.querySelector('.o_recharge_paid_label');
+                                    var loading = paidBtn.querySelector('.o_recharge_paid_loading');
+                                    if (label) {
+                                        label.classList.add('d-none');
+                                    }
+                                    if (loading) {
+                                        loading.classList.remove('d-none');
+                                    }
+                                }
+                                if (cancelBtn) {
+                                    cancelBtn.classList.add('disabled', 'pe-none');
+                                    cancelBtn.setAttribute('aria-disabled', 'true');
+                                    cancelBtn.setAttribute('tabindex', '-1');
+                                }
+                            });
+                        })();
+                    </script>
                 </div>
             </div>
         </t>

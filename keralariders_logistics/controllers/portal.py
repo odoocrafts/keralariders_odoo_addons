@@ -1,3 +1,5 @@
+import uuid
+from datetime import timedelta
 from urllib.parse import urlencode
 
 from odoo import http, fields, _
@@ -177,32 +179,53 @@ class LogisticsPortal(CustomerPortal):
                 # Odoo's internal barcode generator might be restricted or missing python-qrcode, 
                 # so we use a reliable external QR generator for the standard UPI URI.
                 qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=250x250&data={encoded_uri}"
-                
+                recharge_token = uuid.uuid4().hex
+                request.session['wallet_recharge_confirm_token'] = recharge_token
+
                 return request.render("keralariders_logistics.portal_my_wallet_recharge_pay", {
                     'amount': amount,
                     'qr_url': qr_url,
                     'wallet': wallet,
                     'page_name': 'wallet',
+                    'recharge_token': recharge_token,
                 })
         return request.redirect('/my/wallet')
 
     @http.route(['/my/wallet/recharge/confirm'], type='http', auth="user", website=True, methods=['POST'])
     def portal_my_wallet_recharge_confirm(self, **post):
+        posted_token = post.get('recharge_token')
+        session_token = request.session.pop('wallet_recharge_confirm_token', None)
+        token_ok = bool(posted_token and session_token and posted_token == session_token)
+
         partner = request.env.user.partner_id
         seller = request.env['logistics.seller'].search([('partner_id', '=', partner.id)], limit=1)
-        if seller:
+        if seller and token_ok:
             wallet = request.env['logistics.wallet'].search([('seller_id', '=', seller.id)], limit=1)
             amount = float(post.get('amount', 0))
             if amount > 0 and wallet:
-                try:
-                    request.env['logistics.wallet.recharge.request'].create({
-                        'seller_id': seller.id,
-                        'wallet_id': wallet.id,
-                        'requested_amount': amount,
-                    })
+                cutoff = fields.Datetime.now() - timedelta(seconds=15)
+                duplicate = request.env['logistics.wallet.recharge.request'].search([
+                    ('seller_id', '=', seller.id),
+                    ('wallet_id', '=', wallet.id),
+                    ('requested_amount', '=', amount),
+                    ('state', '=', 'pending_approval'),
+                    ('request_date', '>=', cutoff),
+                ], limit=1)
+                if duplicate:
                     request.session['success'] = "Your transaction will be manually verified from the backend. Please wait for verification."
-                except AccessError:
-                    request.session['error'] = "Unable to submit your recharge request. Please contact support."
+                else:
+                    try:
+                        request.env['logistics.wallet.recharge.request'].create({
+                            'seller_id': seller.id,
+                            'wallet_id': wallet.id,
+                            'requested_amount': amount,
+                        })
+                        request.session['success'] = "Your transaction will be manually verified from the backend. Please wait for verification."
+                    except AccessError:
+                        request.session['error'] = "Unable to submit your recharge request. Please contact support."
+        elif seller:
+            # Duplicate or stale confirm — do not create another recharge request.
+            request.session['success'] = "Your transaction will be manually verified from the backend. Please wait for verification."
         return request.redirect('/my/wallet')
 
     @http.route(['/my/shipments', '/my/shipments/page/<int:page>'], type='http', auth="user", website=True)
