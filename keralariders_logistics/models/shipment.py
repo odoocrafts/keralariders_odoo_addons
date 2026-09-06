@@ -2915,8 +2915,22 @@ class Shipment(models.Model):
             })
 
     def delete_wallet_transaction(self):
+        # The money-out mirror of approving a recharge: this hands the seller
+        # back the delivery charge they were debited. Public, and reachable
+        # over RPC on a seller's own shipment — directly, or through
+        # logistics.order.action_cancel_order, which calls it per shipment. Its
+        # only previous defence was portal lacking unlink rights on
+        # logistics.wallet.transaction, which is one ir.model.access.csv digit
+        # away from being no defence at all. Reversing a debit is the same
+        # trust decision as pricing one, so it asks the same question.
+        if not self._can_write_delivery_charge():
+            raise AccessError(_(
+                "Only a Logistics Administrator can remove the wallet "
+                "transaction for a shipment. Contact KeralaXpress support if "
+                "a shipment was charged in error."
+            ))
         if not self.wallet_transaction_id:
-            raise UserError(f'No transaction linked to this Shipment')
+            raise UserError(_('No transaction linked to this Shipment'))
         self.wallet_transaction_id.unlink()
 
     def action_view_wallet_transaction(self):
