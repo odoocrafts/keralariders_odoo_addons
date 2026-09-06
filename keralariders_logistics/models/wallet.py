@@ -5,6 +5,30 @@ from odoo.exceptions import AccessError, UserError
 
 _logger = logging.getLogger(__name__)
 
+# A recharge request is an instruction to put money into a wallet. These are
+# the fields that decide how much lands there, whether an approval happened at
+# all, and who is recorded as having made it. ``recharged_amount`` is what
+# action_approve_request credits verbatim; ``state`` and
+# ``wallet_transaction_id`` are the two sentinels that say the credit has (or
+# has not) already been paid out; ``approved_by``/``approved_date`` are the
+# provenance an administrator's approval leaves behind, and are guarded with
+# the rest because a forged stamp is how a self-approved request would be made
+# to look routine in the backend list.
+RECHARGE_APPROVAL_FIELDS = (
+    'recharged_amount',
+    'state',
+    'wallet_transaction_id',
+    'approved_by',
+    'approved_date',
+)
+
+# Only a Logistics Administrator decides that money enters a wallet. Deliberately
+# not "any non-portal user" and not "not group_portal": hub managers and delivery
+# executives are themselves portal accounts, so naming the admin group is both
+# narrower and the same group the delivery charge guard already names.
+RECHARGE_ADMIN_GROUP = 'keralariders_logistics.group_logistics_admin'
+
+
 class Wallet(models.Model):
     _name = 'logistics.wallet'
     _description = 'Wallet'
@@ -111,6 +135,10 @@ class WalletRechargeRequest(models.Model):
     @api.model_create_multi
     def create(self, vals_list):
         for vals in vals_list:
+            # Portal sellers hold create on this model — that is the recharge
+            # journey — so a request must not be able to arrive already
+            # approved, or already carrying an amount nobody agreed to.
+            self._check_recharge_approval_write(vals)
             if vals.get('name', _('New')) == _('New'):
                 vals['name'] = self.env['ir.sequence'].sudo().next_by_code('logistics.wallet.recharge.request') or _('New')
         records = super(WalletRechargeRequest, self).create(vals_list)
@@ -118,6 +146,11 @@ class WalletRechargeRequest(models.Model):
         pending._schedule_admin_approval_activities()
         pending._notify_admins_recharge_request()
         return records
+
+    def write(self, vals):
+        self._check_recharge_approval_write(vals)
+        self._check_requested_amount_write(vals)
+        return super().write(vals)
     
     request_date = fields.Datetime(string="Request Date", default=fields.Datetime.now)
     seller_id = fields.Many2one('logistics.seller', string="Seller", required=True)
@@ -144,6 +177,121 @@ class WalletRechargeRequest(models.Model):
     remarks = fields.Text(string="Remarks")
     state = fields.Selection([('pending_approval', 'Pending Approval'), ('approved', 'Approved'), ('cancelled', 'Cancelled')], string="Status", default='pending_approval')
     wallet_transaction_id = fields.Many2one('logistics.wallet.transaction', string="Wallet Transaction")
+
+    # -------------------------------------------------------------------------
+    # Recharge approval integrity
+    #
+    # This is the money-in mirror of the delivery charge guard on
+    # logistics.shipment, and it is guarded the same way for the same reason.
+    # Portal sellers hold read/write/create on this model because raising a
+    # recharge request *is* the portal top-up journey, and ``recharged_amount``
+    # is a stored computed field with ``readonly=False`` whose compute depends
+    # only on ``requested_amount``. So a seller could request ₹100 and then, in
+    # a second write, set ``recharged_amount`` to ₹100,000: the compute never
+    # re-ran because the amount it depends on had not changed, and an
+    # administrator opening the request was shown the seller's figure as though
+    # it were the system's. Approving credited it verbatim.
+    #
+    # The fix is provenance, not arithmetic. Once ``recharged_amount`` can only
+    # be written by a Logistics Administrator, a value that differs from
+    # ``requested_amount`` is *by definition* something staff typed, so the
+    # legitimate ops case — a seller asks for ₹100, actually transfers ₹98, an
+    # administrator corrects the figure before approving — keeps working with
+    # no value-based heuristic to tune and no honest correction to explain away.
+    #
+    # The check reads ``env.user`` rather than the superuser flag, because every
+    # portal controller runs ``sudo()`` and ``sudo()`` leaves ``env.user`` as the
+    # real user. Trusted server code opts in with ``allow_recharge_approval_write``,
+    # the same convention ``allow_shipment_state_write`` and
+    # ``allow_delivery_charge_write`` already use.
+    #
+    # ``action_approve_request`` carries its own copy of the group check rather
+    # than leaning on the guard above. It is a public method, reachable over RPC
+    # by any portal seller on their own request, and until now the only thing
+    # stopping it crediting them was that portal lacks ``create`` on
+    # logistics.wallet.transaction — a single digit in ir.model.access.csv, one
+    # unrelated feature away from turning this into self-service.
+    # -------------------------------------------------------------------------
+    def _can_approve_recharge(self):
+        """Whether the current user may decide that money enters a wallet."""
+        if self.env.context.get('allow_recharge_approval_write'):
+            return True
+        return self.env.user.has_group(RECHARGE_ADMIN_GROUP)
+
+    def _check_recharge_admin(self, message):
+        """Refuse an approval-side action to everyone but logistics staff."""
+        if not self._can_approve_recharge():
+            raise AccessError(message)
+
+    def _check_recharge_approval_write(self, vals):
+        attempted = [name for name in RECHARGE_APPROVAL_FIELDS if name in vals]
+        if attempted and not self._can_approve_recharge():
+            raise AccessError(_(
+                "Only KeralaXpress can decide what a wallet is credited and "
+                "when (%(fields)s). State the amount you are paying in "
+                "'Amount Requested'; the recharge is credited once your "
+                "payment has been verified.",
+                fields=', '.join(attempted),
+            ))
+
+    def _check_requested_amount_write(self, vals):
+        """Freeze the seller's declaration once the request has been decided.
+
+        ``requested_amount`` stays seller-writable while the request is pending
+        — it is the seller's own statement of what they are paying, and it
+        drives the compute behind ``recharged_amount``, so freezing it earlier
+        would break correcting a typo before anyone has looked. After approval
+        it describes a payment that has already been reconciled and credited,
+        and after cancellation it is a closed record; editing either would
+        rewrite history behind an administrator who has already acted on it.
+        """
+        if 'requested_amount' not in vals or self._can_approve_recharge():
+            return
+        decided = self.filtered(lambda r: r.state != 'pending_approval')
+        if decided:
+            raise AccessError(_(
+                "Recharge request %(names)s has already been reviewed, so the "
+                "amount can no longer be changed. Raise a new recharge request "
+                "instead.",
+                names=', '.join(decided.mapped('name')),
+            ))
+
+    def _is_own_request(self):
+        """Whether this request was raised by the user asking to act on it.
+
+        Matched on the partner, which is how the portal controllers resolve a
+        seller (``logistics.seller.user_id`` is a non-stored compute and cannot
+        be searched). Read sudoed because a portal seller cannot necessarily
+        read every field on the chain.
+        """
+        self.ensure_one()
+        partner = self.env.user.partner_id
+        return bool(partner) and self.sudo().seller_id.partner_id == partner
+
+    def _check_may_cancel(self):
+        """Let a seller withdraw a request they raised; nothing more.
+
+        Withdrawing your own pending paperwork is reasonable and moves no
+        money: a pending request has no wallet transaction behind it. Cancelling
+        an *approved* request is a different act entirely — action_cancel
+        unlinks the credit, which takes money back out of a wallet — so that
+        stays with the administrators, as does cancelling anyone else's request.
+        """
+        self.ensure_one()
+        if self._can_approve_recharge():
+            return
+        if self.state != 'pending_approval' or self.wallet_transaction_id:
+            raise AccessError(_(
+                "Recharge request %(name)s has already been reviewed and can "
+                "no longer be withdrawn. Contact KeralaXpress support if it "
+                "needs to be reversed.",
+                name=self.name or '',
+            ))
+        if not self._is_own_request():
+            raise AccessError(_(
+                "You can only withdraw wallet recharge requests you raised "
+                "yourself."
+            ))
 
     def _get_logistics_admin_users(self):
         """Internal users in logistics admin group (excludes portal/public/system).
@@ -237,28 +385,58 @@ class WalletRechargeRequest(models.Model):
         )
 
     def action_approve_request(self):
+        # Checked here and not only on the fields it writes: this is a public
+        # method a portal seller can call over RPC on their own request, and
+        # its only previous defence was portal lacking create rights on
+        # logistics.wallet.transaction. That ACL protects a different model for
+        # a different reason and could be loosened by an unrelated feature
+        # tomorrow; crediting a wallet must not depend on it.
+        self._check_recharge_admin(_(
+            "Only a Logistics Administrator can approve a wallet recharge "
+            "request. Your request will be credited once KeralaXpress has "
+            "verified the payment."
+        ))
+        self.ensure_one()
         if self.recharged_amount <= 0:
-            raise UserError(f'Recharge amount must be greater than 0.')
+            raise UserError(_('Recharge amount must be greater than 0.'))
         if not self.wallet_transaction_id:
-            self.approved_by = self.env.user.id
-            self.approved_date = fields.Datetime.now()
-            self.wallet_transaction_id = self.env['logistics.wallet.transaction'].create({
+            transaction = self.env['logistics.wallet.transaction'].create({
                 'wallet_id': self.wallet_id.id,
                 'amount': self.recharged_amount,
                 'transaction_date': fields.Date.context_today(self),
                 'reference': f'Recharge - {self.display_name}',
-            }).id
-            self.state = 'approved'
+            })
+            # One guarded write: the credit, the approval and the stamp of who
+            # made it are the same decision and are recorded together.
+            self.with_context(allow_recharge_approval_write=True).write({
+                'approved_by': self.env.user.id,
+                'approved_date': fields.Datetime.now(),
+                'wallet_transaction_id': transaction.id,
+                'state': 'approved',
+            })
             self._complete_admin_approval_activities(_('Approved'))
 
     def action_cancel(self):
-        if self.wallet_transaction_id:
-            self.wallet_transaction_id.unlink()
-        self.state = 'cancelled'
+        for request in self:
+            request._check_may_cancel()
+            if request.wallet_transaction_id:
+                request.wallet_transaction_id.unlink()
+        self.with_context(allow_recharge_approval_write=True).write({
+            'state': 'cancelled',
+        })
         self._complete_admin_approval_activities(_('Cancelled'))
 
     def action_reset(self):
-        self.state = 'pending_approval'
+        # Reopening is not the counterpart of withdrawing: it puts the request
+        # back in front of an administrator to be approved, so it belongs to
+        # the same people who do the approving.
+        self._check_recharge_admin(_(
+            "Only a Logistics Administrator can reopen a wallet recharge "
+            "request. Please raise a new request instead."
+        ))
+        self.with_context(allow_recharge_approval_write=True).write({
+            'state': 'pending_approval',
+        })
         self._schedule_admin_approval_activities()
         self._notify_admins_recharge_request()
 
