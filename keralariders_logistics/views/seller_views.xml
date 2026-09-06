@@ -98,6 +98,15 @@
                             <field name="phone" />
                             <field name="fssai_number" />
                             <field name="pan_number" />
+                            <!-- Administrators only. The field itself carries
+                                 groups="group_logistics_admin", so for anyone
+                                 else it does not exist in the ORM at all and
+                                 this line renders nothing. The weight slab
+                                 package below only applies to hub-network
+                                 sellers; India Post sellers are billed the
+                                 real postal tariff. -->
+                            <field name="fulfilment_method" widget="radio"
+                                   groups="keralariders_logistics.group_logistics_admin"/>
                             <field name="delivery_package_id" />
                             <field name="user_id" invisible="not user_id"/>
                             <field name="seller_account_id" options="{'no_create': True}"/>

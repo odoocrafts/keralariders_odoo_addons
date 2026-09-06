@@ -1,11 +1,15 @@
+import base64
+import logging
+import time
 import uuid
 from datetime import timedelta
-from urllib.parse import urlencode
 
 from odoo import http, fields, _
 from odoo.addons.portal.controllers.portal import CustomerPortal, pager as portal_pager
 from odoo.http import request
-from odoo.exceptions import AccessError, UserError
+from odoo.exceptions import AccessError, UserError, ValidationError
+
+_logger = logging.getLogger(__name__)
 
 # Seller-facing labels for /my/cod_settlements (backend transfer_type keys unchanged).
 _COD_SETTLEMENT_SELLER_TYPE_LABELS = {
@@ -278,15 +282,38 @@ class LogisticsPortal(CustomerPortal):
             
         districts = request.env['logistics.district'].sudo().search([])
         states = request.env['res.country.state'].sudo().search([('country_id', '=', request.env.company.country_id.id)])
-        
+
         values = {
             'page_name': 'shipment_new',
             'seller': seller,
             'districts': districts,
             'states': states,
             'error': request.session.pop('error', None),
+            **self._shipment_form_indiapost_values(seller),
         }
         return request.render("keralariders_logistics.portal_my_shipment_new", values)
+
+    @staticmethod
+    def _shipment_form_indiapost_values(seller):
+        """Extra context the creation form needs when the seller uses India Post."""
+        Shipment = request.env['logistics.shipment'].sudo()
+        uses_indiapost = seller._ip_uses_indiapost() if seller else False
+        earliest = fields.Date.add(
+            fields.Date.context_today(Shipment),
+            days=request.env['logistics.indiapost.client'].sudo()._ip_settings()[
+                'indiapost_pickup_lead_days'],
+        )
+        return {
+            'uses_indiapost': uses_indiapost,
+            'pickup_slots': Shipment._fields['indiapost_pickup_slot'].selection,
+            'earliest_pickup_date': earliest,
+            # Surfaced in the form so sellers know why the box matters, and
+            # mirrored server-side by logistics.shipment._check_indiapost_package.
+            'parcel_min_length_cm': 14,
+            'parcel_min_breadth_cm': 9,
+            'parcel_weight_threshold_g': 500,
+            'max_total_dimension_cm': 300,
+        }
 
     @http.route(['/my/shipments/create'], type='http', auth="user", website=True, methods=['POST'])
     def portal_my_shipments_create(self, **post):
@@ -316,7 +343,7 @@ class LogisticsPortal(CustomerPortal):
             total_weight = float(post.get('total_weight') or 0)
             if total_weight <= 0:
                 raise UserError("Weight must be greater than 0.")
-                
+
             shipping_from_vals = request.env['logistics.shipment'].sudo()._shipping_from_vals_for_seller(seller)
             if not shipping_from_vals.get('shipping_from_zip'):
                 raise UserError(_("Update seller pickup pincode before creating shipments."))
@@ -336,24 +363,136 @@ class LogisticsPortal(CustomerPortal):
                 'billing_same_as_shipping': True,
                 'state': 'order_added',
                 **shipping_from_vals,
+                **self._shipment_package_vals(post, seller),
             }
             shipment = request.env['logistics.shipment'].sudo().create(shipment_vals)
-            
+
             if shipment.order_payment_type == 'cod':
                 shipment.cod_amount = shipment.total_order_value
-                
-            request.session['success'] = f"Shipment '{shipment.name}' saved as Draft!"
+
+            message = f"Shipment '{shipment.name}' saved as Draft!"
+            warning = self._shipment_quote_after_create(shipment)
+            request.session['success'] = f"{message} {warning}".strip()
             return request.redirect('/my/shipments')
-            
+
         except Exception as e:
             request.session['error'] = str(e)
             return request.redirect('/my/shipments/new')
+
+    @staticmethod
+    def _shipment_package_vals(post, seller, prefix=''):
+        """Dimension and pickup values from a portal form or CSV row.
+
+        Dimensions are mandatory for India Post sellers: the carrier prices on
+        volume and refuses parcels below 14 x 9 cm outright, so a shipment
+        without them cannot be booked or even quoted.
+        """
+        uses_indiapost = seller._ip_uses_indiapost() if seller else False
+
+        def number(key):
+            raw = post.get(prefix + key)
+            if raw in (None, ''):
+                return 0.0
+            try:
+                return float(raw)
+            except (TypeError, ValueError):
+                raise UserError(
+                    _('"%(value)s" is not a valid measurement for %(field)s.')
+                    % {'value': raw, 'field': key.replace('_cm', '')}
+                )
+
+        length = number('length_cm')
+        breadth = number('breadth_cm')
+        height = number('height_cm')
+        if uses_indiapost and not (length > 0 and breadth > 0 and height > 0):
+            raise UserError(_(
+                'Length, breadth and height (in cm) are required. India Post '
+                'prices on package size as well as weight.'
+            ))
+
+        vals = {
+            'length_cm': length,
+            'breadth_cm': breadth,
+            'height_cm': height,
+            'is_cylindrical': bool(post.get(prefix + 'is_cylindrical')),
+        }
+        if uses_indiapost:
+            slot = post.get(prefix + 'indiapost_pickup_slot')
+            valid_slots = dict(
+                request.env['logistics.shipment']
+                ._fields['indiapost_pickup_slot'].selection)
+            vals['indiapost_pickup_slot'] = slot if slot in valid_slots \
+                else next(iter(valid_slots))
+            pickup_date = post.get(prefix + 'indiapost_pickup_date')
+            if pickup_date:
+                vals['indiapost_pickup_date'] = pickup_date
+        return vals
+
+    # Above this many shipments, pricing the upload inline would mean one API
+    # round trip per row inside a web request. Those orders are priced when the
+    # seller requests pickup instead.
+    _BULK_INLINE_QUOTE_LIMIT = 25
+
+    def _bulk_quote_indiapost(self, order):
+        """Price the India Post shipments of a freshly uploaded order."""
+        shipments = order.shipment_ids.filtered(
+            lambda s: s.is_indiapost and s.indiapost_needs_quote)
+        if not shipments:
+            return ''
+        if len(shipments) > self._BULK_INLINE_QUOTE_LIMIT:
+            return _(
+                'Delivery charges will be confirmed from live India Post rates '
+                'when you request pickup.'
+            )
+        failures = 0
+        for shipment in shipments:
+            try:
+                with request.env.cr.savepoint():
+                    shipment.sudo()._ip_quote_and_store()
+            except Exception:
+                failures += 1
+                _logger.warning('India Post rate lookup failed for %s',
+                                shipment.name, exc_info=True)
+        if failures:
+            return _(
+                '%s shipment(s) could not be priced against India Post just '
+                'now; their charges will be confirmed when you request pickup.'
+            ) % failures
+        return ''
+
+    @staticmethod
+    def _shipment_quote_after_create(shipment):
+        """Price an India Post shipment right after creation.
+
+        Returns a short message for the seller. A rate lookup failure must not
+        undo a valid shipment, so the record is kept and simply flagged as
+        needing a quote; the wallet debit at pickup time re-quotes anyway.
+        """
+        if not shipment.is_indiapost:
+            return ''
+        try:
+            shipment.sudo()._ip_quote_and_store()
+        except Exception:
+            _logger.warning(
+                'India Post rate lookup failed for new shipment %s',
+                shipment.name, exc_info=True,
+            )
+            return _(
+                'India Post rates could not be fetched just now, so the '
+                'delivery charge will be confirmed when you request pickup.'
+            )
+        return _('India Post charge: %s.') % shipment.currency_id.format(
+            shipment.delivery_charges_total)
             
     @http.route(['/my/shipments/bulk_upload/template'], type='http', auth="user", website=True)
     def portal_my_shipments_bulk_upload_template(self, **kw):
         import csv
         import io
-        
+
+        seller = request.env['logistics.seller'].sudo().search(
+            [('partner_id', '=', request.env.user.partner_id.id)], limit=1)
+        uses_indiapost = seller._ip_uses_indiapost() if seller else True
+
         output = io.StringIO()
         writer = csv.writer(output)
         # Columns marked * / (mandatory) must be filled; upload accepts both marked and plain headers.
@@ -367,14 +506,32 @@ class LogisticsPortal(CustomerPortal):
             'Payment Type (prepaid/cod)',
             'Total Order Value',
         ]
-        writer.writerow(headers)
-        
+        # Dimensions are only mandatory for India Post sellers, but they are
+        # offered to everyone so a seller moving between carriers does not have
+        # to change their spreadsheet.
+        dimension_headers = [
+            'Length (cm)*' if uses_indiapost else 'Length (cm)',
+            'Breadth (cm)*' if uses_indiapost else 'Breadth (cm)',
+            'Height (cm)*' if uses_indiapost else 'Height (cm)',
+        ]
+        writer.writerow(headers + dimension_headers)
+
         # Add sample rows to help the user
-        writer.writerow(['John Doe', '9876543210', '123 Main St, Apt 4B', '682001', '1.5', 'Electronics', 'prepaid', '0'])
-        writer.writerow(['Jane Smith', '9988776655', '456 Market Road', '695001', '2.0', 'Clothing', 'cod', '1500'])
-        
+        writer.writerow(['John Doe', '9876543210', '123 Main St, Apt 4B', '682001',
+                         '1.5', 'Electronics', 'prepaid', '0', '30', '20', '15'])
+        writer.writerow(['Jane Smith', '9988776655', '456 Market Road', '695001',
+                         '2.0', 'Clothing', 'cod', '1500', '25', '18', '10'])
+        if uses_indiapost:
+            writer.writerow([])
+            writer.writerow([
+                'India Post prices on size as well as weight. Parcels over 500 g '
+                'must measure at least 14 cm x 9 cm, and length + breadth + '
+                'height must not exceed 300 cm. Pad small heavy items out to at '
+                'least 14 x 9 x 1 cm or they cannot be shipped at all.'
+            ])
+
         csv_content = output.getvalue()
-        
+
         headers = [
             ('Content-Type', 'text/csv'),
             ('Content-Disposition', 'attachment; filename="Shipments_Bulk_Upload_Template.csv"'),
@@ -587,7 +744,21 @@ class LogisticsPortal(CustomerPortal):
                     
                 if payment_type not in ['prepaid', 'cod']:
                     payment_type = 'prepaid'
-                    
+
+                try:
+                    package_vals = self._shipment_package_vals({
+                        'length_cm': _csv_cell(row, 'Length (cm)*', 'Length (cm)'),
+                        'breadth_cm': _csv_cell(row, 'Breadth (cm)*', 'Breadth (cm)'),
+                        'height_cm': _csv_cell(row, 'Height (cm)*', 'Height (cm)'),
+                        'indiapost_pickup_date': pickup_date,
+                    }, seller)
+                except UserError as exc:
+                    failed_count += 1
+                    if len(failure_reasons) < 5:
+                        failure_reasons.append(
+                            f"Row {row_num}: {exc.args[0] if exc.args else exc}")
+                    continue
+
                 shipment_vals = {
                     'order_id': order.id,
                     'seller_id': seller.id,
@@ -605,13 +776,28 @@ class LogisticsPortal(CustomerPortal):
                     'state': 'order_added',
                     # Seller origin (pickup) — mirrors single-shipment / compute from seller
                     **shipping_from_vals,
+                    **package_vals,
                 }
-                
-                shipment = Shipment.create(shipment_vals)
+
+                try:
+                    # A savepoint so one unshippable row cannot poison the
+                    # transaction for the rows that follow it.
+                    with request.env.cr.savepoint():
+                        shipment = Shipment.create(shipment_vals)
+                except (UserError, ValidationError) as exc:
+                    # Most often a package India Post cannot carry. Report the
+                    # row rather than failing the whole upload.
+                    failed_count += 1
+                    if len(failure_reasons) < 5:
+                        failure_reasons.append(
+                            f"Row {row_num}: {exc.args[0] if exc.args else exc}")
+                    continue
                 if shipment.order_payment_type == 'cod':
                     shipment.cod_amount = shipment.total_order_value
                 success_count += 1
-                
+
+            quote_note = self._bulk_quote_indiapost(order)
+
             if success_count == 0:
                 order.sudo().unlink()
                 detail = ('; '.join(failure_reasons)) if failure_reasons else ''
@@ -627,7 +813,9 @@ class LogisticsPortal(CustomerPortal):
                 msg += f" {failed_count} rows failed validation and were skipped."
                 if failure_reasons:
                     msg += " " + '; '.join(failure_reasons)
-                
+            if quote_note:
+                msg += " " + quote_note
+
             request.session['success'] = msg
             return request.redirect(f'/my/orders/{order.id}')
 
@@ -676,6 +864,52 @@ class LogisticsPortal(CustomerPortal):
             
         return request.redirect(f'/my/orders/{order.id}')
 
+    @http.route(['/my/shipments/<int:shipment_id>/indiapost_label'], type='http',
+                auth="user", website=True)
+    def portal_my_shipment_indiapost_label(self, shipment_id=None, **kw):
+        """Serve the stored India Post label PDF to the owning seller.
+
+        Fetched on demand the first time, because a label is only useful once
+        the article has been booked and most sellers never open it at all.
+        """
+        seller = request.env['logistics.seller'].sudo().search(
+            [('partner_id', '=', request.env.user.partner_id.id)], limit=1)
+        if not seller:
+            return request.redirect('/my')
+        shipment = request.env['logistics.shipment'].sudo().search([
+            ('id', '=', shipment_id),
+            ('seller_id', '=', seller.id),
+            ('indiapost_article_number', '!=', False),
+        ], limit=1)
+        if not shipment:
+            request.session['error'] = _(
+                'That shipment has not been booked with India Post yet, so it '
+                'has no address label.'
+            )
+            return request.redirect('/my/shipments')
+
+        if not shipment.indiapost_label_pdf:
+            try:
+                shipment.action_indiapost_fetch_label()
+            except Exception:
+                _logger.warning('India Post label fetch failed for %s',
+                                shipment.name, exc_info=True)
+        if not shipment.indiapost_label_pdf:
+            request.session['error'] = _(
+                'The India Post label for %s could not be downloaded. Please '
+                'try again shortly.'
+            ) % shipment.name
+            return request.redirect('/my/shipments')
+
+        pdf = base64.b64decode(shipment.indiapost_label_pdf)
+        filename = shipment.indiapost_label_filename or (
+            '%s.pdf' % shipment.indiapost_article_number)
+        return request.make_response(pdf, headers=[
+            ('Content-Type', 'application/pdf'),
+            ('Content-Length', len(pdf)),
+            ('Content-Disposition', f'inline; filename="{filename}"'),
+        ])
+
     @http.route(['/my/shipments/request_return'], type='http', auth="user", website=True, methods=['POST'])
     def portal_my_shipments_request_return(self, **post):
         shipment_id = int(post.get('shipment_id', 0))
@@ -713,22 +947,17 @@ class LogisticsPortal(CustomerPortal):
             
         return request.redirect('/my/shipments')
 
-    @staticmethod
-    def _calculator_redirect(error=None, result=None, origin_id=None, dest_id=None, weight=None):
-        """Redirect back to the calculator, preserving submitted form values."""
-        params = {}
-        if error:
-            params['error'] = error
-        if result is not None:
-            params['result'] = f"{float(result):.2f}"
-        if origin_id:
-            params['origin_id'] = origin_id
-        if dest_id:
-            params['dest_id'] = dest_id
-        if weight not in (None, ''):
-            params['weight'] = weight
-        qs = urlencode(params)
-        return request.redirect(f'/my/calculator?{qs}' if qs else '/my/calculator')
+    # -------------------------------------------------------------------------
+    # Rate calculator
+    #
+    # This route is auth="public", so an anonymous visitor reaches it with no
+    # seller context. Anonymous visitors get India Post rates, which is what
+    # KeralaXpress sells today; a logged-in seller gets whatever their own
+    # fulfilment method is, so sellers still on the hub network keep seeing the
+    # weight slab price.
+    # -------------------------------------------------------------------------
+    _CALCULATOR_MAX_QUOTES = 25
+    _CALCULATOR_WINDOW_SECONDS = 300
 
     @staticmethod
     def _format_calculator_weight(weight):
@@ -740,103 +969,173 @@ class LogisticsPortal(CustomerPortal):
         formatted = f"{value:.3f}".rstrip('0').rstrip('.')
         return f"{formatted} kg"
 
+    @staticmethod
+    def _calculator_seller():
+        """The logged-in visitor's seller record, if any."""
+        if request.env.user._is_public():
+            return request.env['logistics.seller'].sudo().browse()
+        # user_id on logistics.seller is computed and not stored, so search by
+        # partner_id.
+        return request.env['logistics.seller'].sudo().search(
+            [('partner_id', '=', request.env.user.partner_id.id)], limit=1
+        )
+
+    def _calculator_method(self, seller):
+        """Which pricing model applies to this visitor.
+
+        Falls back to the slab table whenever the India Post integration is
+        switched off, so the calculator is never dead.
+        """
+        Client = request.env['logistics.indiapost.client'].sudo()
+        if not Client._ip_is_configured():
+            return 'own_network'
+        if seller:
+            return seller._ip_fulfilment_method()
+        return 'indiapost'
+
+    def _calculator_throttled(self):
+        """Crude per-session cap so the public page cannot be used as a proxy.
+
+        The quote cache absorbs repeated identical requests; this covers the
+        case of someone walking a range of weights and pincodes.
+        """
+        now = time.time()
+        stamps = [
+            stamp for stamp in (request.session.get('ip_calc_stamps') or [])
+            if now - stamp < self._CALCULATOR_WINDOW_SECONDS
+        ]
+        throttled = len(stamps) >= self._CALCULATOR_MAX_QUOTES
+        if not throttled:
+            stamps.append(now)
+        request.session['ip_calc_stamps'] = stamps
+        return throttled
+
+    def _calculator_values(self, form=None, quote=None, error=None):
+        seller = self._calculator_seller()
+        method = self._calculator_method(seller)
+        form = dict(form or {})
+        if method == 'indiapost' and seller and not form.get('origin_pincode'):
+            form['origin_pincode'] = (seller.zip or '').strip()
+        return {
+            'page_name': 'calculator',
+            'districts': request.env['logistics.district'].sudo().search([]),
+            'method': method,
+            'is_indiapost': method == 'indiapost',
+            'seller': seller,
+            'form': form,
+            'quote': quote,
+            'error': error,
+            'pickup_slots': [
+                {'code': code, 'label': label}
+                for code, label in request.env['logistics.shipment']
+                ._fields['indiapost_pickup_slot'].selection
+            ],
+        }
+
     @http.route(['/my/calculator'], type='http', auth="public", website=True)
     def portal_my_calculator(self, **kw):
-        districts = request.env['logistics.district'].sudo().search([])
-        origin_id = dest_id = False
-        try:
-            if kw.get('origin_id'):
-                origin_id = int(kw['origin_id'])
-            if kw.get('dest_id'):
-                dest_id = int(kw['dest_id'])
-        except (ValueError, TypeError):
-            origin_id = dest_id = False
+        return request.render(
+            "keralariders_logistics.portal_my_calculator",
+            self._calculator_values(form=kw),
+        )
 
-        origin_name = dest_name = False
-        District = request.env['logistics.district'].sudo()
-        if origin_id:
-            origin = District.browse(origin_id)
-            if origin.exists():
-                origin_name = origin.name
-            else:
-                origin_id = False
-        if dest_id:
-            dest = District.browse(dest_id)
-            if dest.exists():
-                dest_name = dest.name
-            else:
-                dest_id = False
-
-        result = kw.get('result') or None
-        if result is not None:
-            try:
-                result = f"{float(result):.2f}"
-            except (ValueError, TypeError):
-                pass
-
-        weight = kw.get('weight') or ''
-        return request.render("keralariders_logistics.portal_my_calculator", {
-            'page_name': 'calculator',
-            'districts': districts,
-            'result': result,
-            'error': kw.get('error') or None,
-            'origin_id': origin_id,
-            'dest_id': dest_id,
-            'origin_name': origin_name,
-            'dest_name': dest_name,
-            'weight': weight,
-            'weight_display': self._format_calculator_weight(weight) if weight else False,
-            'same_district': bool(origin_id and dest_id and origin_id == dest_id),
-        })
-
-    @http.route(['/my/calculator/calculate'], type='http', auth="public", website=True, methods=['POST'])
+    @http.route(['/my/calculator/calculate'], type='http', auth="public",
+                website=True, methods=['POST'])
     def portal_my_calculator_calculate(self, **post):
-        origin_raw = post.get('origin_district_id')
-        dest_raw = post.get('dest_district_id')
-        weight_raw = post.get('weight')
-        form_kw = {
-            'origin_id': origin_raw or None,
-            'dest_id': dest_raw or None,
-            'weight': weight_raw,
-        }
+        seller = self._calculator_seller()
+        method = self._calculator_method(seller)
+        if method == 'indiapost':
+            quote, error = self._calculator_quote_indiapost(post, seller)
+        else:
+            quote, error = self._calculator_quote_slabs(post, seller)
+        return request.render(
+            "keralariders_logistics.portal_my_calculator",
+            self._calculator_values(form=post, quote=quote, error=error),
+        )
+
+    def _calculator_quote_indiapost(self, post, seller):
+        """Live India Post Speed Post rate for the submitted package."""
+        if self._calculator_throttled():
+            return None, _(
+                'Too many rate lookups from this session. Please wait a few '
+                'minutes and try again.'
+            )
         try:
-            weight = float(weight_raw or 0)
-            origin_district_id = int(origin_raw)
-            dest_district_id = int(dest_raw)
-
-            same_district = (origin_district_id == dest_district_id)
-            package_id = None
-            # user_id on logistics.seller is computed and not stored, so search by partner_id.
-            if not request.env.user._is_public():
-                partner = request.env.user.partner_id
-                seller = request.env['logistics.seller'].sudo().search(
-                    [('partner_id', '=', partner.id)], limit=1
-                )
-                if not seller:
-                    return self._calculator_redirect(
-                        error='Seller account not found for this user.',
-                        **form_kw,
-                    )
-                if seller.delivery_package_id:
-                    package_id = seller.delivery_package_id.id
-
-            charge = request.env['logistics.delivery.charges'].sudo().calculate_delivery_charge(
-                weight, same_district, package_id=package_id
+            weight = float(post.get('weight') or 0)
+            length = float(post.get('length_cm') or 0)
+            breadth = float(post.get('breadth_cm') or 0)
+            height = float(post.get('height_cm') or 0)
+            insurance = float(post.get('insurance_value') or 0)
+        except (TypeError, ValueError):
+            return None, _(
+                'Please enter the weight and all three dimensions as numbers.'
+            )
+        if weight <= 0:
+            return None, _('Enter a weight greater than zero.')
+        if not (length > 0 and breadth > 0 and height > 0):
+            return None, _(
+                'India Post prices on size as well as weight, so length, '
+                'breadth and height are all required.'
             )
 
-            return self._calculator_redirect(result=charge, **form_kw)
-        except (ValueError, TypeError):
-            return self._calculator_redirect(
-                error='Please enter a valid weight and select both districts.',
-                **form_kw,
+        quote = request.env['logistics.indiapost.tariff'].sudo().quote_safe(
+            post.get('origin_pincode') or (seller.zip if seller else ''),
+            post.get('dest_pincode'),
+            weight_kg=weight,
+            length_cm=length,
+            breadth_cm=breadth,
+            height_cm=height,
+            insurance_value=insurance,
+            pod=bool(post.get('vas_pod')),
+            reg=bool(post.get('vas_reg')),
+            ack=bool(post.get('vas_ack')),
+            otp=bool(post.get('vas_otp')),
+        )
+        if not quote.get('ok'):
+            return None, quote.get('error')
+        return quote, None
+
+    def _calculator_quote_slabs(self, post, seller):
+        """The original KeralaXpress weight slab price, by district pair."""
+        try:
+            weight = float(post.get('weight') or 0)
+            origin_district_id = int(post.get('origin_district_id'))
+            dest_district_id = int(post.get('dest_district_id'))
+        except (TypeError, ValueError):
+            return None, _(
+                'Please enter a valid weight and select both districts.'
             )
-        except UserError as e:
-            return self._calculator_redirect(error=str(e), **form_kw)
-        except Exception:
-            return self._calculator_redirect(
-                error='Unable to calculate delivery charge. Please try again.',
-                **form_kw,
+        if weight <= 0:
+            return None, _('Enter a weight greater than zero.')
+
+        District = request.env['logistics.district'].sudo()
+        origin = District.browse(origin_district_id)
+        dest = District.browse(dest_district_id)
+        if not (origin.exists() and dest.exists()):
+            return None, _('Please select both districts.')
+
+        same_district = origin_district_id == dest_district_id
+        package_id = seller.delivery_package_id.id \
+            if seller and seller.delivery_package_id else None
+        try:
+            charge = request.env['logistics.delivery.charges'].sudo() \
+                .calculate_delivery_charge(weight, same_district,
+                                           package_id=package_id)
+        except UserError as error:
+            return None, str(error)
+        except Exception:  # pragma: no cover - defensive for a public route
+            return None, _(
+                'Unable to calculate the delivery charge. Please try again.'
             )
+        return {
+            'ok': True,
+            'method': 'own_network',
+            'origin_name': origin.name,
+            'dest_name': dest.name,
+            'same_district': same_district,
+            'weight_display': self._format_calculator_weight(weight),
+            'total_payable': charge,
+        }, None
 
     @http.route(['/my/deliveries', '/my/deliveries/page/<int:page>'], type='http', auth="user", website=True)
     def portal_my_deliveries(self, page=1, date_begin=None, date_end=None, sortby=None, **kw):

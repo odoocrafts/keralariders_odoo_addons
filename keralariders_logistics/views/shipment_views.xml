@@ -16,6 +16,30 @@
                 <field name="shipping_to_email"/>
                 <field name="delivery_executive_id"/>
                 <field name="pickup_executive_id"/>
+                <field name="indiapost_article_number" string="India Post Article No."/>
+
+                <separator/>
+
+                <!-- India Post -->
+                <filter name="indiapost"
+                        string="India Post"
+                        domain="[('fulfilment_method', '=', 'indiapost')]"/>
+
+                <filter name="own_network"
+                        string="Hub Network"
+                        domain="[('fulfilment_method', '=', 'own_network')]"/>
+
+                <filter name="indiapost_awaiting_booking"
+                        string="Awaiting India Post Booking"
+                        domain="[('fulfilment_method', '=', 'indiapost'), ('indiapost_article_number', '=', False), ('state', 'not in', ['cancelled', 'delivered', 'returned'])]"/>
+
+                <filter name="indiapost_booking_error"
+                        string="India Post Booking Rejected"
+                        domain="[('indiapost_booking_state', '=', 'error')]"/>
+
+                <filter name="indiapost_no_label"
+                        string="India Post Label Missing"
+                        domain="[('indiapost_article_number', '!=', False), ('indiapost_label_pdf', '=', False)]"/>
 
                 <separator/>
 
@@ -163,6 +187,10 @@
                             name="group_to_district"
                             context="{'group_by':'shipping_to_district_id'}"/>
 
+                    <filter string="Fulfilment Method"
+                            name="group_fulfilment_method"
+                            context="{'group_by':'fulfilment_method'}"/>
+
                 </group>
 
             </search>
@@ -186,6 +214,13 @@
                 <field name="shipping_from_district_id" string="Shipping From" width="100"/>
                 <field name="shipping_to_district_id" string="Shipping To" width="100"/>
                 <field name="order_payment_type" string="Payment Type" width="100"/>
+                <field name="fulfilment_method" string="Fulfilment" width="100" optional="show"/>
+                <field name="indiapost_article_number" string="India Post AWB" width="130" optional="show"/>
+                <field name="indiapost_booking_state" string="IP Booking" width="100" optional="hide"
+                       widget="badge"
+                       decoration-success="indiapost_booking_state == 'booked'"
+                       decoration-danger="indiapost_booking_state == 'error'"
+                       decoration-warning="indiapost_booking_state == 'submitted'"/>
                 <field name="state" widget="badge"
                     decoration-info="state in ('order_added', 'return_picked')"
                     decoration-warning="state in ('pickup_requested','return_requested','out_for_delivery')"
@@ -215,6 +250,32 @@
             <form string="Shipment">
                 <header>
                     <button name="%(keralariders_logistics.action_report_shipment)d" string="Print AWB" type="action" class="btn-primary"/>
+                    <!-- India Post actions. All idempotent: booking skips
+                         anything that already has an article number. -->
+                    <button name="action_indiapost_book" type="object"
+                            string="Book with India Post" class="btn-primary"
+                            invisible="not is_indiapost or indiapost_article_number or state == 'cancelled'"
+                            groups="keralariders_logistics.group_logistics_admin"/>
+                    <button name="action_indiapost_quote" type="object"
+                            string="Refresh India Post Rate" class="btn-secondary"
+                            invisible="not is_indiapost or indiapost_article_number"
+                            groups="keralariders_logistics.group_logistics_admin"/>
+                    <button name="action_indiapost_fetch_label" type="object"
+                            string="Fetch India Post Label" class="btn-secondary"
+                            invisible="not indiapost_article_number or indiapost_label_pdf"
+                            groups="keralariders_logistics.group_logistics_admin,keralariders_logistics.group_logistics_hub_manager"/>
+                    <button name="action_indiapost_open_label" type="object"
+                            string="Print India Post Label" class="btn-primary"
+                            invisible="not indiapost_label_pdf"/>
+                    <button name="action_indiapost_sync_tracking" type="object"
+                            string="Sync India Post Tracking" class="btn-secondary"
+                            invisible="not indiapost_article_number"
+                            groups="keralariders_logistics.group_logistics_admin,keralariders_logistics.group_logistics_hub_manager"/>
+                    <button name="action_indiapost_switch_to_own_network" type="object"
+                            string="Divert to Hub Network" class="btn-warning"
+                            invisible="not is_indiapost or indiapost_article_number or state == 'cancelled'"
+                            groups="keralariders_logistics.group_logistics_admin"
+                            confirm="Deliver this shipment through the KeralaXpress hub network instead of India Post? The reserved barcode will be voided and charges revert to the weight slab table."/>
                     <button name="action_request_return" type="object" string="Request Return (Free)"
                             invisible="state != 'delivered' and not (state == 'delivery_failed' and custodian_type == 'hub' and delivery_fail_count &gt;= 1)"
                             groups="keralariders_logistics.group_logistics_admin"
@@ -301,7 +362,30 @@
                         </group>
                         <group string="Delivery Charges">
                             <field name="currency_id" invisible="1"/>
+                            <field name="is_indiapost" invisible="1"/>
                             <field name="total_weight"/>
+                            <label for="length_cm" string="Dimensions (cm)"/>
+                            <div class="o_row">
+                                <field name="length_cm" class="oe_inline"
+                                       required="is_indiapost"/>
+                                <span class="mx-1">x</span>
+                                <field name="breadth_cm" class="oe_inline"
+                                       required="is_indiapost"/>
+                                <span class="mx-1">x</span>
+                                <field name="height_cm" class="oe_inline"
+                                       required="is_indiapost"/>
+                            </div>
+                            <field name="is_cylindrical"/>
+                            <field name="volumetric_weight_g" invisible="not is_indiapost"/>
+                            <field name="chargeable_weight_g" invisible="not is_indiapost"/>
+                            <div class="alert alert-danger mb-1" colspan="2" role="alert"
+                                 invisible="not indiapost_package_error">
+                                <field name="indiapost_package_error" nolabel="1" readonly="1"/>
+                            </div>
+                            <div class="alert alert-warning mb-1" colspan="2" role="alert"
+                                 invisible="indiapost_package_error or not indiapost_package_warning">
+                                <field name="indiapost_package_warning" nolabel="1" readonly="1"/>
+                            </div>
                             <field name="delivery_charges_subtotal" force_save="1"/>
                             <field name="tax_percentage" widget="percentage" string="Tax (GST) %" invisible="1"/>
                             
@@ -404,6 +488,81 @@
                         </group>
                     </group>
                     <notebook>
+                        <page string="India Post" name="indiapost"
+                              invisible="not is_indiapost and not indiapost_article_number">
+                            <group>
+                                <group string="Booking">
+                                    <field name="fulfilment_method" readonly="1"/>
+                                    <field name="indiapost_booking_state"/>
+                                    <field name="indiapost_article_number"/>
+                                    <field name="indiapost_product_code"/>
+                                    <field name="indiapost_shape"/>
+                                    <field name="indiapost_barcode_id"/>
+                                    <field name="indiapost_booked_on"/>
+                                    <field name="indiapost_batch_id"/>
+                                    <field name="indiapost_correlation_id"/>
+                                    <field name="indiapost_mail_booking_dom_id" optional="hide"/>
+                                    <field name="indiapost_offset_number"/>
+                                    <field name="indiapost_block_number"/>
+                                </group>
+                                <group string="Pickup">
+                                    <field name="indiapost_pickup_slot"/>
+                                    <field name="indiapost_pickup_date"/>
+                                    <field name="indiapost_pickup_office_id"/>
+                                    <field name="indiapost_pickup_office_name"/>
+                                    <field name="indiapost_dest_office_id"/>
+                                    <field name="indiapost_dest_office_name"/>
+                                </group>
+                            </group>
+                            <div class="alert alert-danger" role="alert"
+                                 invisible="not indiapost_booking_error">
+                                <strong>Last booking rejection</strong>
+                                <field name="indiapost_booking_error" nolabel="1" readonly="1"/>
+                            </div>
+                            <group>
+                                <group string="Rate Quoted by India Post">
+                                    <field name="indiapost_base_tariff"/>
+                                    <field name="indiapost_vas_charges"/>
+                                    <field name="indiapost_tax_amount"/>
+                                    <field name="indiapost_total_tariff"/>
+                                    <field name="indiapost_calculated_tariff"
+                                           help="Amount India Post returned at booking. A mismatch with the quoted total means the rate moved between quote and booking."/>
+                                    <field name="indiapost_quoted_weight_g"/>
+                                    <field name="indiapost_quoted_chargeable_g"/>
+                                    <field name="indiapost_distance_display"/>
+                                    <field name="indiapost_tariff_quoted_on"/>
+                                    <field name="indiapost_needs_quote" invisible="1"/>
+                                </group>
+                                <group string="Value Added Services">
+                                    <field name="indiapost_vas_pod"/>
+                                    <field name="indiapost_vas_reg"/>
+                                    <field name="indiapost_vas_ack"/>
+                                    <field name="indiapost_vas_otp"/>
+                                    <field name="indiapost_insurance_value"/>
+                                    <div class="text-muted" colspan="2"
+                                         invisible="not indiapost_insurance_value">
+                                        India Post insurance is steeply
+                                        non-linear: roughly 6% of declared
+                                        value, so it can exceed the postage
+                                        several times over.
+                                    </div>
+                                </group>
+                            </group>
+                            <group>
+                                <group string="Label">
+                                    <field name="indiapost_label_size"/>
+                                    <field name="indiapost_label_filename" invisible="1"/>
+                                    <field name="indiapost_label_pdf"
+                                           filename="indiapost_label_filename"/>
+                                    <field name="indiapost_label_fetched_on"/>
+                                </group>
+                                <group string="Tracking">
+                                    <field name="indiapost_del_status"/>
+                                    <field name="indiapost_last_tracking_sync"/>
+                                    <field name="indiapost_tracking_ref" optional="hide"/>
+                                </group>
+                            </group>
+                        </page>
                         <page string="Estimated Route">
                             <button name="action_recompute_estimated_route"
                                     type="object"

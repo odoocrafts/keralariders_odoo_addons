@@ -1,4 +1,14 @@
 from odoo import models, fields, api, _
+from odoo.exceptions import AccessError
+
+FULFILMENT_METHODS = [
+    ('indiapost', 'India Post (Speed Post)'),
+    ('own_network', 'KeralaXpress Hub Network'),
+]
+
+# Only a Logistics Administrator may decide how a seller's parcels travel.
+FULFILMENT_ADMIN_GROUP = 'keralariders_logistics.group_logistics_admin'
+
 
 class Seller(models.Model):
     _name = 'logistics.seller'
@@ -44,6 +54,10 @@ class Seller(models.Model):
 
     @api.model_create_multi
     def create(self, vals_list):
+        # Seller self-signup runs as sudo, so the same guard has to cover
+        # create; otherwise a crafted signup form could pick its own carrier.
+        for vals in vals_list:
+            self._ip_check_fulfilment_method_write(vals)
         recs = super(Seller, self).create(vals_list)
         for rec in recs:
             # Create a new partner record for the seller if not already provided
@@ -161,6 +175,64 @@ class Seller(models.Model):
     )
 
     delivery_package_id = fields.Many2one('logistics.delivery.package', string="Delivery Package", help="Special pricing package for this seller. Leave empty to use the default rates.")
+
+    # -------------------------------------------------------------------------
+    # Fulfilment method
+    #
+    # KeralaXpress ships through India Post today and plans to move onto its own
+    # hub network in about a year, so both paths stay live and this switch picks
+    # between them per seller. It is an internal commercial decision: sellers
+    # must not be able to change it, which is enforced three ways —
+    #   * field-level ``groups`` removes it from the ORM for everyone else, so
+    #     even a hand-crafted RPC write cannot reach it;
+    #   * :meth:`write` re-checks the group for sudo callers;
+    #   * the portal never renders it as an input.
+    # -------------------------------------------------------------------------
+    fulfilment_method = fields.Selection(
+        FULFILMENT_METHODS,
+        string='Fulfilment Method',
+        default='indiapost',
+        required=True,
+        tracking=True,
+        groups=FULFILMENT_ADMIN_GROUP,
+        help="Carrier used for this seller's shipments. India Post books "
+             "through the Department of Posts bulk customer API; the hub "
+             "network uses KeralaXpress delivery executives and hubs. "
+             "Administrators only.",
+    )
+
+    def _ip_can_set_fulfilment_method(self):
+        """Whether the current user may set the fulfilment method.
+
+        Checks the *real* user rather than the superuser flag, so a
+        ``sudo()`` call made while serving a portal request is still refused.
+        Trusted server code opts in through the context key, which is the same
+        convention ``logistics.shipment`` already uses to protect ``state``.
+        """
+        if self.env.context.get('allow_fulfilment_method_write'):
+            return True
+        return self.env.user.has_group(FULFILMENT_ADMIN_GROUP)
+
+    def _ip_check_fulfilment_method_write(self, vals):
+        if 'fulfilment_method' in vals and not self._ip_can_set_fulfilment_method():
+            raise AccessError(_(
+                "Only a Logistics Administrator can change a seller's "
+                "fulfilment method. Please contact KeralaXpress support."
+            ))
+
+    def write(self, vals):
+        # Field-level groups already hide the field from non-admins, but
+        # sudo() bypasses them, so the value is guarded here as well.
+        self._ip_check_fulfilment_method_write(vals)
+        return super().write(vals)
+
+    def _ip_fulfilment_method(self):
+        """The seller's method, readable regardless of the caller's group."""
+        self.ensure_one()
+        return self.sudo().fulfilment_method or 'indiapost'
+
+    def _ip_uses_indiapost(self):
+        return self._ip_fulfilment_method() == 'indiapost'
 
     currency_id = fields.Many2one('res.currency', string='Currency', default=lambda self: self.env.company.currency_id.id)
     wallet_ids = fields.One2many('logistics.wallet', 'seller_id', string='Wallets')

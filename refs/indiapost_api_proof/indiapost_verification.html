@@ -1,0 +1,450 @@
+<!doctype html><html><head><meta charset='utf-8'>
+<title>India Post Sandbox API Access Verification</title>
+<style>
+* { box-sizing: border-box; }
+body { font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+       margin: 0; padding: 32px; background: #f4f6f8; color: #16212b; }
+.wrap { max-width: 1020px; margin: 0 auto; }
+header { background: #fff; border: 1px solid #d9e0e6; border-radius: 10px;
+         padding: 24px 28px; margin-bottom: 20px; }
+h1 { margin: 0 0 4px; font-size: 22px; }
+.sub { color: #5b6b7a; font-size: 13px; margin-bottom: 18px; }
+.meta { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px 28px; font-size: 13px; }
+.meta div { display: flex; gap: 8px; }
+.meta .k { color: #5b6b7a; min-width: 152px; }
+.meta .v { font-weight: 600; font-family: ui-monospace, Menlo, monospace; }
+h2 { font-size: 15px; margin: 26px 0 10px; text-transform: uppercase;
+     letter-spacing: .05em; color: #40515f; }
+.card { background: #fff; border: 1px solid #d9e0e6; border-radius: 10px;
+        padding: 0; margin-bottom: 14px; overflow: hidden; }
+.card .head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+              padding: 14px 18px; border-bottom: 1px solid #e6ecf1; }
+.card .head .t { font-weight: 600; font-size: 14px; }
+.badge { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 20px;
+         letter-spacing: .04em; }
+.ok { background: #dff5e3; color: #14622a; }
+.bad { background: #fde8e8; color: #8c1c1c; }
+.warn { background: #fff3d6; color: #7a5200; }
+.info { background: #e5eefb; color: #1a4a86; }
+.mono { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11.5px; }
+.url { padding: 10px 18px; background: #f8fafb; color: #33465a;
+       border-bottom: 1px solid #e6ecf1; word-break: break-all; }
+pre { margin: 0; padding: 14px 18px; background: #0f1720; color: #d7e2ec;
+      font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11.5px;
+      line-height: 1.5; overflow-x: auto; white-space: pre-wrap;
+      word-break: break-word; }
+.lbl { padding: 8px 18px 0; font-size: 11px; text-transform: uppercase;
+       letter-spacing: .06em; color: #7b8b99; }
+.note { padding: 12px 18px; font-size: 12.5px; color: #40515f;
+        background: #fbfcfd; border-top: 1px solid #e6ecf1; line-height: 1.55; }
+table { width: 100%; border-collapse: collapse; background: #fff;
+        border: 1px solid #d9e0e6; border-radius: 10px; overflow: hidden;
+        font-size: 13px; }
+th, td { text-align: left; padding: 11px 16px; border-bottom: 1px solid #e6ecf1; }
+th { background: #f8fafb; font-size: 11px; text-transform: uppercase;
+     letter-spacing: .06em; color: #5b6b7a; }
+tr:last-child td { border-bottom: none; }
+footer { margin-top: 22px; font-size: 11.5px; color: #7b8b99; line-height: 1.6; }
+</style></head><body><div class='wrap'>
+<header><h1>India Post Sandbox API Access Verification</h1>
+<div class='sub'>Evidence of successful integration with the India Post External Customer UAT environment</div>
+<div class='meta'>
+<div><span class='k'>Organisation</span><span class='v'>KeralaXpress Delivery</span></div>
+<div><span class='k'>Bulk Customer ID</span><span class='v'>9999537187</span></div>
+<div><span class='k'>Environment</span><span class='v'>UAT / Sandbox</span></div>
+<div><span class='k'>API Base URL</span><span class='v'>https://test.cept.gov.in/beextcustomer</span></div>
+<div><span class='k'>Calling Server IP</span><span class='v'>209.38.122.70</span></div>
+<div><span class='k'>Report Generated</span><span class='v'>2026-09-06 11:53:41 UTC</span></div>
+<div><span class='k'>Allotted AWB Series</span><span class='v'>ET21433001XIN to ET21434000XIN</span></div>
+<div><span class='k'>Product In Scope</span><span class='v'>Speed Post (SP)</span></div>
+</div></header>
+<h2>Sandbox testing checklist (approach document, section 5)</h2>
+<table><tr><th>#</th><th>Checklist item</th><th>Status</th><th>Result</th></tr>
+<tr><td class='mono'>1</td><td>Token generation working</td><td><span class='badge ok'>VERIFIED</span></td><td>Access token issued successfully.</td></tr>
+<tr><td class='mono'>2</td><td>Tariff calculation validated</td><td><span class='badge ok'>VERIFIED</span></td><td>Speed Post tariff validated for document and parcel tiers, including value added services.</td></tr>
+<tr><td class='mono'>3</td><td>Booking API tested with sample payload</td><td><span class='badge bad'>BLOCKED</span></td><td>Endpoint reachable and payload validated, but no Speed Post contract is attached to our customer id.</td></tr>
+<tr><td class='mono'>4</td><td>Event download verified</td><td><span class='badge warn'>PENDING</span></td><td>The Event Download API (/event/download) is listed in section 4.2 of the approach document but no request or response specification has been provided, so it could not be tested.</td></tr>
+<tr><td class='mono'>5</td><td>Tracking API validated</td><td><span class='badge ok'>VERIFIED</span></td><td>Bulk tracking returned full event history.</td></tr>
+</table>
+<h2>Captured request and response evidence</h2>
+<div class='card'><div class='head'>
+<span class='badge ok'>HTTP 200</span>
+<span class='t'>Access Token API</span>
+<span class='badge info'>CHECKLIST 1</span>
+<span class='mono' style='margin-left:auto;color:#7b8b99'>2026-09-06 11:53:40 UTC</span>
+</div>
+<div class='url mono'><b>POST</b> https://test.cept.gov.in/beextcustomer/v1/access/login</div>
+<div class='lbl'>Request body</div>
+<pre>{
+  &quot;username&quot;: &quot;9999537187&quot;,
+  &quot;password&quot;: &quot;********&quot;
+}</pre>
+<div class='lbl'>Response &middot; application/json; charset=utf-8</div>
+<pre>{
+  &quot;success&quot;: true,
+  &quot;data&quot;: {
+    &quot;access_token&quot;: &quot;eyJhbGciOiJSUzI1NiIsInR5cCIgOiAi...&lt;truncated, 1505 chars&gt;&quot;,
+    &quot;expires_in&quot;: 900,
+    &quot;refresh_expires_in&quot;: 1800,
+    &quot;refresh_token&quot;: &quot;eyJhbGciOiJIUzUxMiIsInR5cCIgOiAi...&lt;truncated, 748 chars&gt;&quot;,
+    &quot;token_type&quot;: &quot;Bearer&quot;,
+    &quot;id_token&quot;: &quot;eyJhbGciOiJSUzI1NiIsInR5cCIgOiAi...&lt;truncated, 1211 chars&gt;&quot;,
+    &quot;not-before-policy&quot;: 0,
+    &quot;session_state&quot;: &quot;a01f8eee-250c-4efd-b6e7-3ed2386bdbd8&quot;,
+    &quot;scope&quot;: &quot;openid profile email&quot;
+  }
+}</pre>
+<div class='note'>Bearer token issued, valid 900 seconds as documented. Token values truncated in this report.</div>
+</div>
+<div class='card'><div class='head'>
+<span class='badge ok'>HTTP 200</span>
+<span class='t'>Pin Code Search API (origin Kochi 682001)</span>
+<span class='mono' style='margin-left:auto;color:#7b8b99'>2026-09-06 11:53:40 UTC</span>
+</div>
+<div class='url mono'><b>GET</b> https://test.cept.gov.in/beextcustomer/v1/pincode-search?pincode=682001&amp;office-type=post</div>
+<div class='lbl'>Response &middot; application/json; charset=utf-8</div>
+<pre>{
+  &quot;status_code&quot;: 200,
+  &quot;success&quot;: true,
+  &quot;message&quot;: &quot;list retrieved successfully&quot;,
+  &quot;skip&quot;: 0,
+  &quot;limit&quot;: 50,
+  &quot;returned_records_count&quot;: 1,
+  &quot;data&quot;: [
+    {
+      &quot;pincode&quot;: 682001,
+      &quot;office_name&quot;: &quot;Kochi HO&quot;,
+      &quot;office_id&quot;: &quot;22360020&quot;,
+      &quot;office_type_code&quot;: &quot;HPO&quot;,
+      &quot;state_name&quot;: &quot;Kerala&quot;,
+      &quot;delivery_office_flag&quot;: true,
+      &quot;city_name&quot;: &quot;ERNAKULAM&quot;,
+      &quot;taluk_name&quot;: &quot;Ernakulam&quot;,
+      &quot;village_name&quot;: &quot;Fort Kochi&quot;,
+      &quot;is_rolled_out&quot;: true,
+      &quot;spds_id&quot;: &quot;&quot;,
+      &quot;idc_id&quot;: 22360020,
+      &quot;idc_name&quot;: &quot;Kochi HO&quot;
+    }
+  ]
+}</pre>
+<div class='note'>Resolved bookable office id 22360020 (Kochi HO) using the documented rule delivery_office_flag=true and office_type_code not in (BPO).</div>
+</div>
+<div class='card'><div class='head'>
+<span class='badge ok'>HTTP 200</span>
+<span class='t'>Speed Post Tariff API, 250g document</span>
+<span class='badge info'>CHECKLIST 2</span>
+<span class='mono' style='margin-left:auto;color:#7b8b99'>2026-09-06 11:53:40 UTC</span>
+</div>
+<div class='url mono'><b>GET</b> https://test.cept.gov.in/beextcustomer/v1/speed-post/tariffs?product-code=SP&amp;weight=250&amp;source-pincode=682001&amp;destination-pincode=110001&amp;length=30&amp;width=21&amp;height=2</div>
+<div class='lbl'>Response &middot; application/json; charset=utf-8</div>
+<pre>{
+  &quot;success&quot;: true,
+  &quot;product_code&quot;: &quot;SP_INLAND_DOC&quot;,
+  &quot;article_type&quot;: &quot;SP&quot;,
+  &quot;weight&quot;: 250,
+  &quot;chargeable_weight&quot;: 250,
+  &quot;source_pincode&quot;: 682001,
+  &quot;destination_pincode&quot;: 110001,
+  &quot;is_local&quot;: false,
+  &quot;distance_km&quot;: 2078,
+  &quot;base_tariff&quot;: 77,
+  &quot;vas_charges&quot;: 0,
+  &quot;vas_details&quot;: {
+    &quot;INSVAL&quot;: 0,
+    &quot;PODVAL&quot;: 0,
+    &quot;REGVAL&quot;: 0,
+    &quot;OTPVAL&quot;: 0,
+    &quot;ACKVAL&quot;: 0,
+    &quot;CODVAL&quot;: 0
+  },
+  &quot;cgst&quot;: 7,
+  &quot;sgst&quot;: 7,
+  &quot;total_tax&quot;: 14,
+  &quot;final_amount&quot;: 91,
+  &quot;currency&quot;: &quot;INR&quot;,
+  &quot;is_document&quot;: true,
+  &quot;delivery_type&quot;: &quot;Inter-city&quot;,
+  &quot;timestamp&quot;: &quot;2026-09-06T11:53:40.573Z&quot;
+}</pre>
+<div class='note'>Resolved to SP_INLAND_DOC for weight below 500g.</div>
+</div>
+<div class='card'><div class='head'>
+<span class='badge ok'>HTTP 200</span>
+<span class='t'>Speed Post Tariff API, 1500g parcel with INS and POD</span>
+<span class='badge info'>CHECKLIST 2</span>
+<span class='mono' style='margin-left:auto;color:#7b8b99'>2026-09-06 11:53:40 UTC</span>
+</div>
+<div class='url mono'><b>GET</b> https://test.cept.gov.in/beextcustomer/v1/speed-post/tariffs?product-code=SP&amp;weight=1500&amp;source-pincode=682001&amp;destination-pincode=110001&amp;length=30&amp;width=20&amp;height=15&amp;INS=1000&amp;POD=YES</div>
+<div class='lbl'>Response &middot; application/json; charset=utf-8</div>
+<pre>{
+  &quot;success&quot;: true,
+  &quot;product_code&quot;: &quot;SP_INLAND_PARCEL&quot;,
+  &quot;article_type&quot;: &quot;SP&quot;,
+  &quot;weight&quot;: 1500,
+  &quot;chargeable_weight&quot;: 1800,
+  &quot;source_pincode&quot;: 682001,
+  &quot;destination_pincode&quot;: 110001,
+  &quot;is_local&quot;: false,
+  &quot;distance_km&quot;: &quot;OS&quot;,
+  &quot;base_tariff&quot;: 190,
+  &quot;vas_charges&quot;: 68,
+  &quot;vas_details&quot;: {
+    &quot;INSVAL&quot;: 58,
+    &quot;PODVAL&quot;: 10,
+    &quot;REGVAL&quot;: 0,
+    &quot;OTPVAL&quot;: 0,
+    &quot;ACKVAL&quot;: 0,
+    &quot;CODVAL&quot;: 0
+  },
+  &quot;cgst&quot;: 23,
+  &quot;sgst&quot;: 23,
+  &quot;total_tax&quot;: 46,
+  &quot;final_amount&quot;: 304,
+  &quot;currency&quot;: &quot;INR&quot;,
+  &quot;is_document&quot;: false,
+  &quot;delivery_type&quot;: &quot;Inter-city&quot;,
+  &quot;timestamp&quot;: &quot;2026-09-06T11:53:40.670Z&quot;
+}</pre>
+<div class='note'>Resolved to SP_INLAND_PARCEL for weight above 500g, with volumetric chargeable weight and value added service charges applied.</div>
+</div>
+<div class='card'><div class='head'>
+<span class='badge ok'>HTTP 200</span>
+<span class='t'>Bulk Booking API (validation reached)</span>
+<span class='badge info'>CHECKLIST 3</span>
+<span class='mono' style='margin-left:auto;color:#7b8b99'>2026-09-06 11:53:40 UTC</span>
+</div>
+<div class='url mono'><b>POST</b> https://test.cept.gov.in/beextcustomer/process-articles/9999537187</div>
+<div class='lbl'>Request body</div>
+<pre>{
+  &quot;articles&quot;: [
+    {
+      &quot;bulk_customer_id&quot;: &quot;9999537187&quot;,
+      &quot;contract_id&quot;: &quot;41585456&quot;,
+      &quot;pickup_or_dropoff&quot;: &quot;PICKUP&quot;,
+      &quot;pickup_dropoff_office_id&quot;: 22360020,
+      &quot;article_type&quot;: &quot;SP&quot;,
+      &quot;physical_weight&quot;: 250,
+      &quot;shape_of_article&quot;: &quot;DOC&quot;,
+      &quot;length&quot;: 30,
+      &quot;breadth_diameter&quot;: 21,
+      &quot;height&quot;: 2,
+      &quot;sender_name&quot;: &quot;KeralaXpress Delivery&quot;,
+      &quot;sender_company&quot;: &quot;KeralaXpress&quot;,
+      &quot;sender_add_line_1&quot;: &quot;Kochi Head Office&quot;,
+      &quot;sender_city&quot;: &quot;ERNAKULAM&quot;,
+      &quot;sender_state&quot;: &quot;KERALA&quot;,
+      &quot;sender_pincode&quot;: &quot;682001&quot;,
+      &quot;sender_mobile_no&quot;: &quot;9400662693&quot;,
+      &quot;receiver_name&quot;: &quot;Test Receiver&quot;,
+      &quot;receiver_company&quot;: &quot;Test Company&quot;,
+      &quot;receiver_add_line_1&quot;: &quot;New Delhi GPO&quot;,
+      &quot;receiver_city&quot;: &quot;CENTRAL DELHI&quot;,
+      &quot;receiver_state&quot;: &quot;DELHI&quot;,
+      &quot;receiver_pincode&quot;: &quot;110001&quot;,
+      &quot;receiver_mobile_no&quot;: &quot;9876543210&quot;,
+      &quot;alt_address_flag&quot;: &quot;FALSE&quot;,
+      &quot;pickup_address_flag&quot;: &quot;TRUE&quot;,
+      &quot;pickup_addressee_name&quot;: &quot;Test Seller&quot;,
+      &quot;pickup_company_name&quot;: &quot;Test Seller Shop&quot;,
+      &quot;pickup_address_line1&quot;: &quot;Seller Street&quot;,
+      &quot;pickup_city&quot;: &quot;ERNAKULAM&quot;,
+      &quot;pickup_state&quot;: &quot;KERALA&quot;,
+      &quot;pickup_pincode&quot;: &quot;682002&quot;,
+      &quot;pickup_mobile_no&quot;: &quot;9400662694&quot;,
+      &quot;pickup_schedule_slot&quot;: &quot;10:00-13:00&quot;,
+      &quot;pickup_schedule_date&quot;: &quot;09/08/2026 10:00:00 AM&quot;,
+      &quot;ack&quot;: &quot;FALSE&quot;,
+      &quot;reg&quot;: &quot;FALSE&quot;,
+      &quot;otp</pre>
+<div class='lbl'>Response &middot; application/json; charset=utf-8</div>
+<pre>{
+  &quot;success&quot;: true,
+  &quot;batch_id&quot;: &quot;batch_9999537187_1788695620753_4023ff6c&quot;,
+  &quot;custom_id&quot;: &quot;9999537187&quot;,
+  &quot;correlation_id&quot;: &quot;9999537187_540583106999995_1788695620753_618&quot;,
+  &quot;timestamp&quot;: &quot;2026-09-06T17:23:40.753+05:30&quot;,
+  &quot;input_method&quot;: &quot;json_body&quot;,
+  &quot;total&quot;: 1,
+  &quot;processed&quot;: 1,
+  &quot;valid_articles&quot;: [],
+  &quot;error_articles&quot;: [
+    {
+      &quot;barcode_no&quot;: &quot;BARCODE_1&quot;,
+      &quot;index&quot;: 0,
+      &quot;timestamp&quot;: &quot;2026-09-06T17:23:40.777+05:30&quot;,
+      &quot;offset_number&quot;: &quot;163243&quot;,
+      &quot;block_number&quot;: 30,
+      &quot;errors&quot;: [
+        &quot;Contract validation failed: Contract 41585456 has no service_type defined&quot;
+      ]
+    }
+  ],
+  &quot;summary&quot;: {
+    &quot;success_count&quot;: 0,
+    &quot;error_count&quot;: 1,
+    &quot;total_tariff_amount&quot;: 0
+  },
+  &quot;month_end_adjustments&quot;: []
+}</pre>
+<div class='note'>Endpoint authenticated and the payload passed schema validation. Booking cannot complete because customer id 9999537187 has no Speed Post contract attached: the API reports &quot;Contract 41585456 has no service_type defined&quot;. Request to India Post: please attach a Speed Post contract to this customer id. barcode_no was omitted deliberately so that no AWB from the allotted range was consumed.</div>
+</div>
+<div class='card'><div class='head'>
+<span class='badge ok'>HTTP 200</span>
+<span class='t'>Bulk Tracking API</span>
+<span class='badge info'>CHECKLIST 5</span>
+<span class='mono' style='margin-left:auto;color:#7b8b99'>2026-09-06 11:53:40 UTC</span>
+</div>
+<div class='url mono'><b>POST</b> https://test.cept.gov.in/beextcustomer/v1/tracking/bulk</div>
+<div class='lbl'>Request body</div>
+<pre>{
+  &quot;bulk&quot;: [
+    &quot;EB126023474IN&quot;,
+    &quot;EY011867595IN&quot;
+  ]
+}</pre>
+<div class='lbl'>Response &middot; application/json; charset=utf-8</div>
+<pre>{
+  &quot;status_code&quot;: 200,
+  &quot;success&quot;: true,
+  &quot;message&quot;: &quot;data retrieved successfully&quot;,
+  &quot;data&quot;: [
+    {
+      &quot;booking_details&quot;: {
+        &quot;article_number&quot;: &quot;EB126023474IN&quot;,
+        &quot;booked_at&quot;: &quot;&quot;,
+        &quot;booked_on&quot;: null,
+        &quot;origin_pincode&quot;: &quot;&quot;,
+        &quot;destination_pincode&quot;: &quot;&quot;,
+        &quot;tariff&quot;: 0,
+        &quot;article_type&quot;: &quot;&quot;,
+        &quot;delivery_location&quot;: &quot;&quot;,
+        &quot;delivery_confirmed_on&quot;: null
+      },
+      &quot;tracking_details&quot;: [],
+      &quot;del_status&quot;: {
+        &quot;del_status&quot;: &quot;not delivered&quot;
+      }
+    },
+    {
+      &quot;booking_details&quot;: {
+        &quot;article_number&quot;: &quot;EY011867595IN&quot;,
+        &quot;booked_at&quot;: &quot;Tambaram HO&quot;,
+        &quot;booked_on&quot;: &quot;2026-02-19T17:16:05.817Z&quot;,
+        &quot;origin_pincode&quot;: &quot;&quot;,
+        &quot;destination_pincode&quot;: &quot;600052&quot;,
+        &quot;tariff&quot;: 0,
+        &quot;article_type&quot;: &quot;SP_INLAND_DOC&quot;,
+        &quot;delivery_location&quot;: &quot;Redhills SO&quot;,
+        &quot;delivery_confirmed_on&quot;: null
+      },
+      &quot;tracking_details&quot;: [
+        {
+          &quot;date&quot;: &quot;2026-02-19T00:00:00Z&quot;,
+          &quot;time&quot;: &quot;17:44:15&quot;,
+          &quot;office&quot;: &quot;Tambaram HO&quot;,
+          &quot;officeid&quot;: 29360016,
+          &quot;event&quot;: &quot;Item Bagged&quot;
+        },
+        {
+          &quot;date&quot;: &quot;2026-02-19T00:00:00Z&quot;,
+          &quot;time&quot;: &quot;17:46:05&quot;,
+          &quot;office&quot;: &quot;Tambaram HO&quot;,
+          &quot;officeid&quot;: 29360016,
+          &quot;event&quot;: &quot;Item Dispatched&quot;
+        },
+        {
+          &quot;date&quot;: &quot;2026-02-19T00:00:00Z&quot;,
+          &quot;time&quot;: &quot;17:49:03&quot;,
+          &quot;office&quot;: &quot;Chennai NSH&quot;,
+          &quot;officeid&quot;: 29460002,
+          &quot;event&quot;: &quot;Item Received&quot;
+        },
+        {
+          &quot;date&quot;: &quot;2026-02-19T00:00:00Z&quot;,
+          &quot;time&quot;: &quot;17:50:34&quot;,
+          &quot;office&quot;: &quot;Chennai NSH&quot;,
+          &quot;officeid&quot;: 29460002,
+          &quot;event&quot;: &quot;Item Bagged&quot;
+        },
+        {
+          &quot;date&quot;: &quot;2026-02-19T00:00:00Z&quot;,
+          &quot;time&quot;: &quot;17:51:53&quot;,
+          &quot;office&quot;: &quot;Chennai NSH&quot;,
+          &quot;officeid&quot;: 29460002,
+          &quot;event&quot;: &quot;Item Dispatched&quot;
+        },
+        {
+          &quot;date&quot;: &quot;2026-02-19T00:00:00Z&quot;,
+          &quot;time&quot;: &quot;18:20:45&quot;,
+          &quot;office&quot;: &quot;Redhills SO&quot;,
+          &quot;officeid&quot;: 29660408,
+          &quot;event&quot;: &quot;Item Received&quot;
+        }
+      ],
+      &quot;del_status&quot;: {
+        &quot;del_status&quot;: &quot;not delivered&quot;
+      }
+    }
+  ]
+}</pre>
+<div class='note'>Tracking retrieved successfully with full event history.</div>
+</div>
+<div class='card'><div class='head'>
+<span class='badge ok'>HTTP 201</span>
+<span class='t'>Address Label Generation API</span>
+<span class='mono' style='margin-left:auto;color:#7b8b99'>2026-09-06 11:53:40 UTC</span>
+</div>
+<div class='url mono'><b>POST</b> https://test.cept.gov.in/beextcustomer/v1/label/create/domestic</div>
+<div class='lbl'>Request body</div>
+<pre>[
+  {
+    &quot;customer_id&quot;: 9999537187,
+    &quot;delivery_office_name&quot;: &quot;New Delhi GPO&quot;,
+    &quot;destination_pin&quot;: &quot;110001&quot;,
+    &quot;booking_datetime&quot;: &quot;06-09-2026 11:53:40&quot;,
+    &quot;channel_type&quot;: &quot;E&quot;,
+    &quot;user_type&quot;: &quot;R&quot;,
+    &quot;user_id&quot;: 9999537187,
+    &quot;barcode_no&quot;: &quot;ET214330016IN&quot;,
+    &quot;service_type&quot;: &quot;SP&quot;,
+    &quot;booking_type&quot;: &quot;COMMERCIAL&quot;,
+    &quot;article_length&quot;: &quot;30&quot;,
+    &quot;article_breadth&quot;: &quot;21&quot;,
+    &quot;article_height&quot;: &quot;2&quot;,
+    &quot;charged_weight&quot;: 250,
+    &quot;physical_weight&quot;: 250,
+    &quot;volumetric_weight&quot;: 252,
+    &quot;insurance_flag&quot;: false,
+    &quot;insurance_value&quot;: 0,
+    &quot;recipient_name&quot;: &quot;Test Receiver&quot;,
+    &quot;recipient_mobile&quot;: &quot;9876543210&quot;,
+    &quot;recipient_addressl1&quot;: &quot;New Delhi GPO&quot;,
+    &quot;recipient_city&quot;: &quot;CENTRAL DELHI&quot;,
+    &quot;recipient_pin&quot;: &quot;110001&quot;,
+    &quot;recipient_state&quot;: &quot;DELHI&quot;,
+    &quot;sender_name&quot;: &quot;KeralaXpress Delivery&quot;,
+    &quot;sender_mobile&quot;: &quot;9400662693&quot;,
+    &quot;sender_addressl1&quot;: &quot;Kochi Head Office&quot;,
+    &quot;sender_city&quot;: &quot;ERNAKULAM&quot;,
+    &quot;sender_pin&quot;: &quot;682001&quot;,
+    &quot;sender_state&quot;: &quot;KERALA&quot;,
+    &quot;transmission_mode&quot;: &quot;S&quot;,
+    &quot;payment_mode&quot;: &quot;CO&quot;,
+    &quot;booking_office_name&quot;: &quot;Kochi HO&quot;,
+    &quot;booking_office_pin&quot;: &quot;682001&quot;,
+    &quot;size&quot;: &quot;A6&quot;,
+    &quot;total_amount&quot;: 91,
+    &quot;payment_status&quot;: &quot;PC&quot;,
+    &quot;identifier&quot;: &quot;Domestic&quot;,
+    &quot;priority&quot;: false,
+    &quot;registered_flag&quot;: false
+  }
+]</pre>
+<div class='lbl'>Response &middot; application/pdf</div>
+<pre>&lt;binary PDF document, 21033 bytes&gt;</pre>
+<div class='note'>A6 address label returned as application/pdf for barcode ET214330016IN, generated using the weighted modulo 11 check digit logic on the allotted AWB series.</div>
+</div>
+<footer>All calls above were made from 209.38.122.70 against https://test.cept.gov.in/beextcustomer using the bulk customer id 9999537187 issued to KeralaXpress Delivery. Access tokens are truncated in this report. No article was booked and no AWB from the allotted series was consumed, because barcode_no was deliberately omitted from the booking payload.</footer>
+</div></body></html>

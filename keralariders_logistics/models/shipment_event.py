@@ -32,6 +32,11 @@ class ShipmentEvent(models.Model):
         ('returned', 'Returned to Sender'),
         ('status_override', 'Status Override'),
         ('note', 'Note'),
+        # India Post scans. Kept as distinct types so hub-network events and
+        # carrier events stay tellable apart in reporting.
+        ('indiapost_pickup_scheduled', 'India Post Pickup Scheduled'),
+        ('indiapost_booked', 'India Post Booked'),
+        ('indiapost_transit_scan', 'India Post Transit Scan'),
     ], string='Event Type', required=True, index=True)
 
     event_time = fields.Datetime(string='Timestamp', default=fields.Datetime.now, required=True, index=True)
@@ -57,6 +62,18 @@ class ShipmentEvent(models.Model):
     note = fields.Text(string='Note')
     name = fields.Char(string='Summary', compute='_compute_name', store=True)
 
+    # India Post scan provenance. ``indiapost_event_key`` identifies a scan by
+    # timestamp, office and text so repeated polling of the bulk tracking
+    # endpoint cannot create the same event twice.
+    indiapost_event_code = fields.Char(string='India Post Event')
+    indiapost_event_key = fields.Char(string='India Post Scan Key', index=True)
+    indiapost_office_name = fields.Char(string='India Post Office')
+
+    _sql_constraints = [
+        ('indiapost_scan_uniq', 'UNIQUE (shipment_id, indiapost_event_key)',
+         'This India Post scan has already been recorded for that shipment.'),
+    ]
+
     @api.depends('event_type', 'shipment_id', 'hub_id', 'event_time')
     def _compute_name(self):
         type_labels = dict(self._fields['event_type'].selection)
@@ -76,6 +93,10 @@ class ShipmentEvent(models.Model):
         parts = []
         if self.hub_id:
             parts.append(self.hub_id.name)
+        elif self.indiapost_office_name:
+            # India Post scans carry a post office name rather than one of our
+            # hubs, and customers find it just as useful.
+            parts.append(self.indiapost_office_name)
         if self.actor_de_id and not public:
             parts.append(_("by %s") % self.actor_de_id.name)
         if self.note:

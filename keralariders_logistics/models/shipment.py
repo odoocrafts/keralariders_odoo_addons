@@ -271,6 +271,11 @@ class Shipment(models.Model):
         'cancelled': 'Cancelled',
         'status_override': 'Status Updated',
         'note': 'Update',
+        # India Post scans. Deliberately carrier-neutral wording: the customer
+        # does not need to know which network moved the parcel.
+        'indiapost_pickup_scheduled': 'Pickup Scheduled',
+        'indiapost_booked': 'Shipment Booked',
+        'indiapost_transit_scan': 'In Transit',
     }
     _PUBLIC_RETURN_TIMELINE_LABELS = {
         'pickup_scan': 'Picked up for return',

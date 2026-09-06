@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <data noupdate="1">
+
+        <!-- The UAT block India Post allotted to KeralaXpress:
+             ET21433001XIN to ET21434000XIN, where X is the position-11 check
+             digit the addon computes. That gives ET214330016IN through
+             ET214340000IN, 1000 barcodes. -->
+        <record id="indiapost_barcode_range_uat" model="logistics.indiapost.barcode.range">
+            <field name="name">UAT range ET (India Post allotment)</field>
+            <field name="environment">sandbox</field>
+            <field name="prefix">ET</field>
+            <field name="start_serial">21433001</field>
+            <field name="end_serial">21434000</field>
+            <field name="next_serial">21433001</field>
+            <field name="low_stock_threshold">50</field>
+            <field name="sequence">10</field>
+        </record>
+
+    </data>
+
+    <data noupdate="0">
+
+        <!-- Status sync. India Post's inbound webhook has no published
+             authentication scheme, so polling the bulk tracking endpoint is
+             the only safe status source. -->
+        <!-- model_id points at logistics.shipment rather than the abstract
+             logistics.indiapost.tracking service, because ir.cron expects a
+             concrete model. The work itself lives on the service. -->
+        <record id="cron_indiapost_tracking_sync" model="ir.cron">
+            <field name="name">India Post: sync shipment tracking</field>
+            <field name="model_id" ref="model_logistics_shipment"/>
+            <field name="state">code</field>
+            <field name="code">env['logistics.indiapost.tracking'].cron_sync_tracking()</field>
+            <field name="interval_number">2</field>
+            <field name="interval_type">hours</field>
+            <field name="active" eval="True"/>
+            <field name="user_id" ref="base.user_root"/>
+        </record>
+
+        <record id="cron_indiapost_office_refresh" model="ir.cron">
+            <field name="name">India Post: refresh post office cache</field>
+            <field name="model_id" ref="model_logistics_indiapost_office"/>
+            <field name="state">code</field>
+            <field name="code">model.cron_refresh_offices()</field>
+            <field name="interval_number">1</field>
+            <field name="interval_type">days</field>
+            <field name="active" eval="True"/>
+            <field name="user_id" ref="base.user_root"/>
+        </record>
+
+        <record id="cron_indiapost_housekeeping" model="ir.cron">
+            <field name="name">India Post: expire cached rates and old logs</field>
+            <field name="model_id" ref="model_logistics_indiapost_tariff_cache"/>
+            <field name="state">code</field>
+            <field name="code">model.gc_expired()
+env['logistics.indiapost.log'].gc_logs(days=90)</field>
+            <field name="interval_number">1</field>
+            <field name="interval_type">days</field>
+            <field name="active" eval="True"/>
+            <field name="user_id" ref="base.user_root"/>
+        </record>
+
+    </data>
+
+    <data noupdate="1">
+
+        <!-- Verified district-headquarters offices for all 14 Kerala districts.
+             Seeded so a cold cache, or a temporary API outage, still resolves a
+             bookable office for every district we collect from. Each office id
+             was confirmed live against /v1/pincode-search. -->
+        <function model="logistics.indiapost.office" name="_ip_seed_kerala_offices"/>
+
+    </data>
+</odoo>

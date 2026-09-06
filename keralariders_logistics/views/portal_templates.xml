@@ -459,7 +459,17 @@
                 <tbody>
                     <t t-foreach="shipments" t-as="shipment">
                         <tr>
-                            <td><a t-attf-href="/track/#{shipment.tracking_token}"><span t-field="shipment.name"/></a></td>
+                            <td>
+                                <a t-attf-href="/track/#{shipment.tracking_token}"><span t-field="shipment.name"/></a>
+                                <!-- The India Post article number is what the
+                                     customer can look up on indiapost.gov.in. -->
+                                <div t-if="shipment.indiapost_article_number">
+                                    <small class="text-muted">
+                                        India Post
+                                        <span t-field="shipment.indiapost_article_number"/>
+                                    </small>
+                                </div>
+                            </td>
                             <td><span t-field="shipment.order_date"/></td>
                             <td><span t-field="shipment.shipping_to_name"/><br/><small class="text-muted"><span t-field="shipment.shipping_to_mobile"/></small></td>
                             <td><span t-field="shipment.total_weight"/> kg</td>
@@ -479,6 +489,12 @@
                             <td class="text-end">
                                 <a t-attf-href="/report/pdf/keralariders_logistics.action_report_shipment/#{shipment.id}" class="btn btn-sm btn-outline-primary me-1" title="Print AWB" target="_blank">
                                     <i class="fa fa-print"/>
+                                </a>
+                                <a t-if="shipment.indiapost_article_number"
+                                   t-attf-href="/my/shipments/#{shipment.id}/indiapost_label"
+                                   class="btn btn-sm btn-outline-dark me-1"
+                                   title="India Post address label" target="_blank">
+                                    <i class="fa fa-tag"/>
                                 </a>
                                 <t t-if="shipment.state == 'order_added'">
                                     <form action="/my/shipments/request_pickup" method="post" style="display:inline;">
@@ -585,6 +601,86 @@
                                     <input type="number" step="0.01" name="total_order_value" class="form-control" id="total_order_value"/>
                                     <small class="text-muted">Enter the amount to be collected from the customer.</small>
                                 </div>
+
+                                <!-- Package size. Mandatory for India Post
+                                     sellers: Speed Post charges on volumetric
+                                     weight and rejects parcels of 500 g or more
+                                     that measure under 14 x 9 cm. -->
+                                <h5 class="text-muted border-bottom pb-2 mt-4">Package Size</h5>
+                                <div class="row">
+                                    <div class="col-4 mb-3">
+                                        <label class="form-label" for="length_cm">
+                                            Length (cm)
+                                            <span t-if="uses_indiapost" class="text-danger">*</span>
+                                        </label>
+                                        <input type="number" step="1" min="1" max="150"
+                                               id="length_cm" name="length_cm" class="form-control"
+                                               t-att-required="'1' if uses_indiapost else None"/>
+                                    </div>
+                                    <div class="col-4 mb-3">
+                                        <label class="form-label" for="breadth_cm">
+                                            Breadth (cm)
+                                            <span t-if="uses_indiapost" class="text-danger">*</span>
+                                        </label>
+                                        <input type="number" step="1" min="1" max="150"
+                                               id="breadth_cm" name="breadth_cm" class="form-control"
+                                               t-att-required="'1' if uses_indiapost else None"/>
+                                    </div>
+                                    <div class="col-4 mb-3">
+                                        <label class="form-label" for="height_cm">
+                                            Height (cm)
+                                            <span t-if="uses_indiapost" class="text-danger">*</span>
+                                        </label>
+                                        <input type="number" step="1" min="1" max="150"
+                                               id="height_cm" name="height_cm" class="form-control"
+                                               t-att-required="'1' if uses_indiapost else None"/>
+                                    </div>
+                                </div>
+                                <div class="form-check mb-3">
+                                    <input class="form-check-input" type="checkbox"
+                                           id="is_cylindrical" name="is_cylindrical" value="1"/>
+                                    <label class="form-check-label" for="is_cylindrical">
+                                        Cylindrical package (tube or roll)
+                                    </label>
+                                </div>
+                                <div t-if="uses_indiapost" class="alert alert-info py-2" role="alert"
+                                     id="kx_package_hint">
+                                    <i class="fa fa-info-circle me-1"/>
+                                    Parcels of
+                                    <t t-esc="parcel_weight_threshold_g"/> g and above must measure at
+                                    least <t t-esc="parcel_min_length_cm"/> x
+                                    <t t-esc="parcel_min_breadth_cm"/> x 1 cm. Pad small heavy items
+                                    or India Post will refuse them. Length + breadth + height must
+                                    stay within <t t-esc="max_total_dimension_cm"/> cm.
+                                </div>
+                                <div class="alert alert-danger py-2 d-none" role="alert"
+                                     id="kx_package_error"></div>
+
+                                <t t-if="uses_indiapost">
+                                    <h5 class="text-muted border-bottom pb-2 mt-4">India Post Pickup</h5>
+                                    <div class="row">
+                                        <div class="col-md-6 mb-3">
+                                            <label class="form-label" for="indiapost_pickup_date">Pickup Date</label>
+                                            <input type="date" id="indiapost_pickup_date"
+                                                   name="indiapost_pickup_date" class="form-control"
+                                                   t-att-min="earliest_pickup_date"
+                                                   t-att-value="earliest_pickup_date"/>
+                                        </div>
+                                        <div class="col-md-6 mb-3">
+                                            <label class="form-label" for="indiapost_pickup_slot">Pickup Slot</label>
+                                            <select id="indiapost_pickup_slot" name="indiapost_pickup_slot"
+                                                    class="form-select">
+                                                <t t-foreach="pickup_slots" t-as="slot">
+                                                    <option t-att-value="slot[0]"><t t-esc="slot[1]"/></option>
+                                                </t>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <small class="text-muted">
+                                        India Post collects from your registered pickup address.
+                                        Only these two slots are accepted.
+                                    </small>
+                                </t>
                             </div>
                         </div>
                         
@@ -610,82 +706,389 @@
                     }
                 });
             </script>
+
+            <!-- Mirrors logistics.shipment._check_indiapost_package so sellers
+                 find out before they submit. The server check is the real one. -->
+            <script t-if="uses_indiapost">
+                <![CDATA[
+                (function () {
+                    var form = document.querySelector('form[action="/my/shipments/create"]');
+                    if (!form) { return; }
+                    var box = document.getElementById('kx_package_error');
+                    var PARCEL_THRESHOLD_G = 500;
+                    var MIN_L = 14, MIN_B = 9, MAX_SIDE = 150, MAX_TOTAL = 300;
+
+                    function num(id) {
+                        var el = document.getElementById(id);
+                        var value = parseFloat(el && el.value);
+                        return isNaN(value) ? 0 : value;
+                    }
+
+                    function problems() {
+                        var grams = Math.ceil(num('total_weight') * 1000);
+                        var l = Math.round(num('length_cm'));
+                        var b = Math.round(num('breadth_cm'));
+                        var h = Math.round(num('height_cm'));
+                        var found = [];
+                        if (!l || !b || !h) {
+                            return found;  // the required attribute covers this
+                        }
+                        if (l + b + h > MAX_TOTAL) {
+                            found.push('Length + breadth + height must not exceed '
+                                + MAX_TOTAL + ' cm. This package totals ' + (l + b + h) + ' cm.');
+                        }
+                        if (grams >= PARCEL_THRESHOLD_G) {
+                            if (l < MIN_L || b < MIN_B) {
+                                found.push('An article of ' + PARCEL_THRESHOLD_G + ' g or more travels as a '
+                                    + 'Speed Post parcel, and parcels must measure at least '
+                                    + MIN_L + ' cm x ' + MIN_B + ' cm. Repack this item in a box of at '
+                                    + 'least ' + MIN_L + ' x ' + MIN_B + ' x 1 cm.');
+                            }
+                            if (l > MAX_SIDE || b > MAX_SIDE || h > MAX_SIDE) {
+                                found.push('No side of a Speed Post parcel may exceed ' + MAX_SIDE + ' cm.');
+                            }
+                        }
+                        return found;
+                    }
+
+                    function review() {
+                        var found = problems();
+                        if (found.length) {
+                            box.innerHTML = found.join('<br/>');
+                            box.classList.remove('d-none');
+                        } else {
+                            box.classList.add('d-none');
+                        }
+                        return !found.length;
+                    }
+
+                    ['total_weight', 'length_cm', 'breadth_cm', 'height_cm'].forEach(function (id) {
+                        var el = document.getElementById(id);
+                        if (el) { el.addEventListener('input', review); }
+                    });
+
+                    form.addEventListener('submit', function (ev) {
+                        if (!review()) {
+                            ev.preventDefault();
+                            box.scrollIntoView({behavior: 'smooth', block: 'center'});
+                        }
+                    });
+                })();
+                ]]>
+            </script>
         </t>
     </template>
 
-    <!-- Charge Calculator -->
+    <!-- Charge Calculator.
+         Two pricing models share this page. Sellers on India Post (and every
+         anonymous visitor) get a live Speed Post quote, which needs pincodes
+         and dimensions because the product and the chargeable weight both
+         depend on size. Sellers still on the KeralaXpress hub network keep the
+         original district-pair weight slab price. -->
     <template id="portal_my_calculator" name="Charge Calculator">
         <t t-call="portal.portal_layout">
             <div class="container mt-4 mb-5">
                 <div class="row justify-content-center">
-                    <div class="col-md-8">
+                    <div class="col-lg-9">
                         <div class="card shadow-sm">
-                            <div class="card-header bg-primary text-white py-3">
+                            <div class="card-header bg-primary text-white py-3 d-flex justify-content-between align-items-center">
                                 <h4 class="mb-0">Delivery Charge Calculator</h4>
+                                <span t-if="is_indiapost" class="badge text-bg-light text-primary">India Post Speed Post</span>
+                                <span t-else="" class="badge text-bg-light text-primary">KeralaXpress Network</span>
                             </div>
                             <div class="card-body p-4">
+
                                 <t t-if="error">
-                                    <div class="alert alert-danger" role="alert"><t t-esc="error"/></div>
+                                    <div class="alert alert-danger" role="alert">
+                                        <i class="fa fa-exclamation-triangle me-2"/>
+                                        <t t-esc="error"/>
+                                    </div>
                                 </t>
-                                <t t-if="result">
-                                    <div class="alert alert-success mb-4 py-4" role="alert">
-                                        <t t-if="origin_name and dest_name">
-                                            <div class="d-flex align-items-center justify-content-center flex-wrap gap-3 mb-3">
-                                                <div class="text-center">
-                                                    <div class="small text-uppercase text-muted">Origin</div>
-                                                    <div class="fs-5 fw-semibold"><t t-esc="origin_name"/></div>
-                                                </div>
-                                                <div class="text-muted fs-4 lh-1" aria-hidden="true">→</div>
-                                                <div class="text-center">
-                                                    <div class="small text-uppercase text-muted">Destination</div>
-                                                    <div class="fs-5 fw-semibold"><t t-esc="dest_name"/></div>
-                                                </div>
+
+                                <!-- India Post result: show the breakdown, not
+                                     just a single number, so sellers can see
+                                     what they are paying for. -->
+                                <t t-if="quote and is_indiapost">
+                                    <div class="border rounded p-4 mb-4 bg-light">
+                                        <div class="d-flex align-items-center justify-content-center flex-wrap gap-3 mb-3">
+                                            <div class="text-center">
+                                                <div class="small text-uppercase text-muted">From</div>
+                                                <div class="fs-5 fw-semibold"><t t-esc="quote['source_pincode']"/></div>
                                             </div>
-                                            <div class="d-flex justify-content-center align-items-center flex-wrap gap-2 mb-3">
-                                                <span t-if="weight_display" class="badge rounded-pill text-bg-success fs-6 px-3 py-2">
-                                                    <t t-esc="weight_display"/>
-                                                </span>
-                                                <span t-if="same_district" class="badge rounded-pill text-bg-light text-success border fs-6 px-3 py-2">Same district</span>
-                                                <span t-else="" class="badge rounded-pill text-bg-light text-secondary border fs-6 px-3 py-2">Different district</span>
+                                            <div class="text-muted fs-4 lh-1" aria-hidden="true">-&gt;</div>
+                                            <div class="text-center">
+                                                <div class="small text-uppercase text-muted">To</div>
+                                                <div class="fs-5 fw-semibold"><t t-esc="quote['destination_pincode']"/></div>
+                                            </div>
+                                        </div>
+
+                                        <div class="d-flex justify-content-center flex-wrap gap-2 mb-4">
+                                            <span class="badge rounded-pill text-bg-success fs-6 px-3 py-2">
+                                                Charged on <t t-esc="quote['chargeable_weight_g']"/> g
+                                            </span>
+                                            <span class="badge rounded-pill text-bg-light text-secondary border fs-6 px-3 py-2">
+                                                Actual <t t-esc="quote['actual_weight_g']"/> g
+                                            </span>
+                                            <span class="badge rounded-pill text-bg-light text-secondary border fs-6 px-3 py-2">
+                                                Volumetric <t t-esc="quote['volumetric_weight_g']"/> g
+                                            </span>
+                                            <span t-if="quote['is_local']" class="badge rounded-pill text-bg-light text-success border fs-6 px-3 py-2">Local</span>
+                                            <span t-if="quote['distance_display']" class="badge rounded-pill text-bg-light text-secondary border fs-6 px-3 py-2">
+                                                Distance <t t-esc="quote['distance_display']"/>
+                                            </span>
+                                        </div>
+
+                                        <table class="table table-sm mb-3">
+                                            <tbody>
+                                                <tr>
+                                                    <td>
+                                                        Base postage
+                                                        <span class="text-muted small">
+                                                            (<t t-esc="quote['product_code']"/>)
+                                                        </span>
+                                                    </td>
+                                                    <td class="text-end">₹ <t t-esc="'%.2f' % quote['base_tariff']"/></td>
+                                                </tr>
+                                                <tr t-if="quote['vas_charges']">
+                                                    <td>
+                                                        Value added services
+                                                        <t t-set="vas" t-value="quote['vas_details']"/>
+                                                        <div class="text-muted small">
+                                                            <span t-if="vas.get('PODVAL')">Proof of delivery ₹ <t t-esc="'%.2f' % vas['PODVAL']"/>. </span>
+                                                            <span t-if="vas.get('REGVAL')">Registration ₹ <t t-esc="'%.2f' % vas['REGVAL']"/>. </span>
+                                                            <span t-if="vas.get('ACKVAL')">Acknowledgement ₹ <t t-esc="'%.2f' % vas['ACKVAL']"/>. </span>
+                                                            <span t-if="vas.get('OTPVAL')">OTP delivery ₹ <t t-esc="'%.2f' % vas['OTPVAL']"/>. </span>
+                                                            <span t-if="vas.get('INSVAL')">Insurance ₹ <t t-esc="'%.2f' % vas['INSVAL']"/>. </span>
+                                                        </div>
+                                                    </td>
+                                                    <td class="text-end">₹ <t t-esc="'%.2f' % quote['vas_charges']"/></td>
+                                                </tr>
+                                                <tr>
+                                                    <td>
+                                                        GST
+                                                        <span class="text-muted small">
+                                                            (CGST ₹ <t t-esc="'%.2f' % quote['cgst']"/>
+                                                            + SGST ₹ <t t-esc="'%.2f' % quote['sgst']"/>)
+                                                        </span>
+                                                    </td>
+                                                    <td class="text-end">₹ <t t-esc="'%.2f' % quote['total_tax']"/></td>
+                                                </tr>
+                                                <tr t-if="quote['markup_amount']">
+                                                    <td>KeralaXpress handling</td>
+                                                    <td class="text-end">₹ <t t-esc="'%.2f' % quote['markup_amount']"/></td>
+                                                </tr>
+                                            </tbody>
+                                            <tfoot>
+                                                <tr class="fw-bold border-top">
+                                                    <td>Total payable</td>
+                                                    <td class="text-end fs-4">₹ <t t-esc="'%.2f' % quote['total_payable']"/></td>
+                                                </tr>
+                                            </tfoot>
+                                        </table>
+
+                                        <div t-if="quote['weight_banded']" class="text-muted small">
+                                            <i class="fa fa-info-circle me-1"/>
+                                            Speed Post charges in 50 g steps, so
+                                            <t t-esc="quote['actual_weight_g']"/> g is priced as
+                                            <t t-esc="quote['billed_weight_g']"/> g.
+                                        </div>
+                                        <div t-if="quote['insurance_value']" class="text-muted small">
+                                            <i class="fa fa-info-circle me-1"/>
+                                            Insurance is charged on the declared value and rises
+                                            steeply. On high-value items it can exceed the postage.
+                                        </div>
+                                        <t t-foreach="quote['warnings']" t-as="warning">
+                                            <div class="alert alert-warning py-2 mb-0 mt-2" role="alert">
+                                                <i class="fa fa-exclamation-triangle me-1"/>
+                                                <t t-esc="warning"/>
                                             </div>
                                         </t>
-                                        <div class="text-center">
-                                            <div class="small text-uppercase text-muted mb-1">Estimated Delivery Charge</div>
-                                            <div class="display-5 fw-bold mb-0">₹ <t t-esc="result"/></div>
+                                        <div class="text-muted small mt-2">
+                                            Indicative only. India Post reprices at booking on the
+                                            weight and dimensions its staff record at pickup.
                                         </div>
                                     </div>
                                 </t>
-                                
-                                <form action="/my/calculator/calculate" method="post">
+
+                                <!-- Own network result: the original slab price. -->
+                                <t t-if="quote and not is_indiapost">
+                                    <div class="alert alert-success mb-4 py-4" role="alert">
+                                        <div class="d-flex align-items-center justify-content-center flex-wrap gap-3 mb-3">
+                                            <div class="text-center">
+                                                <div class="small text-uppercase text-muted">Origin</div>
+                                                <div class="fs-5 fw-semibold"><t t-esc="quote['origin_name']"/></div>
+                                            </div>
+                                            <div class="text-muted fs-4 lh-1" aria-hidden="true">-&gt;</div>
+                                            <div class="text-center">
+                                                <div class="small text-uppercase text-muted">Destination</div>
+                                                <div class="fs-5 fw-semibold"><t t-esc="quote['dest_name']"/></div>
+                                            </div>
+                                        </div>
+                                        <div class="d-flex justify-content-center align-items-center flex-wrap gap-2 mb-3">
+                                            <span t-if="quote['weight_display']" class="badge rounded-pill text-bg-success fs-6 px-3 py-2">
+                                                <t t-esc="quote['weight_display']"/>
+                                            </span>
+                                            <span t-if="quote['same_district']" class="badge rounded-pill text-bg-light text-success border fs-6 px-3 py-2">Same district</span>
+                                            <span t-else="" class="badge rounded-pill text-bg-light text-secondary border fs-6 px-3 py-2">Different district</span>
+                                        </div>
+                                        <div class="text-center">
+                                            <div class="small text-uppercase text-muted mb-1">Estimated Delivery Charge</div>
+                                            <div class="display-5 fw-bold mb-0">₹ <t t-esc="'%.2f' % quote['total_payable']"/></div>
+                                        </div>
+                                    </div>
+                                </t>
+
+                                <form action="/my/calculator/calculate" method="post" id="kx_calculator_form">
                                     <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
-                                    <div class="row">
-                                        <div class="col-md-6 mb-3">
-                                            <label class="form-label">Origin District</label>
-                                            <select name="origin_district_id" class="form-select" required="1">
-                                                <option value="">Select Origin...</option>
-                                                <t t-foreach="districts" t-as="district">
-                                                    <option t-att-value="district.id" t-att-selected="origin_id and district.id == origin_id">
-                                                        <t t-esc="district.name"/>
-                                                    </option>
-                                                </t>
-                                            </select>
+
+                                    <t t-if="is_indiapost">
+                                        <div class="row">
+                                            <div class="col-md-6 mb-3">
+                                                <label class="form-label" for="origin_pincode">Pickup Pincode</label>
+                                                <input type="text" id="origin_pincode" name="origin_pincode"
+                                                       class="form-control" required="1"
+                                                       inputmode="numeric" pattern="[0-9]{6}" maxlength="6"
+                                                       placeholder="682001"
+                                                       t-att-value="form.get('origin_pincode') or None"/>
+                                            </div>
+                                            <div class="col-md-6 mb-3">
+                                                <label class="form-label" for="dest_pincode">Delivery Pincode</label>
+                                                <input type="text" id="dest_pincode" name="dest_pincode"
+                                                       class="form-control" required="1"
+                                                       inputmode="numeric" pattern="[0-9]{6}" maxlength="6"
+                                                       placeholder="110001"
+                                                       t-att-value="form.get('dest_pincode') or None"/>
+                                            </div>
                                         </div>
-                                        <div class="col-md-6 mb-3">
-                                            <label class="form-label">Destination District</label>
-                                            <select name="dest_district_id" class="form-select" required="1">
-                                                <option value="">Select Destination...</option>
-                                                <t t-foreach="districts" t-as="district">
-                                                    <option t-att-value="district.id" t-att-selected="dest_id and district.id == dest_id">
-                                                        <t t-esc="district.name"/>
-                                                    </option>
-                                                </t>
-                                            </select>
+
+                                        <div class="row">
+                                            <div class="col-md-3 mb-3">
+                                                <label class="form-label" for="weight">Weight (Kg)</label>
+                                                <input type="number" step="0.001" min="0.001" id="weight" name="weight"
+                                                       class="form-control" required="1"
+                                                       t-att-value="form.get('weight') or None"/>
+                                            </div>
+                                            <div class="col-md-3 mb-3">
+                                                <label class="form-label" for="length_cm">Length (cm)</label>
+                                                <input type="number" step="1" min="1" max="150" id="length_cm" name="length_cm"
+                                                       class="form-control" required="1"
+                                                       t-att-value="form.get('length_cm') or None"/>
+                                            </div>
+                                            <div class="col-md-3 mb-3">
+                                                <label class="form-label" for="breadth_cm">Breadth (cm)</label>
+                                                <input type="number" step="1" min="1" max="150" id="breadth_cm" name="breadth_cm"
+                                                       class="form-control" required="1"
+                                                       t-att-value="form.get('breadth_cm') or None"/>
+                                            </div>
+                                            <div class="col-md-3 mb-3">
+                                                <label class="form-label" for="height_cm">Height (cm)</label>
+                                                <input type="number" step="1" min="1" max="150" id="height_cm" name="height_cm"
+                                                       class="form-control" required="1"
+                                                       t-att-value="form.get('height_cm') or None"/>
+                                            </div>
                                         </div>
-                                    </div>
-                                    <div class="mb-4">
-                                        <label class="form-label">Package Weight (Kg)</label>
-                                        <input type="number" step="0.001" name="weight" class="form-control form-control-lg" required="1" t-att-value="weight or None"/>
-                                    </div>
+
+                                        <div class="alert alert-info py-2" role="alert">
+                                            <i class="fa fa-info-circle me-1"/>
+                                            Speed Post prices on whichever is greater: the actual
+                                            weight or length x breadth x height / 5. Parcels of
+                                            500 g and above must measure at least 14 x 9 x 1 cm, and
+                                            length + breadth + height must not exceed 300 cm.
+                                        </div>
+
+                                        <div class="accordion mb-3" id="kx_vas_accordion">
+                                            <div class="accordion-item">
+                                                <h2 class="accordion-header">
+                                                    <button class="accordion-button collapsed" type="button"
+                                                            data-bs-toggle="collapse" data-bs-target="#kx_vas_body">
+                                                        Optional extras (proof of delivery, insurance)
+                                                    </button>
+                                                </h2>
+                                                <div id="kx_vas_body" class="accordion-collapse collapse"
+                                                     data-bs-parent="#kx_vas_accordion">
+                                                    <div class="accordion-body">
+                                                        <div class="row">
+                                                            <div class="col-md-6">
+                                                                <div class="form-check">
+                                                                    <input class="form-check-input" type="checkbox"
+                                                                           id="vas_pod" name="vas_pod" value="1"
+                                                                           t-att-checked="'checked' if form.get('vas_pod') else None"/>
+                                                                    <label class="form-check-label" for="vas_pod">Proof of delivery</label>
+                                                                </div>
+                                                                <div class="form-check">
+                                                                    <input class="form-check-input" type="checkbox"
+                                                                           id="vas_reg" name="vas_reg" value="1"
+                                                                           t-att-checked="'checked' if form.get('vas_reg') else None"/>
+                                                                    <label class="form-check-label" for="vas_reg">Registration</label>
+                                                                </div>
+                                                            </div>
+                                                            <div class="col-md-6">
+                                                                <div class="form-check">
+                                                                    <input class="form-check-input" type="checkbox"
+                                                                           id="vas_ack" name="vas_ack" value="1"
+                                                                           t-att-checked="'checked' if form.get('vas_ack') else None"/>
+                                                                    <label class="form-check-label" for="vas_ack">Acknowledgement</label>
+                                                                </div>
+                                                                <div class="form-check">
+                                                                    <input class="form-check-input" type="checkbox"
+                                                                           id="vas_otp" name="vas_otp" value="1"
+                                                                           t-att-checked="'checked' if form.get('vas_otp') else None"/>
+                                                                    <label class="form-check-label" for="vas_otp">OTP delivery</label>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                        <div class="mt-3">
+                                                            <label class="form-label" for="insurance_value">Declared value for insurance (₹)</label>
+                                                            <input type="number" step="1" min="0" id="insurance_value"
+                                                                   name="insurance_value" class="form-control"
+                                                                   t-att-value="form.get('insurance_value') or None"/>
+                                                            <div class="form-text">
+                                                                Leave blank for no insurance. India Post charges
+                                                                roughly 6% of the declared value, so ₹ 50,000
+                                                                declared costs about ₹ 3,000.
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </t>
+
+                                    <t t-else="">
+                                        <div class="row">
+                                            <div class="col-md-6 mb-3">
+                                                <label class="form-label" for="origin_district_id">Origin District</label>
+                                                <select id="origin_district_id" name="origin_district_id" class="form-select" required="1">
+                                                    <option value="">Select Origin...</option>
+                                                    <t t-foreach="districts" t-as="district">
+                                                        <option t-att-value="district.id"
+                                                                t-att-selected="'selected' if form.get('origin_district_id') == str(district.id) else None">
+                                                            <t t-esc="district.name"/>
+                                                        </option>
+                                                    </t>
+                                                </select>
+                                            </div>
+                                            <div class="col-md-6 mb-3">
+                                                <label class="form-label" for="dest_district_id">Destination District</label>
+                                                <select id="dest_district_id" name="dest_district_id" class="form-select" required="1">
+                                                    <option value="">Select Destination...</option>
+                                                    <t t-foreach="districts" t-as="district">
+                                                        <option t-att-value="district.id"
+                                                                t-att-selected="'selected' if form.get('dest_district_id') == str(district.id) else None">
+                                                            <t t-esc="district.name"/>
+                                                        </option>
+                                                    </t>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div class="mb-4">
+                                            <label class="form-label" for="weight">Package Weight (Kg)</label>
+                                            <input type="number" step="0.001" min="0.001" id="weight" name="weight"
+                                                   class="form-control form-control-lg" required="1"
+                                                   t-att-value="form.get('weight') or None"/>
+                                        </div>
+                                    </t>
+
                                     <button type="submit" class="btn btn-primary btn-lg w-100">Calculate Charge</button>
                                 </form>
                             </div>

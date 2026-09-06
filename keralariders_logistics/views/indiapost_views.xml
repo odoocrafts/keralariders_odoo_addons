@@ -1,0 +1,388 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+
+    <!-- ================================================================ -->
+    <!-- Barcode ranges                                                    -->
+    <!-- ================================================================ -->
+    <record id="view_indiapost_barcode_range_list" model="ir.ui.view">
+        <field name="name">logistics.indiapost.barcode.range.list</field>
+        <field name="model">logistics.indiapost.barcode.range</field>
+        <field name="arch" type="xml">
+            <list string="Barcode Ranges" decoration-danger="is_exhausted"
+                  decoration-warning="remaining_count &lt;= low_stock_threshold">
+                <field name="sequence" widget="handle"/>
+                <field name="name"/>
+                <field name="environment"/>
+                <field name="prefix"/>
+                <field name="first_barcode"/>
+                <field name="last_barcode"/>
+                <field name="allocated_count"/>
+                <field name="remaining_count"/>
+                <field name="low_stock_threshold" optional="hide"/>
+                <field name="is_exhausted" widget="boolean_toggle" readonly="1"/>
+                <field name="active" column_invisible="1"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_indiapost_barcode_range_form" model="ir.ui.view">
+        <field name="name">logistics.indiapost.barcode.range.form</field>
+        <field name="model">logistics.indiapost.barcode.range</field>
+        <field name="arch" type="xml">
+            <form string="Barcode Range">
+                <sheet>
+                    <div class="alert alert-info" role="alert">
+                        India Post allots blocks of serials to a bulk customer.
+                        Each barcode is issued exactly once, under a row lock,
+                        and the label API validates nothing — so a duplicate
+                        number would mean two parcels sharing one tracking
+                        number. Never edit <b>Next Serial</b> while bookings
+                        are running.
+                    </div>
+                    <div class="oe_title">
+                        <h1><field name="name" placeholder="e.g. UAT range ET 2026"/></h1>
+                    </div>
+                    <group>
+                        <group string="Range">
+                            <field name="environment"/>
+                            <field name="prefix" placeholder="ET"/>
+                            <field name="start_serial"/>
+                            <field name="end_serial"/>
+                            <field name="next_serial"/>
+                            <field name="active" widget="boolean_toggle"/>
+                            <field name="sequence"/>
+                        </group>
+                        <group string="Status">
+                            <field name="first_barcode"/>
+                            <field name="last_barcode"/>
+                            <field name="total_count"/>
+                            <field name="allocated_count"/>
+                            <field name="remaining_count"/>
+                            <field name="is_exhausted"/>
+                            <field name="low_stock_threshold"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Allocated Barcodes">
+                            <field name="barcode_ids" readonly="1">
+                                <list create="0" delete="0">
+                                    <field name="barcode"/>
+                                    <field name="serial"/>
+                                    <field name="shipment_id"/>
+                                    <field name="state" widget="badge"
+                                           decoration-success="state == 'booked'"
+                                           decoration-warning="state == 'reserved'"
+                                           decoration-danger="state == 'rejected'"/>
+                                    <field name="allocated_on"/>
+                                    <field name="booked_on"/>
+                                    <field name="note" optional="hide"/>
+                                </list>
+                            </field>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_indiapost_barcode_range" model="ir.actions.act_window">
+        <field name="name">Barcode Ranges</field>
+        <field name="res_model">logistics.indiapost.barcode.range</field>
+        <field name="view_mode">list,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">Add the AWB range India Post allotted you</p>
+            <p>A range is a prefix plus a block of 8-digit serials. The
+               check digit at position 11 is computed for you.</p>
+        </field>
+    </record>
+
+    <!-- ================================================================ -->
+    <!-- Allocated barcodes                                                -->
+    <!-- ================================================================ -->
+    <record id="view_indiapost_barcode_list" model="ir.ui.view">
+        <field name="name">logistics.indiapost.barcode.list</field>
+        <field name="model">logistics.indiapost.barcode</field>
+        <field name="arch" type="xml">
+            <list string="Allocated Barcodes" create="0">
+                <field name="barcode"/>
+                <field name="serial"/>
+                <field name="range_id"/>
+                <field name="shipment_id"/>
+                <field name="state" widget="badge"
+                       decoration-success="state == 'booked'"
+                       decoration-warning="state == 'reserved'"
+                       decoration-danger="state == 'rejected'"/>
+                <field name="allocated_on"/>
+                <field name="booked_on" optional="show"/>
+                <field name="note" optional="hide"/>
+                <button name="action_ip_void" type="object" string="Void"
+                        icon="fa-ban" invisible="state == 'booked'"
+                        confirm="Void this barcode? The serial is not returned to the pool."/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_indiapost_barcode_search" model="ir.ui.view">
+        <field name="name">logistics.indiapost.barcode.search</field>
+        <field name="model">logistics.indiapost.barcode</field>
+        <field name="arch" type="xml">
+            <search string="Search Barcodes">
+                <field name="barcode"/>
+                <field name="shipment_id"/>
+                <field name="range_id"/>
+                <filter name="reserved" string="Reserved" domain="[('state', '=', 'reserved')]"/>
+                <filter name="booked" string="Booked" domain="[('state', '=', 'booked')]"/>
+                <filter name="rejected" string="Rejected" domain="[('state', '=', 'rejected')]"/>
+                <separator/>
+                <filter name="unassigned" string="Not Linked to a Shipment"
+                        domain="[('shipment_id', '=', False)]"/>
+                <group>
+                    <filter name="group_state" string="Status" context="{'group_by': 'state'}"/>
+                    <filter name="group_range" string="Range" context="{'group_by': 'range_id'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_indiapost_barcode" model="ir.actions.act_window">
+        <field name="name">Allocated Barcodes</field>
+        <field name="res_model">logistics.indiapost.barcode</field>
+        <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="view_indiapost_barcode_search"/>
+        <field name="context">{'create': 0}</field>
+    </record>
+
+    <!-- ================================================================ -->
+    <!-- Post offices                                                      -->
+    <!-- ================================================================ -->
+    <record id="view_indiapost_office_list" model="ir.ui.view">
+        <field name="name">logistics.indiapost.office.list</field>
+        <field name="model">logistics.indiapost.office</field>
+        <field name="arch" type="xml">
+            <list string="India Post Offices" create="0">
+                <field name="pincode"/>
+                <field name="office_id"/>
+                <field name="office_name"/>
+                <field name="office_type_code"/>
+                <field name="city_name" optional="show"/>
+                <field name="taluk_name" optional="hide"/>
+                <field name="state_name"/>
+                <field name="delivery_office_flag" optional="hide"/>
+                <field name="is_rolled_out" optional="hide"/>
+                <field name="is_bookable"/>
+                <field name="is_preferred"/>
+                <field name="source" optional="hide"/>
+                <field name="last_synced"/>
+                <button name="action_ip_refresh" type="object" string="Refresh"
+                        icon="fa-refresh"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_indiapost_office_search" model="ir.ui.view">
+        <field name="name">logistics.indiapost.office.search</field>
+        <field name="model">logistics.indiapost.office</field>
+        <field name="arch" type="xml">
+            <search string="Search Offices">
+                <field name="pincode"/>
+                <field name="office_id"/>
+                <field name="office_name"/>
+                <field name="state_name"/>
+                <filter name="bookable" string="Bookable" domain="[('is_bookable', '=', True)]"/>
+                <filter name="preferred" string="Preferred for Pincode"
+                        domain="[('is_preferred', '=', True)]"/>
+                <separator/>
+                <filter name="never_synced" string="Never Synced"
+                        domain="[('last_synced', '=', False)]"/>
+                <group>
+                    <filter name="group_pincode" string="Pincode" context="{'group_by': 'pincode'}"/>
+                    <filter name="group_type" string="Office Type"
+                            context="{'group_by': 'office_type_code'}"/>
+                    <filter name="group_state" string="State"
+                            context="{'group_by': 'state_name'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_indiapost_office" model="ir.actions.act_window">
+        <field name="name">India Post Offices</field>
+        <field name="res_model">logistics.indiapost.office</field>
+        <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="view_indiapost_office_search"/>
+        <field name="context">{'create': 0, 'search_default_bookable': 1}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">No post offices cached yet</p>
+            <p>Offices are fetched from the India Post pincode search the first
+               time a pincode is needed, and refreshed by a nightly cron.</p>
+        </field>
+    </record>
+
+    <!-- ================================================================ -->
+    <!-- Tariff cache                                                      -->
+    <!-- ================================================================ -->
+    <record id="view_indiapost_tariff_cache_list" model="ir.ui.view">
+        <field name="name">logistics.indiapost.tariff.cache.list</field>
+        <field name="model">logistics.indiapost.tariff.cache</field>
+        <field name="arch" type="xml">
+            <list string="Cached Rates" create="0" edit="0">
+                <field name="source_pincode"/>
+                <field name="destination_pincode"/>
+                <field name="weight_g"/>
+                <field name="chargeable_weight_g"/>
+                <field name="length_cm" optional="hide"/>
+                <field name="breadth_cm" optional="hide"/>
+                <field name="height_cm" optional="hide"/>
+                <field name="product_code"/>
+                <field name="distance_display" optional="show"/>
+                <field name="base_tariff" sum="Base"/>
+                <field name="vas_charges" sum="VAS"/>
+                <field name="total_tax"/>
+                <field name="final_amount" sum="Total"/>
+                <field name="vas_key" optional="hide"/>
+                <field name="expires_at"/>
+                <button name="action_ip_invalidate" type="object" string="Invalidate"
+                        icon="fa-trash"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="action_indiapost_tariff_cache" model="ir.actions.act_window">
+        <field name="name">Cached India Post Rates</field>
+        <field name="res_model">logistics.indiapost.tariff.cache</field>
+        <field name="view_mode">list</field>
+        <field name="context">{'create': 0}</field>
+    </record>
+
+    <!-- ================================================================ -->
+    <!-- API log                                                           -->
+    <!-- ================================================================ -->
+    <record id="view_indiapost_log_list" model="ir.ui.view">
+        <field name="name">logistics.indiapost.log.list</field>
+        <field name="model">logistics.indiapost.log</field>
+        <field name="arch" type="xml">
+            <list string="India Post API Log" create="0" edit="0"
+                  decoration-danger="not success">
+                <field name="create_date" string="When"/>
+                <field name="operation"/>
+                <field name="method"/>
+                <field name="endpoint"/>
+                <field name="http_status"/>
+                <field name="success"/>
+                <field name="duration_ms" string="ms"/>
+                <field name="attempts" optional="hide"/>
+                <field name="shipment_id" optional="show"/>
+                <field name="correlation_id" optional="hide"/>
+                <field name="error_message" optional="show"/>
+                <field name="environment" optional="hide"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_indiapost_log_form" model="ir.ui.view">
+        <field name="name">logistics.indiapost.log.form</field>
+        <field name="model">logistics.indiapost.log</field>
+        <field name="arch" type="xml">
+            <form string="India Post API Call" create="false" edit="false">
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="operation"/>
+                            <field name="method"/>
+                            <field name="endpoint"/>
+                            <field name="environment"/>
+                            <field name="correlation_id"/>
+                        </group>
+                        <group>
+                            <field name="http_status"/>
+                            <field name="success"/>
+                            <field name="duration_ms"/>
+                            <field name="attempts"/>
+                            <field name="shipment_id"/>
+                            <field name="order_id"/>
+                        </group>
+                    </group>
+                    <group string="Error" invisible="not error_message">
+                        <field name="error_message" nolabel="1"/>
+                    </group>
+                    <notebook>
+                        <page string="Request">
+                            <div class="text-muted mb-2">
+                                Passwords and bearer tokens are masked before
+                                anything is written here.
+                            </div>
+                            <field name="request_body" nolabel="1" widget="text"/>
+                        </page>
+                        <page string="Response">
+                            <field name="response_body" nolabel="1" widget="text"/>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_indiapost_log_search" model="ir.ui.view">
+        <field name="name">logistics.indiapost.log.search</field>
+        <field name="model">logistics.indiapost.log</field>
+        <field name="arch" type="xml">
+            <search string="Search API Log">
+                <field name="endpoint"/>
+                <field name="operation"/>
+                <field name="shipment_id"/>
+                <field name="correlation_id"/>
+                <filter name="failures" string="Failures Only"
+                        domain="[('success', '=', False)]"/>
+                <filter name="bookings" string="Bookings"
+                        domain="[('operation', '=', 'booking')]"/>
+                <filter name="tariffs" string="Rate Lookups"
+                        domain="[('operation', '=', 'tariff')]"/>
+                <filter name="labels" string="Labels" domain="[('operation', '=', 'label')]"/>
+                <filter name="tracking" string="Tracking"
+                        domain="[('operation', '=', 'tracking')]"/>
+                <separator/>
+                <filter name="today" string="Today"
+                        domain="[('create_date', '&gt;=', datetime.datetime.combine(context_today(), datetime.time(0,0,0)))]"/>
+                <group>
+                    <filter name="group_operation" string="Operation"
+                            context="{'group_by': 'operation'}"/>
+                    <filter name="group_status" string="HTTP Status"
+                            context="{'group_by': 'http_status'}"/>
+                    <filter name="group_day" string="Date"
+                            context="{'group_by': 'create_date:day'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_indiapost_log" model="ir.actions.act_window">
+        <field name="name">India Post API Log</field>
+        <field name="res_model">logistics.indiapost.log</field>
+        <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="view_indiapost_log_search"/>
+        <field name="context">{'create': 0}</field>
+    </record>
+
+    <!-- ================================================================ -->
+    <!-- Menus                                                             -->
+    <!-- ================================================================ -->
+    <menuitem id="menu_indiapost_root" name="India Post"
+              parent="menu_logistics_root" sequence="25"
+              groups="keralariders_logistics.group_logistics_admin"/>
+    <menuitem id="menu_indiapost_barcode_range" name="Barcode Ranges"
+              parent="menu_indiapost_root" sequence="1"
+              action="action_indiapost_barcode_range"/>
+    <menuitem id="menu_indiapost_barcode" name="Allocated Barcodes"
+              parent="menu_indiapost_root" sequence="2"
+              action="action_indiapost_barcode"/>
+    <menuitem id="menu_indiapost_office" name="Post Offices"
+              parent="menu_indiapost_root" sequence="3"
+              action="action_indiapost_office"/>
+    <menuitem id="menu_indiapost_tariff_cache" name="Cached Rates"
+              parent="menu_indiapost_root" sequence="4"
+              action="action_indiapost_tariff_cache"/>
+    <menuitem id="menu_indiapost_log" name="API Log"
+              parent="menu_indiapost_root" sequence="5"
+              action="action_indiapost_log"/>
+
+</odoo>

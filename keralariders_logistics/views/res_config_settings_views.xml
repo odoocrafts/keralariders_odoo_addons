@@ -17,6 +17,165 @@
                             <field name="company_cod_account_id" options="{'no_create': False}"/>
                         </setting>
                     </block>
+
+                    <block title="India Post (Department of Posts)"
+                           name="indiapost_setting_container">
+                        <setting id="indiapost_enable" string="Enable India Post"
+                                 help="Master switch. When off no API call is made and the rate calculator falls back to the weight slab table.">
+                            <field name="indiapost_enabled"/>
+                            <div class="content-group mt-2" invisible="not indiapost_enabled">
+                                <div class="row">
+                                    <label for="indiapost_environment" class="col-lg-4 o_light_label"/>
+                                    <field name="indiapost_environment"/>
+                                </div>
+                                <div class="row">
+                                    <label for="indiapost_base_url" class="col-lg-4 o_light_label"/>
+                                    <field name="indiapost_base_url"/>
+                                </div>
+                                <div class="alert alert-warning mt-2 mb-0" role="alert"
+                                     invisible="indiapost_environment != 'production'">
+                                    Production mode also switches barcode
+                                    allocation to production ranges. Confirm the
+                                    base URL and that India Post has whitelisted
+                                    this server's public IP before going live.
+                                </div>
+                                <button name="action_indiapost_test_connection"
+                                        type="object" string="Test Connection"
+                                        icon="fa-plug" class="btn-link mt-2"/>
+                            </div>
+                        </setting>
+
+                        <setting id="indiapost_credentials" string="Credentials"
+                                 help="Bulk customer account issued by India Post. The username is the same value as the bulk customer id."
+                                 invisible="not indiapost_enabled">
+                            <div class="content-group">
+                                <div class="row">
+                                    <label for="indiapost_username" class="col-lg-4 o_light_label"/>
+                                    <field name="indiapost_username"/>
+                                </div>
+                                <div class="row">
+                                    <label for="indiapost_password" class="col-lg-4 o_light_label"/>
+                                    <field name="indiapost_password" password="True"/>
+                                </div>
+                                <div class="row">
+                                    <label for="indiapost_customer_id" class="col-lg-4 o_light_label"/>
+                                    <field name="indiapost_customer_id"/>
+                                </div>
+                                <div class="row">
+                                    <label for="indiapost_contract_id" class="col-lg-4 o_light_label"/>
+                                    <field name="indiapost_contract_id"/>
+                                </div>
+                                <div class="alert alert-info mt-2 mb-0" role="alert">
+                                    Bookings fail outright until India Post
+                                    activates a Speed Post service type on the
+                                    contract. The rejection reads
+                                    "Contract validation failed: Contract … has
+                                    no service_type defined".
+                                </div>
+                            </div>
+                        </setting>
+
+                        <setting id="indiapost_consignor" string="Consignor of Record"
+                                 help="KeralaXpress books as a single consignor. The seller appears as the pickup address and as the return address, so undelivered articles go back to the seller."
+                                 invisible="not indiapost_enabled">
+                            <div class="content-group">
+                                <div class="row">
+                                    <label for="indiapost_sender_name" class="col-lg-4 o_light_label"/>
+                                    <field name="indiapost_sender_name"/>
+                                </div>
+                                <div class="row">
+                                    <label for="indiapost_sender_company" class="col-lg-4 o_light_label"/>
+                                    <field name="indiapost_sender_company"/>
+                                </div>
+                                <div class="row">
+                                    <label for="indiapost_sender_address" class="col-lg-4 o_light_label"/>
+                                    <field name="indiapost_sender_address"/>
+                                </div>
+                                <div class="row">
+                                    <label for="indiapost_sender_city" class="col-lg-4 o_light_label"/>
+                                    <field name="indiapost_sender_city"/>
+                                </div>
+                                <div class="row">
+                                    <label for="indiapost_sender_state" class="col-lg-4 o_light_label"/>
+                                    <field name="indiapost_sender_state"/>
+                                </div>
+                                <div class="row">
+                                    <label for="indiapost_sender_pincode" class="col-lg-4 o_light_label"/>
+                                    <field name="indiapost_sender_pincode"/>
+                                </div>
+                                <div class="row">
+                                    <label for="indiapost_sender_mobile" class="col-lg-4 o_light_label"/>
+                                    <field name="indiapost_sender_mobile"/>
+                                </div>
+                                <div class="row">
+                                    <label for="indiapost_sender_email" class="col-lg-4 o_light_label"/>
+                                    <field name="indiapost_sender_email"/>
+                                </div>
+                                <div class="row">
+                                    <label for="indiapost_sender_gstin" class="col-lg-4 o_light_label"/>
+                                    <field name="indiapost_sender_gstin"/>
+                                </div>
+                                <div class="text-muted mt-2">
+                                    Names, company, city and state must each be
+                                    3 to 80 characters and the mobile exactly 10
+                                    digits starting 6-9. India Post does not
+                                    enforce this itself, so it is checked here.
+                                </div>
+                            </div>
+                        </setting>
+
+                        <setting id="indiapost_label" string="Labels and Booking Office"
+                                 invisible="not indiapost_enabled">
+                            <div class="content-group">
+                                <div class="row">
+                                    <label for="indiapost_booking_office_name" class="col-lg-4 o_light_label"/>
+                                    <field name="indiapost_booking_office_name"/>
+                                </div>
+                                <div class="row">
+                                    <label for="indiapost_booking_office_pin" class="col-lg-4 o_light_label"/>
+                                    <field name="indiapost_booking_office_pin"/>
+                                </div>
+                                <div class="row">
+                                    <label for="indiapost_label_size" class="col-lg-4 o_light_label"/>
+                                    <field name="indiapost_label_size"/>
+                                </div>
+                                <div class="row">
+                                    <label for="indiapost_transmission_mode" class="col-lg-4 o_light_label"/>
+                                    <field name="indiapost_transmission_mode"/>
+                                </div>
+                            </div>
+                        </setting>
+
+                        <setting id="indiapost_operations" string="Rates, Caching and Pickup"
+                                 invisible="not indiapost_enabled">
+                            <div class="content-group">
+                                <div class="row">
+                                    <label for="indiapost_tariff_cache_minutes" class="col-lg-6 o_light_label"/>
+                                    <field name="indiapost_tariff_cache_minutes"/>
+                                </div>
+                                <div class="row">
+                                    <label for="indiapost_office_cache_days" class="col-lg-6 o_light_label"/>
+                                    <field name="indiapost_office_cache_days"/>
+                                </div>
+                                <div class="row">
+                                    <label for="indiapost_request_timeout" class="col-lg-6 o_light_label"/>
+                                    <field name="indiapost_request_timeout"/>
+                                </div>
+                                <div class="row">
+                                    <label for="indiapost_pickup_lead_days" class="col-lg-6 o_light_label"/>
+                                    <field name="indiapost_pickup_lead_days"/>
+                                </div>
+                                <div class="row">
+                                    <label for="indiapost_quote_markup_percent" class="col-lg-6 o_light_label"/>
+                                    <field name="indiapost_quote_markup_percent"/>
+                                </div>
+                                <div class="row">
+                                    <field name="indiapost_default_pod"/>
+                                    <label for="indiapost_default_pod" class="o_light_label ms-2"/>
+                                </div>
+                            </div>
+                        </setting>
+                    </block>
                 </app>
             </xpath>
         </field>

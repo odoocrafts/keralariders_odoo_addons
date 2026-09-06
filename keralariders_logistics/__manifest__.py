@@ -1,6 +1,6 @@
 {
     'name': 'Kerala Riders Logistics',
-    'version': '1.4.8',
+    'version': '1.5.0',
     'category': 'Operations/Logistics',
     'summary': 'Last-mile delivery management platform for Kerala Riders',
     'description': """
@@ -19,6 +19,8 @@ Features:
 - Seller / DE / Hub Manager portals
 - Same-district skip-hub local delivery
 - Comprehensive reporting
+- India Post (Speed Post) fulfilment: live tariffs, bulk booking, address
+  labels and tracking sync, selectable per seller
     """,
     'author': 'Odoocrafts',
     'website': 'https://keralariders.com',
@@ -34,6 +36,10 @@ Features:
         'data/sequence.xml',
         'data/delivery_charges.xml',
         'data/company_cod_account.xml',
+        # Before the views: shipment_views.xml and portal_templates.xml both
+        # reference action_report_shipment, which is defined here. With this
+        # file loaded last the module could not be installed from scratch.
+        'report/shipment_layout.xml',
         'views/seller_views.xml',
         'views/wallet_views.xml',
         'views/wallet_recharge_views.xml',
@@ -54,7 +60,10 @@ Features:
         'views/portal_delivery_templates.xml',
         'views/portal_hub_templates.xml',
         'views/brand_overrides.xml',
-        'report/shipment_layout.xml',
+        'views/indiapost_views.xml',
+        # Loaded last: the crons reference model_* ids and the office seed
+        # calls a method on logistics.indiapost.office.
+        'data/indiapost_data.xml',
     ],
     'post_init_hook': '_post_init_assign_hub_pincodes',
     'images': ['static/description/icon.png'],

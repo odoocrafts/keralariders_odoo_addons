@@ -29,6 +29,25 @@
                     <button name="action_reset_draft" string="Reset to Draft" type="object" class="btn-secondary" invisible="state not in ('cancelled')"/>
                     <button name="action_cancel_order" string="Cancel" type="object" class="btn-secondary" invisible="state in ('cancelled', 'draft')" 
                         confirm="This will mark all Shipments under this order as cancelled. Are you sure you want to cancel this order?"/>
+                    <!-- India Post batch actions. Booking submits every
+                         unbooked India Post shipment on this order in one
+                         /process-articles call. -->
+                    <button name="action_indiapost_book_order" type="object"
+                            string="Book with India Post" class="btn-primary"
+                            invisible="indiapost_pending_count == 0 or state == 'cancelled'"
+                            groups="keralariders_logistics.group_logistics_admin"/>
+                    <button name="action_indiapost_quote_order" type="object"
+                            string="Refresh India Post Rates" class="btn-secondary"
+                            invisible="indiapost_pending_count == 0 or state == 'cancelled'"
+                            groups="keralariders_logistics.group_logistics_admin"/>
+                    <button name="action_indiapost_fetch_labels" type="object"
+                            string="Fetch India Post Labels" class="btn-secondary"
+                            invisible="indiapost_booked_count == 0"
+                            groups="keralariders_logistics.group_logistics_admin,keralariders_logistics.group_logistics_hub_manager"/>
+                    <button name="action_indiapost_sync_tracking" type="object"
+                            string="Sync India Post Tracking" class="btn-secondary"
+                            invisible="indiapost_booked_count == 0"
+                            groups="keralariders_logistics.group_logistics_admin,keralariders_logistics.group_logistics_hub_manager"/>
 
                     <field name="state" widget="statusbar" statusbar_visible="draft,pickup_requested,picked,delivered"/>
                 </header>
@@ -49,6 +68,13 @@
                             <field name="total_charges"/>
                             <field name="currency_id" invisible="1"/>
                             <field name="company_id" invisible="1"/>
+                            <field name="indiapost_shipment_count" invisible="1"/>
+                            <field name="indiapost_booked_count"
+                                   string="Booked with India Post"
+                                   invisible="indiapost_shipment_count == 0"/>
+                            <field name="indiapost_pending_count"
+                                   string="Awaiting India Post Booking"
+                                   invisible="indiapost_shipment_count == 0"/>
                         </group>
                     </group>
                     <notebook>
