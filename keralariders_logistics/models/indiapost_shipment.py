@@ -39,6 +39,21 @@ TERMINAL_STATES = ('delivered', 'cancelled', 'returned')
 # silently trusted.
 QUOTE_SIGNATURE_VERSION = 'v1'
 
+# An India Post shipment is billed the postal tariff rather than the slab
+# table, which makes the stored quote the price: these fields decide what the
+# seller pays and are added to the delivery charge guard on logistics.shipment.
+# The two staleness fields belong here as much as the amounts do — a seller who
+# could backdate the signature would make a forged tariff look freshly quoted
+# and walk straight past the re-quote that protects the debit.
+INDIAPOST_CHARGE_FIELDS = (
+    'indiapost_base_tariff',
+    'indiapost_vas_charges',
+    'indiapost_tax_amount',
+    'indiapost_total_tariff',
+    'indiapost_quote_signature',
+    'indiapost_tariff_quoted_on',
+)
+
 
 def quote_failure_reason(exc):
     """The most useful sentence available from a failed rate lookup."""
@@ -510,6 +525,52 @@ class Shipment(models.Model):
             )
         super(Shipment, self - indiapost)._compute_delivery_charges()
 
+    def _delivery_charge_guarded_fields(self):
+        """Add the postal tariff to the staff-only charge fields.
+
+        For an India Post shipment the stored quote *is* the price, so leaving
+        it writable would have reopened the tampering hole one field along:
+        ``indiapost_total_tariff = 1`` prices the parcel at a rupee through the
+        legitimate compute, exactly as ``tax_percentage = -1`` did.
+        """
+        return super()._delivery_charge_guarded_fields() + INDIAPOST_CHARGE_FIELDS
+
+    def _delivery_charge_signature_parts(self):
+        """Date a manual price by the postal inputs as well as the slab ones.
+
+        An override on an India Post shipment has to lapse on everything that
+        moves the postal tariff — dimensions, insurance, VAS, either pincode —
+        not just on weight and district. Reusing the quote signature means the
+        override and the tariff go stale on precisely the same events, so the
+        two staleness checks can never disagree about whether the shipment
+        still is the one that was priced.
+        """
+        parts = super()._delivery_charge_signature_parts()
+        if self.fulfilment_method == 'indiapost':
+            parts.append('ip%s' % self._ip_quote_signature())
+        return parts
+
+    def _authoritative_delivery_charge(self):
+        """Price an India Post shipment from the postal tariff, not the slab.
+
+        Layer 2 of the delivery charge guard recomputes the charge immediately
+        before the wallet is debited. Left to the base implementation it would
+        recompute the *slab* price and bill an India Post parcel at hub-network
+        rates, so the recompute follows the same split as the compute: the
+        postal tariff here, the rate card for everyone else.
+
+        The tariff is trustworthy at this point for two separate reasons: the
+        fields are staff-only (see :meth:`_delivery_charge_guarded_fields`), and
+        :meth:`action_add_wallet_transaction` refuses to reach this code with a
+        quote whose signature does not match the shipment.
+        """
+        self.ensure_one()
+        if self.fulfilment_method != 'indiapost':
+            return super()._authoritative_delivery_charge()
+        subtotal = self.indiapost_base_tariff + self.indiapost_vas_charges
+        total = self.indiapost_total_tariff or subtotal
+        return self._round_charge(subtotal), self._round_charge(total)
+
     def action_add_wallet_transaction(self):
         """Never debit a wallet against a stale or missing India Post rate.
 
@@ -523,6 +584,16 @@ class Shipment(models.Model):
                 continue
             if not record.indiapost_needs_quote:
                 continue
+            if record._delivery_charge_override_applies():
+                # An administrator has priced this parcel by hand, so the
+                # postal tariff is not what the seller is being billed and a
+                # stale one cannot make the debit wrong. Refreshing it anyway
+                # would strand the shipment whenever the India Post API is
+                # unreachable — the exact situation a manual price is for. The
+                # override carries the quote signature (see
+                # _delivery_charge_signature_parts), so it has already lapsed
+                # if the article itself changed since it was set.
+                continue
             try:
                 record._ip_quote_and_store()
             except (UserError, ValidationError, ipc.IndiapostDataError,
@@ -535,7 +606,8 @@ class Shipment(models.Model):
                     'use "Refresh India Post Rate", then try again.'
                 ) % {'awb': record.name,
                      'reason': quote_failure_reason(exc)}) from exc
-            if record.indiapost_needs_quote:
+            if record.indiapost_needs_quote \
+                    and not record._delivery_charge_override_applies():
                 # Belt and braces: a stored quote whose signature still does
                 # not match means the debit would be against the wrong price.
                 raise UserError(_(
@@ -568,7 +640,10 @@ class Shipment(models.Model):
             settings=settings,
             **self._ip_vas_flags()
         )
-        self.write({
+        # The tariff fields are staff-only, and this runs on behalf of a portal
+        # seller requesting pickup: the authorisation for this write is that
+        # the figures come straight from India Post, so it opts in explicitly.
+        self.with_context(allow_delivery_charge_write=True).write({
             'indiapost_base_tariff': quote['base_tariff'],
             'indiapost_vas_charges': quote['vas_charges'],
             'indiapost_tax_amount': quote['total_tax'],
