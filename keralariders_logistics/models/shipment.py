@@ -107,7 +107,7 @@ class Shipment(models.Model):
                     vals.setdefault(key, value)
         shipments = super(Shipment, self).create(vals_list)
         shipments.filtered(lambda s: s.estimated_route_ids and not s.active_leg_id)._sync_active_leg()
-        shipments._auto_assign_pickup_executive()
+        shipments._needs_keralaxpress_pickup()._auto_assign_pickup_executive()
         return shipments
 
     def write(self, vals):
@@ -871,14 +871,29 @@ class Shipment(models.Model):
             return False
         return self._de_eligible_for_operation(de, leg.operation_type)
 
+    def _needs_keralaxpress_pickup(self):
+        """The subset of ``self`` whose first pickup is a KeralaXpress job.
+
+        India Post collects outbound articles from the seller's own premises,
+        so those must never reach a KeralaXpress pickup executive — a phantom
+        pickup task in a DE's queue for a parcel the postman is coming for.
+        A return journey is the exception: the article is already with the
+        customer and only a KeralaXpress executive can collect it, whatever
+        carrier took it out. Hub-network shipments are unaffected.
+        """
+        return self.filtered(
+            lambda s: s.fulfilment_method != 'indiapost' or s.is_return_journey
+        )
+
     def _auto_assign_pickup_executive(self):
         """Assign pickup DE from origin pincode; set pickup leg assigned_de_id when possible.
 
         Does not block create when no matching DE exists. Never overwrites an
         already-set pickup_executive_id. Distinct from delivery_executive_id (last-mile).
+        India Post shipments are skipped: see :meth:`_needs_keralaxpress_pickup`.
         """
         DE = self.env['logistics.delivery.executive']
-        for shipment in self:
+        for shipment in self._needs_keralaxpress_pickup():
             if shipment.pickup_executive_id:
                 de = shipment.pickup_executive_id
             else:
@@ -985,6 +1000,14 @@ class Shipment(models.Model):
             raise UserError(_("Delivery executive %s is inactive.") % delivery_executive.name)
 
         for shipment in self:
+            if not shipment._needs_keralaxpress_pickup():
+                raise UserError(
+                    _("Shipment %s travels by India Post, which collects "
+                      "directly from the seller, so there is no KeralaXpress "
+                      "pickup to assign. Divert it to the hub network first if "
+                      "a KeralaXpress executive really has to collect it.")
+                    % shipment.name
+                )
             outbound_ok = shipment.state in ('pickup_requested', 'order_added')
             return_ok = shipment.state == 'return_requested' and shipment.is_return_journey
             if not (outbound_ok or return_ok):

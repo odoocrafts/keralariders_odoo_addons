@@ -218,6 +218,270 @@ def own_network_pricing_untouched():
     return 'slab price %.2f preserved for hub-network sellers' % slab
 
 
+def _selftest_seller():
+    return env['logistics.seller'].search(
+        [('name', '=', 'Self-test Seller')], limit=1)
+
+
+def _selftest_portal_user():
+    """The portal user created by :func:`admin_only_fulfilment`."""
+    user = env['res.users'].search([('login', '=', 'kx_selftest_portal')], limit=1)
+    assert user, 'the portal self-test user is missing'
+    return user
+
+
+def _shipment_vals(seller, **overrides):
+    """A shipment India Post will accept: 1.5 kg at 30 x 20 x 15 cm."""
+    district = env['logistics.district'].search([], limit=1)
+    vals = {
+        'seller_id': seller.id,
+        'shipping_to_name': 'Self-test Customer',
+        'shipping_to_address': '12 Test Road, Test Nagar',
+        'shipping_to_zip': '695001',
+        'shipping_to_mobile': '9876543210',
+        'shipping_to_district_id': district.id,
+        'item_description': 'Self-test article',
+        'total_weight': 1.5,
+        'length_cm': 30,
+        'breadth_cm': 20,
+        'height_cm': 15,
+    }
+    vals.update(overrides)
+    return vals
+
+
+def shipment_fulfilment_method_guard():
+    """A seller must not be able to pick their own carrier per shipment.
+
+    Regression for the hole that let an India Post seller create or update a
+    shipment with fulfilment_method='own_network' over RPC, skipping the
+    dimension and packaging validation and paying the cheaper weight slab
+    instead of the live postal tariff. sudo() is used throughout because that
+    is what the portal controllers do, and sudo() leaves env.user as the real
+    user, which is what both guards check.
+    """
+    from odoo.exceptions import AccessError
+    seller = _selftest_seller()
+    seller.write({'fulfilment_method': 'indiapost'})
+    portal_user = _selftest_portal_user()
+    Shipment = env['logistics.shipment']
+
+    # create: a caller-supplied carrier is discarded, not honoured...
+    smuggled = Shipment.with_user(portal_user).sudo().create(
+        _shipment_vals(seller, fulfilment_method='own_network'))
+    assert smuggled.fulfilment_method == 'indiapost', \
+        'a portal user chose their own carrier on create'
+    assert smuggled.indiapost_booking_state == 'to_book', \
+        smuggled.indiapost_booking_state
+
+    # ...and the create still succeeds, because /my/shipments/create and the
+    # bulk upload are legitimate portal creates.
+    plain = Shipment.with_user(portal_user).sudo().create(_shipment_vals(seller))
+    assert plain.fulfilment_method == 'indiapost'
+
+    # write: refused outright, because a change cannot be silently corrected.
+    try:
+        smuggled.with_user(portal_user).sudo().write(
+            {'fulfilment_method': 'own_network'})
+    except AccessError:
+        pass
+    else:
+        raise AssertionError('a portal user changed a shipment carrier')
+    assert smuggled.fulfilment_method == 'indiapost'
+
+    # An administrator can do both. with_env is needed because a recordset
+    # created through with_user stays bound to that user.
+    pinned = Shipment.create(
+        _shipment_vals(seller, fulfilment_method='own_network'))
+    assert pinned.fulfilment_method == 'own_network', \
+        'an administrator could not pin the carrier on create'
+    as_admin = smuggled.with_env(env)
+    as_admin.write({'fulfilment_method': 'own_network'})
+    assert as_admin.fulfilment_method == 'own_network'
+
+    # And the admin-only "Divert to Hub Network" button still works, since it
+    # writes the very field the guard protects.
+    divert = Shipment.create(_shipment_vals(seller))
+    assert divert.fulfilment_method == 'indiapost'
+    divert.action_indiapost_switch_to_own_network()
+    assert divert.fulfilment_method == 'own_network', 'divert button broken'
+    assert divert.indiapost_booking_state == 'not_required'
+
+    (as_admin + plain.with_env(env) + pinned + divert).unlink()
+    return ('portal create silently resolves from the seller, portal write '
+            'raises AccessError, admin create/write and the divert button work')
+
+
+def quote_signature_staleness():
+    """A stored India Post price must expire the moment its inputs change.
+
+    Regression for the wallet being debited on an obsolete tariff: the old
+    check compared only the banded weight, so a dimension edit (volumetric
+    weight dominates - 600 g at 30x20x15 bills as 1800 g), an insurance
+    declaration (~6% of value) or a VAS toggle all went unnoticed.
+    """
+    from odoo import fields as odoo_fields
+    from odoo.exceptions import UserError
+    seller = _selftest_seller()
+    seller.write({'fulfilment_method': 'indiapost'})
+    shipment = env['logistics.shipment'].create(_shipment_vals(seller))
+    assert shipment.indiapost_needs_quote, 'an unquoted shipment looked priced'
+
+    def store_quote():
+        """Exactly what _ip_quote_and_store writes, without calling the API."""
+        shipment.write({
+            'indiapost_base_tariff': 100.0,
+            'indiapost_vas_charges': 0.0,
+            'indiapost_tax_amount': 18.0,
+            'indiapost_total_tariff': 118.0,
+            'indiapost_quoted_weight_g': ipc.band_weight(
+                ipc.kg_to_grams(shipment.total_weight)),
+            'indiapost_tariff_quoted_on': odoo_fields.Datetime.now(),
+            'indiapost_quote_signature': shipment._ip_quote_signature(),
+        })
+
+    store_quote()
+    assert not shipment.indiapost_needs_quote, 'a fresh quote looked stale'
+    # The banded weight is unchanged by all of these, which is precisely why
+    # the old weight-only comparison missed them.
+    banded = shipment.indiapost_quoted_weight_g
+    invalidators = [
+        ('a dimension change', {'height_cm': 25}),
+        ('an insurance declaration', {'indiapost_insurance_value': 50000}),
+        ('a VAS toggle', {'indiapost_vas_pod': True}),
+        ('another VAS toggle', {'indiapost_vas_reg': True}),
+        ('a destination pincode change', {'shipping_to_zip': '673001'}),
+    ]
+    for label, vals in invalidators:
+        store_quote()
+        assert not shipment.indiapost_needs_quote, label
+        shipment.write(vals)
+        assert shipment.indiapost_needs_quote, \
+            '%s did not invalidate the stored quote' % label
+        assert ipc.band_weight(ipc.kg_to_grams(shipment.total_weight)) == banded, \
+            'the banded weight moved, so this case proves nothing'
+
+    # A weight change still invalidates, and only once it crosses a band.
+    store_quote()
+    shipment.write({'total_weight': 1.501})
+    assert shipment.indiapost_needs_quote, 'a weight change was missed'
+
+    # The wallet must not be debited while the signature does not match. No
+    # India Post credentials are configured here, so the forced re-quote fails
+    # and that failure has to stop the debit rather than charge the old price.
+    assert shipment.indiapost_needs_quote
+    try:
+        shipment.action_add_wallet_transaction()
+    except UserError as exc:
+        message = exc.args[0] if exc.args else str(exc)
+        assert 'out of date' in message, message
+    else:
+        raise AssertionError('a wallet was debited on a stale India Post rate')
+    assert not shipment.wallet_transaction_id, 'a stale debit got through'
+
+    # An article India Post has already booked and priced is exempt: their
+    # calculated tariff is the number that was actually charged.
+    store_quote()
+    shipment.sudo().write({
+        'indiapost_article_number': 'ET214330016IN',
+        'indiapost_booking_state': 'booked',
+    })
+    shipment.write({'height_cm': 30})
+    assert not shipment.indiapost_needs_quote, \
+        'a booked article was queued for a pointless re-quote'
+
+    signature = shipment._ip_quote_signature()
+    shipment.sudo().write({'indiapost_article_number': False})
+    shipment.unlink()
+    return 'signature %s; 6 input changes invalidate, booked articles exempt' \
+        % signature
+
+
+def indiapost_skips_keralaxpress_pickup():
+    """India Post collects from the seller, so no KeralaXpress DE is assigned.
+
+    Regression for phantom pickup tasks: both auto-assignment call sites used
+    to run for every shipment regardless of carrier.
+    """
+    from odoo.exceptions import UserError
+    seller = _selftest_seller()
+    seller.write({'fulfilment_method': 'indiapost'})
+    Shipment = env['logistics.shipment']
+    pincode = env['logistics.pincode'].search(
+        [('name', '=', (seller.zip or '').strip())], limit=1)
+    assert pincode, 'no logistics.pincode for the self-test seller origin'
+    de = env['logistics.delivery.executive'].create({
+        'name': 'Self-test Pickup DE',
+        'mobile': '9876500000',
+        'is_pickup': True,
+        'assigned_pickup_pincodes': [(6, 0, pincode.ids)],
+    })
+
+    def pickup_leg(shipment):
+        return shipment.estimated_route_ids.filtered(
+            lambda l: l.operation_type == 'pickup')[:1]
+
+    indiapost = Shipment.create(
+        _shipment_vals(seller, state='order_added'))
+    assert indiapost.fulfilment_method == 'indiapost'
+    assert not indiapost.pickup_executive_id, \
+        'an India Post shipment was given a KeralaXpress pickup executive'
+    assert not pickup_leg(indiapost).assigned_de_id, \
+        'an India Post pickup leg was assigned to a KeralaXpress executive'
+    assert not pickup_leg(indiapost).executive1_id, \
+        'an India Post pickup leg still suggests a KeralaXpress executive'
+
+    # The hub network is untouched: same seller, same pincode, own_network.
+    own = Shipment.create(_shipment_vals(
+        seller, state='order_added', fulfilment_method='own_network'))
+    assert own.pickup_executive_id == de, \
+        'a hub-network shipment lost its automatic pickup executive'
+    assert pickup_leg(own).assigned_de_id == de, \
+        'a hub-network pickup leg lost its assignment'
+
+    # Requesting pickup on an order must not assign one either (order.py).
+    order = env['logistics.order'].create({'seller_id': seller.id})
+    via_order = Shipment.create(_shipment_vals(
+        seller, state='order_added', order_id=order.id))
+    via_order._needs_keralaxpress_pickup()._auto_assign_pickup_executive()
+    assert not via_order.pickup_executive_id, \
+        'the order pickup-request path assigned an India Post pickup'
+
+    # The hub manager's assign action refuses rather than assigning silently.
+    try:
+        indiapost.action_assign_pickup_executive(de)
+    except UserError as exc:
+        message = exc.args[0] if exc.args else str(exc)
+        assert 'India Post' in message, message
+    else:
+        raise AssertionError('a KeralaXpress pickup was assigned to India Post')
+    own.action_assign_pickup_executive(de)
+
+    # ...and the pending-pickup queue at /my/hub/pickups leaves them out,
+    # while hub-network shipments stay listed.
+    from odoo.addons.keralariders_logistics.controllers.portal import (
+        LogisticsPortal,
+    )
+    hubs = indiapost.source_hub_id | own.source_hub_id
+    assert hubs, 'the self-test shipments resolved to no source hub'
+    queue = Shipment.search(LogisticsPortal()._hub_pending_pickup_domain(hubs))
+    assert indiapost not in queue, \
+        'an India Post shipment sits in the pending-pickup queue'
+    assert own in queue, 'a hub-network shipment fell out of the queue'
+
+    # A return journey is ours to collect whatever the carrier took it out.
+    indiapost.write({'is_return_journey': True})
+    assert indiapost._needs_keralaxpress_pickup() == indiapost, \
+        'a returning India Post shipment cannot be collected by anyone'
+    indiapost.write({'is_return_journey': False})
+
+    (indiapost + own + via_order).unlink()
+    order.unlink()
+    de.unlink()
+    return ('India Post gets no pickup DE, no leg assignment and no queue '
+            'entry; hub network unchanged; returns still collectable')
+
+
 def views_render():
     """Every view we touched or added must compile against the real fields."""
     problems = []
@@ -390,6 +654,10 @@ check('rules: pickup date format', pickup_format)
 check('security: fulfilment method is admin only', admin_only_fulfilment)
 check('shipment: India Post defaults and guards', shipment_defaults)
 check('shipment: hub network pricing untouched', own_network_pricing_untouched)
+check('security: shipment carrier is admin only', shipment_fulfilment_method_guard)
+check('tariff: quote signature catches stale prices', quote_signature_staleness)
+check('pickup: India Post gets no KeralaXpress DE',
+      indiapost_skips_keralaxpress_pickup)
 check('views: backend views render', views_render)
 check('views: calculator template compiles', calculator_template_compiles)
 check('data: cron jobs installed', crons_present)

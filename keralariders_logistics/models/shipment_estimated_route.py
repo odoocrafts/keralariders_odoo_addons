@@ -66,7 +66,15 @@ class ShipmentInherit(models.Model):
             final_hub = self.env['logistics.hub'].get_hub_from_pincode(delivery_zip)
             DE = self.env['logistics.delivery.executive']
 
-            pickup_exec = DE.get_assigned_executive_for_pincode(pickup_zip, 'pickup')
+            # The planned route is still drawn for India Post shipments (the
+            # hubs are what feed the ops dashboards), but its pickup leg gets
+            # no suggested executive: India Post collects from the seller, so
+            # naming a KeralaXpress DE there would only invite a wrong
+            # assignment. Returns are ours to collect, so they keep it.
+            pickup_exec = (
+                DE.get_assigned_executive_for_pincode(pickup_zip, 'pickup')
+                if rec._needs_keralaxpress_pickup() else DE.browse()
+            )
             delivery_exec = DE.get_assigned_executive_for_pincode(delivery_zip, 'delivery')
 
             if source_hub == final_hub:

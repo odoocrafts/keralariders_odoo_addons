@@ -14,13 +14,14 @@ validator accepts.
 """
 
 from odoo import api, fields, models, _
-from odoo.exceptions import UserError, ValidationError
+from odoo.exceptions import AccessError, UserError, ValidationError
 
 import base64
 import logging
 
 from . import indiapost_common as ipc
 from .indiapost_client import IndiapostApiError
+from .seller import FULFILMENT_ADMIN_GROUP
 
 _logger = logging.getLogger(__name__)
 
@@ -32,6 +33,20 @@ LABEL_PATH = '/v1/label/create/domestic'
 BOOKING_CHUNK_SIZE = 200
 
 TERMINAL_STATES = ('delivered', 'cancelled', 'returned')
+
+# Bumped whenever the meaning of a signature component changes, so quotes
+# stored by an older version of this code are treated as stale rather than
+# silently trusted.
+QUOTE_SIGNATURE_VERSION = 'v1'
+
+
+def quote_failure_reason(exc):
+    """The most useful sentence available from a failed rate lookup."""
+    if isinstance(exc, IndiapostApiError):
+        return exc.user_message()
+    if exc.args:
+        return str(exc.args[0])
+    return str(exc)
 
 
 class Shipment(models.Model):
@@ -62,6 +77,30 @@ class Shipment(models.Model):
     def _compute_is_indiapost(self):
         for record in self:
             record.is_indiapost = record.fulfilment_method == 'indiapost'
+
+    def _ip_can_set_fulfilment_method(self):
+        """Whether the current user may choose a shipment's carrier.
+
+        Delegates to ``logistics.seller`` so the shipment and the seller share
+        one definition of "trusted", including the
+        ``allow_fulfilment_method_write`` context key. Like the seller guard it
+        checks the *real* user, so a ``sudo()`` made while serving a portal
+        request is still refused.
+
+        Deliberately no field-level ``groups`` here, unlike the seller field:
+        the shipment's carrier is shown in the backend list and search views
+        and grouped by, and hub managers and delivery executives legitimately
+        need to see which carrier is carrying a package. Read stays open; the
+        write guards below are the control.
+        """
+        return self.env['logistics.seller']._ip_can_set_fulfilment_method()
+
+    def _ip_check_fulfilment_method_write(self, vals):
+        if 'fulfilment_method' in vals and not self._ip_can_set_fulfilment_method():
+            raise AccessError(_(
+                "Only a Logistics Administrator can change a shipment's "
+                "fulfilment method. Please contact KeralaXpress support."
+            ))
 
     # ------------------------------------------------------------------
     # Dimensions
@@ -262,24 +301,85 @@ class Shipment(models.Model):
     )
     indiapost_tariff_quoted_on = fields.Datetime(string='Rate Quoted On',
                                                  copy=False)
+    indiapost_quote_signature = fields.Char(
+        string='Quoted Inputs', copy=False, readonly=True,
+        help='Fingerprint of every input India Post priced this shipment on. '
+             'Kept as readable text rather than a hash so a stale quote can be '
+             'diagnosed by eye. The stored value is compared with the current '
+             'one to decide whether the price still applies.',
+    )
     indiapost_needs_quote = fields.Boolean(
         string='Needs a Rate Quote', compute='_compute_indiapost_needs_quote',
     )
 
+    def _ip_quote_signature_parts(self):
+        """Every input that can move the India Post price, in a fixed order.
+
+        Deliberately exhaustive rather than clever: a new pricing input is
+        added here and staleness detection follows automatically, instead of
+        needing a matching comparison to be remembered somewhere else.
+        """
+        self.ensure_one()
+        return (
+            QUOTE_SIGNATURE_VERSION,
+            # Weight is banded because that is the weight actually quoted; a
+            # 1 g edit inside the same 50 g postal step cannot change the price.
+            'w%d' % ipc.band_weight(ipc.kg_to_grams(self.total_weight)),
+            'l%d' % ipc.cm_to_int(self.length_cm),
+            'b%d' % ipc.cm_to_int(self.breadth_cm),
+            'h%d' % ipc.cm_to_int(self.height_cm),
+            # Paise, so a rounding difference cannot hide a real change.
+            'ins%d' % round((self.indiapost_insurance_value or 0.0) * 100),
+            'pod%d' % bool(self.indiapost_vas_pod),
+            'reg%d' % bool(self.indiapost_vas_reg),
+            'ack%d' % bool(self.indiapost_vas_ack),
+            'otp%d' % bool(self.indiapost_vas_otp),
+            'from%s' % (self._ip_origin_pincode_soft() or '-'),
+            'to%s' % ((self.shipping_to_zip or '').strip() or '-'),
+        )
+
+    def _ip_quote_signature(self):
+        self.ensure_one()
+        return '|'.join(self._ip_quote_signature_parts())
+
+    def _ip_origin_pincode_soft(self):
+        """:meth:`_ip_origin_pincode` for contexts that must not raise.
+
+        The signature is computed on half-filled records too (a draft with no
+        seller pincode yet), and an unresolvable origin is simply part of the
+        fingerprint: filling it in later invalidates the quote, correctly.
+        """
+        self.ensure_one()
+        try:
+            return self._ip_origin_pincode()
+        except ipc.IndiapostDataError:
+            return ''
+
     @api.depends('fulfilment_method', 'indiapost_tariff_quoted_on',
-                 'indiapost_quoted_weight_g', 'total_weight')
+                 'indiapost_quote_signature', 'indiapost_article_number',
+                 'indiapost_booking_state', 'total_weight', 'length_cm',
+                 'breadth_cm', 'height_cm', 'indiapost_insurance_value',
+                 'indiapost_vas_pod', 'indiapost_vas_reg',
+                 'indiapost_vas_ack', 'indiapost_vas_otp',
+                 'shipping_from_zip', 'shipping_to_zip', 'seller_id.zip')
     def _compute_indiapost_needs_quote(self):
         for record in self:
             if record.fulfilment_method != 'indiapost':
                 record.indiapost_needs_quote = False
                 continue
+            if record.indiapost_article_number \
+                    or record.indiapost_booking_state == 'booked':
+                # India Post has already priced this article at booking and
+                # indiapost_calculated_tariff holds their figure, so there is
+                # nothing left to re-quote — a fresh tariff lookup would only
+                # disagree with what was actually charged.
+                record.indiapost_needs_quote = False
+                continue
             if not record.indiapost_tariff_quoted_on:
                 record.indiapost_needs_quote = True
                 continue
-            # A weight change since the quote invalidates the price.
             record.indiapost_needs_quote = (
-                record.indiapost_quoted_weight_g
-                != ipc.band_weight(ipc.kg_to_grams(record.total_weight))
+                record.indiapost_quote_signature != record._ip_quote_signature()
             )
 
     # ------------------------------------------------------------------
@@ -358,9 +458,19 @@ class Shipment(models.Model):
     # ------------------------------------------------------------------
     @api.model_create_multi
     def create(self, vals_list):
+        """Resolve the carrier from the seller unless the caller is trusted.
+
+        A portal seller may only ever get the carrier their seller record says,
+        so a caller-supplied ``fulfilment_method`` is discarded rather than
+        refused: ``/my/shipments/create`` and the bulk upload are legitimate
+        portal creates and must keep working. Only an administrator (or server
+        code opting in through ``allow_fulfilment_method_write``) can pin the
+        carrier explicitly, which is what a manual backend create needs.
+        """
         Seller = self.env['logistics.seller'].sudo()
+        trusted = self._ip_can_set_fulfilment_method()
         for vals in vals_list:
-            if not vals.get('fulfilment_method'):
+            if not trusted or not vals.get('fulfilment_method'):
                 seller = Seller.browse(vals['seller_id']) if vals.get('seller_id') \
                     else Seller.browse()
                 vals['fulfilment_method'] = (
@@ -369,6 +479,12 @@ class Shipment(models.Model):
             if vals['fulfilment_method'] != 'indiapost':
                 vals.setdefault('indiapost_booking_state', 'not_required')
         return super().create(vals_list)
+
+    def write(self, vals):
+        # Unlike create, a write cannot be silently corrected: the caller asked
+        # for a carrier change on an existing shipment and has to be told no.
+        self._ip_check_fulfilment_method_write(vals)
+        return super().write(vals)
 
     # ------------------------------------------------------------------
     # Delivery charges
@@ -395,10 +511,38 @@ class Shipment(models.Model):
         super(Shipment, self - indiapost)._compute_delivery_charges()
 
     def action_add_wallet_transaction(self):
-        """Never debit a wallet against a stale or missing India Post rate."""
+        """Never debit a wallet against a stale or missing India Post rate.
+
+        The stored quote signature is the authority: if it does not match the
+        shipment as it stands now, the price is re-fetched before a single
+        rupee moves, and a failure to re-fetch stops the debit outright rather
+        than charging yesterday's number.
+        """
         for record in self:
-            if record.fulfilment_method == 'indiapost' and record.indiapost_needs_quote:
+            if record.fulfilment_method != 'indiapost':
+                continue
+            if not record.indiapost_needs_quote:
+                continue
+            try:
                 record._ip_quote_and_store()
+            except (UserError, ValidationError, ipc.IndiapostDataError,
+                    IndiapostApiError) as exc:
+                raise UserError(_(
+                    'The India Post rate for %(awb)s is out of date because '
+                    'the package details changed after it was quoted, and a '
+                    'fresh rate could not be fetched:\n\n%(reason)s\n\n'
+                    'Nothing has been charged. Correct the package details or '
+                    'use "Refresh India Post Rate", then try again.'
+                ) % {'awb': record.name,
+                     'reason': quote_failure_reason(exc)}) from exc
+            if record.indiapost_needs_quote:
+                # Belt and braces: a stored quote whose signature still does
+                # not match means the debit would be against the wrong price.
+                raise UserError(_(
+                    'The India Post rate stored for %s does not match the '
+                    'package as it stands, so the wallet has not been '
+                    'debited. Refresh the India Post rate and try again.'
+                ) % record.name)
         return super().action_add_wallet_transaction()
 
     # ------------------------------------------------------------------
@@ -409,6 +553,9 @@ class Shipment(models.Model):
         self.ensure_one()
         settings = self.env['logistics.indiapost.client']._ip_require_configured()
         origin = self._ip_origin_pincode()
+        # Taken before the request so the fingerprint describes exactly the
+        # article that was priced, whatever happens afterwards.
+        signature = self._ip_quote_signature()
         quote = self.env['logistics.indiapost.tariff'].quote(
             origin, self.shipping_to_zip,
             weight_kg=self.total_weight,
@@ -430,6 +577,7 @@ class Shipment(models.Model):
             'indiapost_quoted_chargeable_g': quote['chargeable_weight_g'],
             'indiapost_distance_display': quote['distance_display'],
             'indiapost_tariff_quoted_on': fields.Datetime.now(),
+            'indiapost_quote_signature': signature,
         })
         return quote
 
@@ -1084,7 +1232,11 @@ class Shipment(models.Model):
                     '%s. Cancel it with India Post before diverting it.'
                 ) % (record.name, record.indiapost_article_number))
             barcode = record.indiapost_barcode_id
-            record.sudo().write({
+            # The admin check above is this write's authorisation, so it opts
+            # in explicitly rather than relying on the group check firing twice.
+            record.sudo().with_context(
+                allow_fulfilment_method_write=True,
+            ).write({
                 'fulfilment_method': 'own_network',
                 'indiapost_booking_state': 'not_required',
                 'indiapost_booking_error': False,
@@ -1092,6 +1244,11 @@ class Shipment(models.Model):
             })
             if barcode:
                 barcode.sudo().action_ip_void()
+            # It is a KeralaXpress collection from now on, so it needs a pickup
+            # executive — India Post shipments are deliberately kept out of
+            # that assignment, and this is the moment the shipment stops being
+            # one.
+            record._auto_assign_pickup_executive()
             record.message_post(body=_(
                 'Diverted to the KeralaXpress hub network; India Post booking '
                 'abandoned.'

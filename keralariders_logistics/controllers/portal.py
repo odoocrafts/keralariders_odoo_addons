@@ -1566,10 +1566,19 @@ class LogisticsPortal(CustomerPortal):
         ]
 
     def _hub_pending_pickup_domain(self, hubs):
-        """Shipments awaiting first pickup whose origin hub the user manages."""
+        """Shipments awaiting first pickup whose origin hub the user manages.
+
+        India Post collects outbound articles from the seller directly, so they
+        are not a KeralaXpress pickup and must stay out of this queue. A return
+        journey is collected from the customer by a KeralaXpress executive
+        whatever the carrier, so those remain listed.
+        """
         return [
             ('source_hub_id', 'in', hubs.ids),
             ('state', 'in', ('pickup_requested', 'order_added')),
+            '|',
+            ('fulfilment_method', '!=', 'indiapost'),
+            ('is_return_journey', '=', True),
         ]
 
     @http.route(['/my/hub', '/my/hub/'], type='http', auth="user", website=True)
@@ -1865,6 +1874,13 @@ class LogisticsPortal(CustomerPortal):
         shipment = request.env['logistics.shipment'].sudo().browse(shipment_id)
         if not shipment.exists() or shipment.source_hub_id not in hubs:
             request.session['error'] = "Shipment is not awaiting pickup for your hub."
+            return request.redirect('/my/hub/pickups')
+        if not shipment._needs_keralaxpress_pickup():
+            request.session['error'] = (
+                f"{shipment.name} travels by India Post, which collects it "
+                f"directly from the seller. There is no KeralaXpress pickup to "
+                f"assign."
+            )
             return request.redirect('/my/hub/pickups')
         if shipment.state not in ('pickup_requested', 'order_added'):
             request.session['error'] = (

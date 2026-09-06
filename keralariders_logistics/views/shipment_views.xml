@@ -531,7 +531,17 @@
                                     <field name="indiapost_quoted_chargeable_g"/>
                                     <field name="indiapost_distance_display"/>
                                     <field name="indiapost_tariff_quoted_on"/>
+                                    <field name="indiapost_quote_signature"
+                                           groups="keralariders_logistics.group_logistics_admin"
+                                           help="The package as India Post priced it. Compared with the shipment as it stands now to decide whether the rate above still applies."/>
                                     <field name="indiapost_needs_quote" invisible="1"/>
+                                    <div class="text-warning" colspan="2"
+                                         invisible="not indiapost_needs_quote or not indiapost_tariff_quoted_on">
+                                        The package has changed since this rate
+                                        was quoted, so it no longer applies. It
+                                        will be re-fetched before the wallet is
+                                        debited.
+                                    </div>
                                 </group>
                                 <group string="Value Added Services">
                                     <field name="indiapost_vas_pod"/>
