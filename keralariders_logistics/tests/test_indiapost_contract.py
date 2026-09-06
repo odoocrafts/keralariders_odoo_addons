@@ -24,6 +24,38 @@ class TestIndiapostContracts(TransactionCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
+        # Booking resolves a post office for both ends of the article, so the
+        # two pincodes this fixture uses are pinned to a seeded office. Seeded
+        # rows never expire, which keeps resolution a cache read: it otherwise
+        # calls the pincode-search endpoint, and no test here is about the API.
+        Office = cls.env['logistics.indiapost.office']
+        for pincode, office_id, name, city in (
+            ('682001', '22360020', 'Kochi HO', 'ERNAKULAM'),
+            ('695001', '22840005', 'DC Thiruvananthapuram GPO',
+             'THIRUVANANTHAPURAM'),
+        ):
+            vals = {
+                'office_name': name,
+                'office_type_code': 'HPO',
+                'city_name': city,
+                'state_name': 'KERALA',
+                'delivery_office_flag': True,
+                'is_bookable': True,
+                'is_preferred': True,
+                'source': 'seed',
+                'last_synced': False,
+            }
+            office = Office.search([('pincode', '=', pincode),
+                                    ('office_id', '=', office_id)], limit=1)
+            if office:
+                office.write(vals)
+            else:
+                Office.create(dict(vals, pincode=pincode, office_id=office_id))
+            # Only one office per pincode may look preferred.
+            Office.search([('pincode', '=', pincode),
+                           ('office_id', '!=', office_id)]).write(
+                {'is_preferred': False})
+
         cls.seller = cls.env['logistics.seller'].create({
             'name': 'India Post Contract Seller',
             'zip': '682001',
