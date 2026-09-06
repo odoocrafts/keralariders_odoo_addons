@@ -50,13 +50,20 @@ class ResConfigSettings(models.TransientModel):
         config_parameter=CONFIG_PREFIX + 'indiapost_customer_id',
         help="Exactly 10 digits.",
     )
-    indiapost_contract_id = fields.Char(
-        string="Contract Id",
-        config_parameter=CONFIG_PREFIX + 'indiapost_contract_id',
-        help="Exactly 8 digits, and it must be a Speed Post contract. Bookings "
-             "are rejected outright if the contract has no service type "
-             "defined, which is the case for a brand new customer id until "
-             "India Post activates the contract.",
+    # One contract per product, because that is how India Post contracts a bulk
+    # customer: KeralaXpress holds a Speed Post contract and a Business Parcel
+    # contract, and a booking is validated against the one for its own product.
+    indiapost_sp_contract_id = fields.Char(
+        string="Speed Post Contract Id",
+        config_parameter=CONFIG_PREFIX + 'indiapost_sp_contract_id',
+        help="Exactly 8 digits. Carried by every Speed Post (SP) booking.",
+    )
+    indiapost_bp_contract_id = fields.Char(
+        string="Business Parcel Contract Id",
+        config_parameter=CONFIG_PREFIX + 'indiapost_bp_contract_id',
+        help="Exactly 8 digits. Carried by every Business Parcel (BP) "
+             "booking, which cannot be booked against the Speed Post "
+             "contract.",
     )
 
     # Consignor of record. KeralaXpress books as a single consignor; the seller
@@ -188,9 +195,13 @@ class ResConfigSettings(models.TransientModel):
         customer_id = (self.indiapost_customer_id or '').strip()
         if customer_id and not ipc.BULK_CUSTOMER_ID_RE.match(customer_id):
             problems.append(_('The bulk customer id must be exactly 10 digits.'))
-        contract_id = (self.indiapost_contract_id or '').strip()
-        if contract_id and not ipc.CONTRACT_ID_RE.match(contract_id):
-            problems.append(_('The contract id must be exactly 8 digits.'))
+        for field_name, label in (
+            ('indiapost_sp_contract_id', _('Speed Post contract id')),
+            ('indiapost_bp_contract_id', _('Business Parcel contract id')),
+        ):
+            contract_id = (self[field_name] or '').strip()
+            if contract_id and not ipc.CONTRACT_ID_RE.match(contract_id):
+                problems.append(_('The %s must be exactly 8 digits.') % label)
 
         check(ipc.normalize_text, self.indiapost_sender_name, _('Consignor name'))
         check(ipc.normalize_text, self.indiapost_sender_company,

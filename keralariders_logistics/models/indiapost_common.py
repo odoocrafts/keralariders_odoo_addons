@@ -15,10 +15,28 @@ import re
 # ---------------------------------------------------------------------------
 # Products
 # ---------------------------------------------------------------------------
-# Phase 1 ships Speed Post only. The API picks the concrete product from the
-# weight; ``SP`` is what we send as product-code / article_type.
+# India Post recognises exactly these two article types, verified live:
+# product-code=BP prices as BUSINESS_PARCEL, while PP and every other guess is
+# refused with "article_type 'PP' is not a recognized article type".
 ARTICLE_TYPE_SPEED_POST = 'SP'
+ARTICLE_TYPE_BUSINESS_PARCEL = 'BP'
 
+ARTICLE_TYPES = [
+    (ARTICLE_TYPE_SPEED_POST, 'Speed Post'),
+    (ARTICLE_TYPE_BUSINESS_PARCEL, 'Business Parcel'),
+]
+ARTICLE_TYPE_LABELS = dict(ARTICLE_TYPES)
+
+# A bulk customer is contracted per service, so India Post issued KeralaXpress
+# one contract number per product and a booking has to carry the one belonging
+# to its own product. This is the mapping from product to settings field.
+CONTRACT_SETTING_BY_ARTICLE_TYPE = {
+    ARTICLE_TYPE_SPEED_POST: 'indiapost_sp_contract_id',
+    ARTICLE_TYPE_BUSINESS_PARCEL: 'indiapost_bp_contract_id',
+}
+
+# Within Speed Post the API picks one of these two concrete products from the
+# weight and returns the name in the tariff response.
 PRODUCT_DOC = 'SP_INLAND_DOC'
 PRODUCT_PARCEL = 'SP_INLAND_PARCEL'
 

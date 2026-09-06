@@ -95,19 +95,21 @@ class IndiapostTariff(models.AbstractModel):
 
     @api.model
     def _ip_cache_key(self, source_pincode, destination_pincode, weight_g,
-                      length_cm, breadth_cm, height_cm, vas_key, environment):
+                      length_cm, breadth_cm, height_cm, vas_key, environment,
+                      article_type=ipc.ARTICLE_TYPE_SPEED_POST):
         raw = '|'.join(str(part) for part in (
-            environment, source_pincode, destination_pincode, weight_g,
-            length_cm, breadth_cm, height_cm, vas_key,
+            environment, article_type, source_pincode, destination_pincode,
+            weight_g, length_cm, breadth_cm, height_cm, vas_key,
         ))
         return hashlib.sha256(raw.encode('utf-8')).hexdigest()
 
     @api.model
     def _ip_tariff_params(self, source_pincode, destination_pincode, weight_g,
                           length_cm, breadth_cm, height_cm,
-                          insurance_value=0.0, **flags):
+                          insurance_value=0.0,
+                          article_type=ipc.ARTICLE_TYPE_SPEED_POST, **flags):
         params = {
-            'product-code': ipc.ARTICLE_TYPE_SPEED_POST,
+            'product-code': article_type,
             'weight': int(weight_g),
             'source-pincode': source_pincode,
             'destination-pincode': destination_pincode,
@@ -134,7 +136,8 @@ class IndiapostTariff(models.AbstractModel):
     def quote(self, source_pincode, destination_pincode, weight_kg=None,
               weight_g=None, length_cm=0, breadth_cm=0, height_cm=0,
               insurance_value=0.0, band=True, use_cache=True, shipment=None,
-              settings=None, **flags):
+              settings=None, article_type=ipc.ARTICLE_TYPE_SPEED_POST,
+              **flags):
         """Price one article. Raises on anything that makes a quote impossible.
 
         ``band`` rounds the weight up to the next 50 g postal step, which is how
@@ -162,6 +165,7 @@ class IndiapostTariff(models.AbstractModel):
         cache_key = self._ip_cache_key(
             source_pincode, destination_pincode, billed_g, length, breadth,
             height, vas_key, settings['indiapost_environment'],
+            article_type=article_type,
         )
 
         Cache = self.env['logistics.indiapost.tariff.cache'].sudo()
@@ -178,7 +182,8 @@ class IndiapostTariff(models.AbstractModel):
                 'GET', TARIFF_PATH,
                 params=self._ip_tariff_params(
                     source_pincode, destination_pincode, billed_g, length,
-                    breadth, height, insurance_value=insurance_value, **flags),
+                    breadth, height, insurance_value=insurance_value,
+                    article_type=article_type, **flags),
                 operation='tariff', shipment=shipment, settings=settings,
             )
             entry = self._ip_store_quote(

@@ -506,6 +506,8 @@
                                     <field name="fulfilment_method" readonly="1"/>
                                     <field name="indiapost_booking_state"/>
                                     <field name="indiapost_article_number"/>
+                                    <field name="indiapost_article_type"
+                                           readonly="indiapost_article_number != False"/>
                                     <field name="indiapost_product_code"/>
                                     <field name="indiapost_shape"/>
                                     <field name="indiapost_barcode_id"/>

@@ -37,7 +37,7 @@ TERMINAL_STATES = ('delivered', 'cancelled', 'returned')
 # Bumped whenever the meaning of a signature component changes, so quotes
 # stored by an older version of this code are treated as stale rather than
 # silently trusted.
-QUOTE_SIGNATURE_VERSION = 'v1'
+QUOTE_SIGNATURE_VERSION = 'v2'
 
 # An India Post shipment is billed the postal tariff rather than the slab
 # table, which makes the stored quote the price: these fields decide what the
@@ -88,10 +88,30 @@ class Shipment(models.Model):
         string='Ships via India Post', compute='_compute_is_indiapost',
     )
 
+    indiapost_article_type = fields.Selection(
+        ipc.ARTICLE_TYPES, string='India Post Product',
+        default=ipc.ARTICLE_TYPE_SPEED_POST, required=True, copy=False,
+        tracking=True,
+        help='India Post prices, books and contracts each product separately, '
+             'so this decides both the article type sent at booking and which '
+             'of the two contract ids the booking is validated against.',
+    )
+
     @api.depends('fulfilment_method')
     def _compute_is_indiapost(self):
         for record in self:
             record.is_indiapost = record.fulfilment_method == 'indiapost'
+
+    def _ip_product(self):
+        """This shipment's India Post product, defaulting to Speed Post."""
+        self.ensure_one()
+        return self.indiapost_article_type or ipc.ARTICLE_TYPE_SPEED_POST
+
+    def _ip_contract_id(self, settings):
+        """The contract id this shipment has to be booked against."""
+        self.ensure_one()
+        return self.env['logistics.indiapost.client']._ip_contract_id(
+            settings, self._ip_product())
 
     def _ip_can_set_fulfilment_method(self):
         """Whether the current user may choose a shipment's carrier.
@@ -142,7 +162,7 @@ class Shipment(models.Model):
              'parcels above that.',
     )
     indiapost_product_code = fields.Char(
-        string='Speed Post Product', compute='_compute_indiapost_package',
+        string='Speed Post Product Code', compute='_compute_indiapost_package',
         store=True,
         help='Chosen by India Post from the physical weight: documents up to '
              '500 g, parcels above that.',
@@ -337,6 +357,10 @@ class Shipment(models.Model):
         self.ensure_one()
         return (
             QUOTE_SIGNATURE_VERSION,
+            # A Business Parcel and a Speed Post article of identical size are
+            # priced from different tariff tables, so the product is as much a
+            # pricing input as the weight is.
+            'prod%s' % self._ip_product(),
             # Weight is banded because that is the weight actually quoted; a
             # 1 g edit inside the same 50 g postal step cannot change the price.
             'w%d' % ipc.band_weight(ipc.kg_to_grams(self.total_weight)),
@@ -372,7 +396,8 @@ class Shipment(models.Model):
 
     @api.depends('fulfilment_method', 'indiapost_tariff_quoted_on',
                  'indiapost_quote_signature', 'indiapost_article_number',
-                 'indiapost_booking_state', 'total_weight', 'length_cm',
+                 'indiapost_booking_state', 'indiapost_article_type',
+                 'total_weight', 'length_cm',
                  'breadth_cm', 'height_cm', 'indiapost_insurance_value',
                  'indiapost_vas_pod', 'indiapost_vas_reg',
                  'indiapost_vas_ack', 'indiapost_vas_otp',
@@ -630,6 +655,7 @@ class Shipment(models.Model):
         signature = self._ip_quote_signature()
         quote = self.env['logistics.indiapost.tariff'].quote(
             origin, self.shipping_to_zip,
+            article_type=self._ip_product(),
             weight_kg=self.total_weight,
             length_cm=self.length_cm,
             breadth_cm=self.breadth_cm,
@@ -866,11 +892,11 @@ class Shipment(models.Model):
 
         article = {
             'bulk_customer_id': settings['indiapost_customer_id'],
-            'contract_id': settings['indiapost_contract_id'],
+            'contract_id': self._ip_contract_id(settings),
             'barcode_no': barcode,
             'pickup_or_dropoff': 'PICKUP',
             'pickup_dropoff_office_id': office.office_id,
-            'article_type': ipc.ARTICLE_TYPE_SPEED_POST,
+            'article_type': self._ip_product(),
             # Must be a whole number of grams: 1500.5 is rejected with
             # "Physical weight must be a whole number".
             'physical_weight': grams,
@@ -958,19 +984,17 @@ class Shipment(models.Model):
 
     def _ip_check_booking_settings(self, settings):
         customer_id = (settings['indiapost_customer_id'] or '').strip()
-        contract_id = (settings['indiapost_contract_id'] or '').strip()
         if not ipc.BULK_CUSTOMER_ID_RE.match(customer_id):
             raise UserError(_(
                 'The India Post bulk customer id must be exactly 10 digits. '
                 'Set it under Settings > Logistics > India Post.'
             ))
-        if not ipc.CONTRACT_ID_RE.match(contract_id):
-            raise UserError(_(
-                'The India Post contract id must be exactly 8 digits. Set it '
-                'under Settings > Logistics > India Post.\n\n'
-                'Every booking is rejected without a valid Speed Post '
-                'contract, so this cannot be left blank.'
-            ))
+        # Only the contracts this batch actually needs, so a Speed Post run is
+        # not held up by a Business Parcel contract that is still blank.
+        Client = self.env['logistics.indiapost.client']
+        for article_type in sorted({shipment._ip_product()
+                                    for shipment in self._ip_bookable()}):
+            Client._ip_contract_id(settings, article_type)
 
     def _ip_book_chunk(self, settings):
         """Submit one chunk and write the results back. Returns (booked, errors)."""
@@ -1153,7 +1177,7 @@ class Shipment(models.Model):
             'channel_type': 'E',
             'user_type': 'R',
             'barcode_no': self.indiapost_article_number,
-            'service_type': ipc.ARTICLE_TYPE_SPEED_POST,
+            'service_type': self._ip_product(),
             'booking_type': 'COMMERCIAL',
             'recipient_name': receiver['receiver_name'],
             'recipient_addressl1': receiver['receiver_add_line_1'],

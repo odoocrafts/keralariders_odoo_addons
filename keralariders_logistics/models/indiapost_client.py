@@ -45,7 +45,8 @@ SETTING_DEFAULTS = {
     'indiapost_username': '',
     'indiapost_password': '',
     'indiapost_customer_id': '',
-    'indiapost_contract_id': '',
+    'indiapost_sp_contract_id': '',
+    'indiapost_bp_contract_id': '',
     'indiapost_sender_name': '',
     'indiapost_sender_company': '',
     'indiapost_sender_address': '',
@@ -209,6 +210,41 @@ class IndiapostClient(models.AbstractModel):
                 'username and password under Settings > Logistics > India Post.'
             ))
         return settings
+
+    @api.model
+    def _ip_contract_id(self, settings, article_type):
+        """The contract id to book one product against.
+
+        India Post contracts a bulk customer per service, so the Speed Post
+        and Business Parcel contracts are two different numbers rather than
+        two uses of one. Resolving it here, by product, is what keeps a
+        Business Parcel from being booked against the Speed Post contract.
+
+        A missing contract is refused by name: sent empty, India Post answers
+        "Article at index 0 is missing bulk_customer_id or contract_id", which
+        never says which of the two it wanted.
+        """
+        key = ipc.CONTRACT_SETTING_BY_ARTICLE_TYPE.get(article_type)
+        if not key:
+            raise UserError(_(
+                '%s is not an India Post product. Articles can only be booked '
+                'as Speed Post (SP) or Business Parcel (BP).'
+            ) % (article_type or _('(none)')))
+        product = ipc.ARTICLE_TYPE_LABELS.get(article_type, article_type)
+        contract_id = str(settings.get(key) or '').strip()
+        if not contract_id:
+            raise UserError(_(
+                'No India Post %(product)s contract id is configured, so a '
+                '%(product)s article cannot be booked. Add the %(product)s '
+                'contract under Settings > Logistics > India Post.'
+            ) % {'product': product})
+        if not ipc.CONTRACT_ID_RE.match(contract_id):
+            raise UserError(_(
+                'The India Post %(product)s contract id must be exactly 8 '
+                'digits, but it is set to "%(value)s". Correct it under '
+                'Settings > Logistics > India Post.'
+            ) % {'product': product, 'value': contract_id})
+        return contract_id
 
     # ------------------------------------------------------------------
     # Authentication

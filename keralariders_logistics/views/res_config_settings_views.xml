@@ -62,15 +62,29 @@
                                     <field name="indiapost_customer_id"/>
                                 </div>
                                 <div class="row">
-                                    <label for="indiapost_contract_id" class="col-lg-4 o_light_label"/>
-                                    <field name="indiapost_contract_id"/>
+                                    <label for="indiapost_sp_contract_id" class="col-lg-4 o_light_label"/>
+                                    <field name="indiapost_sp_contract_id"/>
+                                </div>
+                                <div class="row">
+                                    <label for="indiapost_bp_contract_id" class="col-lg-4 o_light_label"/>
+                                    <field name="indiapost_bp_contract_id"/>
+                                </div>
+                                <div class="text-muted mt-2">
+                                    India Post contracts a bulk customer per
+                                    service, so each product has its own
+                                    contract id and a booking carries the one
+                                    matching the product on the shipment.
                                 </div>
                                 <div class="alert alert-info mt-2 mb-0" role="alert">
-                                    Bookings fail outright until India Post
-                                    activates a Speed Post service type on the
-                                    contract. The rejection reads
-                                    "Contract validation failed: Contract … has
-                                    no service_type defined".
+                                    In the UAT sandbox every booking is still
+                                    rejected with "Contract validation failed:
+                                    Contract … has no service_type defined",
+                                    and the same message comes back for a
+                                    contract id that does not exist at all — so
+                                    the sandbox cannot see the service type of
+                                    any contract and booking stays blocked
+                                    there whatever is entered here. Tariffs,
+                                    labels and tracking are unaffected.
                                 </div>
                             </div>
                         </setting>
