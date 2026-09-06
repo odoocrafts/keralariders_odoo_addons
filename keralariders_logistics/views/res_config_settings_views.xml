@@ -89,7 +89,7 @@
                                 </div>
                                 <div class="row">
                                     <label for="indiapost_sender_address" class="col-lg-4 o_light_label"/>
-                                    <field name="indiapost_sender_address"/>
+                                    <field name="indiapost_sender_address" widget="text"/>
                                 </div>
                                 <div class="row">
                                     <label for="indiapost_sender_city" class="col-lg-4 o_light_label"/>

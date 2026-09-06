@@ -69,7 +69,7 @@ class ResConfigSettings(models.TransientModel):
         string="Consignor Company",
         config_parameter=CONFIG_PREFIX + 'indiapost_sender_company',
     )
-    indiapost_sender_address = fields.Text(
+    indiapost_sender_address = fields.Char(
         string="Consignor Address",
         config_parameter=CONFIG_PREFIX + 'indiapost_sender_address',
         help="Split across up to three API address lines of 80 characters each.",
