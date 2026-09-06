@@ -12,50 +12,21 @@ from odoo.exceptions import UserError, ValidationError
 from odoo.tests import TransactionCase, tagged
 
 from odoo.addons.keralariders_logistics.models import indiapost_common as ipc
-
-SP_CONTRACT = '41124829'
-BP_CONTRACT = '41664688'
-PREFIX = 'keralariders_logistics.'
+from odoo.addons.keralariders_logistics.tests.common import (
+    BP_CONTRACT,
+    CONFIG_PREFIX as PREFIX,
+    SP_CONTRACT,
+    IndiapostHermeticMixin,
+)
 
 
 @tagged('post_install', '-at_install')
-class TestIndiapostContracts(TransactionCase):
+class TestIndiapostContracts(IndiapostHermeticMixin, TransactionCase):
 
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
-        # Booking resolves a post office for both ends of the article, so the
-        # two pincodes this fixture uses are pinned to a seeded office. Seeded
-        # rows never expire, which keeps resolution a cache read: it otherwise
-        # calls the pincode-search endpoint, and no test here is about the API.
-        Office = cls.env['logistics.indiapost.office']
-        for pincode, office_id, name, city in (
-            ('682001', '22360020', 'Kochi HO', 'ERNAKULAM'),
-            ('695001', '22840005', 'DC Thiruvananthapuram GPO',
-             'THIRUVANANTHAPURAM'),
-        ):
-            vals = {
-                'office_name': name,
-                'office_type_code': 'HPO',
-                'city_name': city,
-                'state_name': 'KERALA',
-                'delivery_office_flag': True,
-                'is_bookable': True,
-                'is_preferred': True,
-                'source': 'seed',
-                'last_synced': False,
-            }
-            office = Office.search([('pincode', '=', pincode),
-                                    ('office_id', '=', office_id)], limit=1)
-            if office:
-                office.write(vals)
-            else:
-                Office.create(dict(vals, pincode=pincode, office_id=office_id))
-            # Only one office per pincode may look preferred.
-            Office.search([('pincode', '=', pincode),
-                           ('office_id', '!=', office_id)]).write(
-                {'is_preferred': False})
-
+        cls._ip_make_hermetic(enabled=True)
         cls.seller = cls.env['logistics.seller'].create({
             'name': 'India Post Contract Seller',
             'zip': '682001',
@@ -66,24 +37,11 @@ class TestIndiapostContracts(TransactionCase):
 
     def setUp(self):
         super().setUp()
+        # Re-assert stub credentials each test: some cases mutate contracts,
+        # and the config-parameter cache can outlive a rolled-back write.
+        self._ip_enable_stub_credentials()
         self.Client = self.env['logistics.indiapost.client']
         self.params = self.env['ir.config_parameter'].sudo()
-        for key, value in (
-            ('indiapost_enabled', 'True'),
-            ('indiapost_username', '9999537187'),
-            ('indiapost_password', 'secret'),
-            ('indiapost_customer_id', '9999537187'),
-            ('indiapost_sp_contract_id', SP_CONTRACT),
-            ('indiapost_bp_contract_id', BP_CONTRACT),
-            ('indiapost_sender_name', 'KERALA XPRESS LOGISTICS'),
-            ('indiapost_sender_company', 'KERALA XPRESS LOGISTICS'),
-            ('indiapost_sender_address', 'Vazhiyambalam, Bypass NH66'),
-            ('indiapost_sender_city', 'Thrissur'),
-            ('indiapost_sender_state', 'Kerala'),
-            ('indiapost_sender_pincode', '680681'),
-            ('indiapost_sender_mobile', '9400662693'),
-        ):
-            self.params.set_param(PREFIX + key, value)
         self.settings = self.Client._ip_settings()
 
     def _new_shipment(self, **overrides):

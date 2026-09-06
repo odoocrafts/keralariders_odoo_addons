@@ -31,13 +31,45 @@ ipc = __import__(
 )
 
 
+IP_NETWORK_BLOCKED = 'India Post network is blocked in the self-test'
+
+
+def _block_indiapost_network():
+    """Patch the client so nothing can reach test.cept.gov.in.
+
+    Returns a restore callable. Odoo shell is not under the test HTTP guard,
+    so an unpatched requote on a production copy would hit the live sandbox.
+    """
+    from odoo.addons.keralariders_logistics.models.indiapost_client import (
+        IndiapostApiError,
+    )
+    Client = type(env['logistics.indiapost.client'])
+    original = Client._ip_request
+
+    def _blocked(self, *args, **kwargs):
+        raise IndiapostApiError(IP_NETWORK_BLOCKED)
+
+    Client._ip_request = _blocked
+    return lambda: setattr(Client, '_ip_request', original)
+
+
 def seeded_offices():
-    offices = env['logistics.indiapost.office'].search([('source', '=', 'seed')])
+    """The 14 Kerala HQ offices must exist; seed them if an upgrade has not.
+
+    ``_ip_seed_kerala_offices`` is idempotent. Calling it here makes the
+    check pass on a production copy that was installed before the seed left
+    noupdate, and still asserts the real count afterwards.
+    """
+    Office = env['logistics.indiapost.office']
+    created = Office._ip_seed_kerala_offices()
+    offices = Office.search([('source', '=', 'seed')])
     assert len(offices) == 14, 'expected 14 seeded offices, got %d' % len(offices)
     kochi = offices.filtered(lambda o: o.pincode == '682001')
     assert kochi.office_id == '22360020', kochi.office_id
     assert all(o.is_bookable for o in offices), 'some seeded offices not bookable'
-    return '14 district HQ offices, Kochi resolves to %s' % kochi.office_id
+    extra = ', seeded %d this run' % created if created else ''
+    return '14 district HQ offices, Kochi resolves to %s%s' % (
+        kochi.office_id, extra)
 
 
 def check_digit():
@@ -366,15 +398,22 @@ def quote_signature_staleness():
     shipment.write({'total_weight': 1.501})
     assert shipment.indiapost_needs_quote, 'a weight change was missed'
 
-    # The wallet must not be debited while the signature does not match. No
-    # India Post credentials are configured here, so the forced re-quote fails
-    # and that failure has to stop the debit rather than charge the old price.
+    # The wallet must not be debited while the signature does not match. The
+    # HTTP client is blocked (and the tariff cache emptied) so the forced
+    # re-quote fails even on a production copy with live credentials and a
+    # funded wallet. That failure has to stop the debit.
+    env['logistics.indiapost.tariff.cache'].sudo().search([]).unlink()
+    params = env['ir.config_parameter'].sudo()
+    params.set_param('keralariders_logistics.indiapost_enabled', 'True')
+    params.set_param('keralariders_logistics.indiapost_username', 'kx_test_user')
+    params.set_param('keralariders_logistics.indiapost_password', 'kx_test_secret')
     assert shipment.indiapost_needs_quote
     try:
         shipment.action_add_wallet_transaction()
     except UserError as exc:
         message = exc.args[0] if exc.args else str(exc)
         assert 'out of date' in message, message
+        assert IP_NETWORK_BLOCKED in message, message
     else:
         raise AssertionError('a wallet was debited on a stale India Post rate')
     assert not shipment.wallet_transaction_id, 'a stale debit got through'
@@ -410,9 +449,17 @@ def indiapost_skips_keralaxpress_pickup():
     pincode = env['logistics.pincode'].search(
         [('name', '=', (seller.zip or '').strip())], limit=1)
     assert pincode, 'no logistics.pincode for the self-test seller origin'
+    # Production already has pickup DEs on 682001. Take exclusive coverage
+    # of this pincode so auto-assignment is deterministic; the transaction
+    # rolls back at the end of the self-test.
+    others = env['logistics.delivery.executive'].search([
+        ('assigned_pickup_pincodes', 'in', pincode.ids),
+    ])
+    for other in others:
+        other.write({'assigned_pickup_pincodes': [(3, pincode.id)]})
     de = env['logistics.delivery.executive'].create({
         'name': 'Self-test Pickup DE',
-        'mobile': '9876500000',
+        'mobile': '9000006820',
         'is_pickup': True,
         'assigned_pickup_pincodes': [(6, 0, pincode.ids)],
     })
@@ -645,25 +692,29 @@ def tracking_real_histories():
     return '; '.join(outcomes)
 
 
-check('seed: Kerala district HQ offices', seeded_offices)
-check('barcode: modulo-11 check digit', check_digit)
-check('barcode: concurrent-safe allocation', allocation)
-check('rules: Speed Post packaging limits', packaging_rules)
-check('rules: weight and shape conversions', conversions)
-check('rules: pickup date format', pickup_format)
-check('security: fulfilment method is admin only', admin_only_fulfilment)
-check('shipment: India Post defaults and guards', shipment_defaults)
-check('shipment: hub network pricing untouched', own_network_pricing_untouched)
-check('security: shipment carrier is admin only', shipment_fulfilment_method_guard)
-check('tariff: quote signature catches stale prices', quote_signature_staleness)
-check('pickup: India Post gets no KeralaXpress DE',
-      indiapost_skips_keralaxpress_pickup)
-check('views: backend views render', views_render)
-check('views: calculator template compiles', calculator_template_compiles)
-check('data: cron jobs installed', crons_present)
-check('security: access rules for new models', access_rules)
-check('tracking: event phrase mapping', tracking_event_mapping)
-check('tracking: real sandbox scan histories', tracking_real_histories)
+_restore_network = _block_indiapost_network()
+try:
+    check('seed: Kerala district HQ offices', seeded_offices)
+    check('barcode: modulo-11 check digit', check_digit)
+    check('barcode: concurrent-safe allocation', allocation)
+    check('rules: Speed Post packaging limits', packaging_rules)
+    check('rules: weight and shape conversions', conversions)
+    check('rules: pickup date format', pickup_format)
+    check('security: fulfilment method is admin only', admin_only_fulfilment)
+    check('shipment: India Post defaults and guards', shipment_defaults)
+    check('shipment: hub network pricing untouched', own_network_pricing_untouched)
+    check('security: shipment carrier is admin only', shipment_fulfilment_method_guard)
+    check('tariff: quote signature catches stale prices', quote_signature_staleness)
+    check('pickup: India Post gets no KeralaXpress DE',
+          indiapost_skips_keralaxpress_pickup)
+    check('views: backend views render', views_render)
+    check('views: calculator template compiles', calculator_template_compiles)
+    check('data: cron jobs installed', crons_present)
+    check('security: access rules for new models', access_rules)
+    check('tracking: event phrase mapping', tracking_event_mapping)
+    check('tracking: real sandbox scan histories', tracking_real_histories)
+finally:
+    _restore_network()
 
 print('\n' + '=' * 78)
 for status, label, detail in RESULTS:

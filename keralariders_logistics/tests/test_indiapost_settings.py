@@ -9,6 +9,8 @@ that cannot come back.
 
 from odoo.tests import TransactionCase, tagged
 
+from odoo.addons.keralariders_logistics.tests.common import IndiapostHermeticMixin
+
 
 ALLOWED_CONFIG_TYPES = (
     'boolean', 'integer', 'float', 'char', 'selection', 'many2one', 'datetime',
@@ -16,7 +18,13 @@ ALLOWED_CONFIG_TYPES = (
 
 
 @tagged('post_install', '-at_install')
-class TestIndiapostSettings(TransactionCase):
+class TestIndiapostSettings(IndiapostHermeticMixin, TransactionCase):
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls._ip_disable()
+        cls._ip_block_network()
 
     def test_indiapost_config_parameter_types_are_classified(self):
         Settings = self.env['res.config.settings']

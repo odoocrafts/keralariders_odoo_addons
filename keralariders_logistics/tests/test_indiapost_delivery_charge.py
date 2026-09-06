@@ -12,7 +12,9 @@ refuses to debit against a quote whose signature no longer describes the
 article; a manual price set by ops has to survive that without letting a stale
 tariff through, and it does because the override carries the quote signature.
 
-No API calls: every quote here is stored the way ``_ip_quote_and_store`` would.
+Quotes that the tests need are stored the way ``_ip_quote_and_store``
+would. The HTTP client is patched so a debit that is forced to re-quote
+cannot reach India Post, even on a production copy of the database.
 """
 
 from odoo import fields as odoo_fields
@@ -20,14 +22,19 @@ from odoo.exceptions import AccessError, UserError
 from odoo.tests import TransactionCase, tagged
 
 from odoo.addons.keralariders_logistics.models import indiapost_common as ipc
+from odoo.addons.keralariders_logistics.tests.common import (
+    IP_NETWORK_BLOCKED,
+    IndiapostHermeticMixin,
+)
 
 
 @tagged('post_install', '-at_install')
-class TestIndiapostDeliveryCharge(TransactionCase):
+class TestIndiapostDeliveryCharge(IndiapostHermeticMixin, TransactionCase):
 
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
+        cls._ip_make_hermetic(enabled=True)
         cls.seller = cls.env['logistics.seller'].create({
             'name': 'India Post Charge Seller',
             'zip': '682001',
@@ -174,12 +181,17 @@ class TestIndiapostDeliveryCharge(TransactionCase):
     def test_an_unquoted_india_post_shipment_cannot_be_debited(self):
         """Unchanged behaviour, and the contrast for the next test.
 
-        No India Post credentials are configured here, so the forced re-quote
-        fails and that failure has to stop the debit.
+        India Post is enabled with stub credentials and the HTTP client is
+        blocked, so the forced re-quote fails. That failure has to stop the
+        debit rather than charging an unquoted parcel, and it must not depend
+        on the integration happening to be switched off.
         """
         self.assertTrue(self.shipment.indiapost_needs_quote)
-        with self.assertRaises(UserError):
+        with self.assertRaises(UserError) as caught:
             self.shipment.action_add_wallet_transaction()
+        message = str(caught.exception)
+        self.assertIn('out of date', message)
+        self.assertIn(IP_NETWORK_BLOCKED, message)
         self.assertFalse(self.shipment.wallet_transaction_id)
 
     def test_an_ops_override_is_billed_without_re_quoting(self):
@@ -222,6 +234,11 @@ class TestIndiapostDeliveryCharge(TransactionCase):
         self.assertFalse(self.shipment._delivery_charge_override_applies())
 
         # ...and with the override gone, the stale quote stops the debit.
-        with self.assertRaises(UserError):
+        # The client is blocked, so this is the business rule, not "India
+        # Post happens to be off" and not a live re-quote.
+        with self.assertRaises(UserError) as caught:
             self.shipment.action_add_wallet_transaction()
+        message = str(caught.exception)
+        self.assertIn('out of date', message)
+        self.assertIn(IP_NETWORK_BLOCKED, message)
         self.assertFalse(self.shipment.wallet_transaction_id)

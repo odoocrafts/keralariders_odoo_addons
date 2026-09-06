@@ -63,13 +63,13 @@ env['logistics.indiapost.log'].gc_logs(days=90)</field>
 
     </data>
 
-    <data noupdate="1">
-
-        <!-- Verified district-headquarters offices for all 14 Kerala districts.
-             Seeded so a cold cache, or a temporary API outage, still resolves a
-             bookable office for every district we collect from. Each office id
-             was confirmed live against /v1/pincode-search. -->
+    <!-- Idempotent: inserts a Kerala HQ office only when that (pincode,
+         office_id) pair is absent, and never overwrites a row the API has
+         refreshed. It must not sit in noupdate="1": Odoo 19 skips <function>
+         tags on upgrade when isnoupdate and mode != 'init', so existing
+         installs would never receive the 14 offices and would fall through
+         to a live pincode-search on every booking. -->
+    <data>
         <function model="logistics.indiapost.office" name="_ip_seed_kerala_offices"/>
-
     </data>
 </odoo>
