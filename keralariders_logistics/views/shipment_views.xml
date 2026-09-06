@@ -337,6 +337,17 @@
                                         confirm="This will delete the wallet transaction and restore the wallet balance. Continue?"
                                         invisible="not wallet_transaction_id"/>
                             </div>
+                            <!-- Stamped when someone prices a shipment by hand.
+                                 The wallet is debited at this amount instead of
+                                 the rate card, but only while the inputs it was
+                                 set against are unchanged. -->
+                            <field name="delivery_charge_override_signature" invisible="1"/>
+                            <field name="delivery_charge_override_amount"
+                                   invisible="not delivery_charge_override_signature"/>
+                            <field name="delivery_charge_override_uid"
+                                   invisible="not delivery_charge_override_signature"/>
+                            <field name="delivery_charge_override_on"
+                                   invisible="not delivery_charge_override_signature"/>
                         </group>
                     </group>
                     <group>

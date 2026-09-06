@@ -1,10 +1,50 @@
 from odoo import models, fields, api, _
 from odoo.exceptions import AccessError, UserError, ValidationError
+from odoo.tools.float_utils import float_compare, float_round
+from markupsafe import Markup
 import logging
 import re
 import uuid
 
 _logger = logging.getLogger(__name__)
+
+# What the seller is billed for a shipment: the charge itself and the
+# multiplier applied to it. Whoever can write these picks their own price.
+DELIVERY_CHARGE_PRICE_FIELDS = (
+    'delivery_charges_subtotal',
+    'delivery_charges_total',
+    'tax_percentage',
+)
+
+# The provenance of a manual price. The debit trusts these instead of the
+# charge columns, so they are exactly as sensitive as the charge itself: a
+# seller who could stamp their own override would simply price their own
+# parcel, one indirection further out.
+DELIVERY_CHARGE_OVERRIDE_FIELDS = (
+    'delivery_charge_override_amount',
+    'delivery_charge_override_signature',
+    'delivery_charge_override_uid',
+    'delivery_charge_override_on',
+)
+
+# ``wallet_transaction_id`` decides whether the debit happens at all: pointing
+# it at an existing transaction makes action_add_wallet_transaction a no-op, so
+# it belongs to the same guard even though it carries no amount.
+DELIVERY_CHARGE_FIELDS = (
+    DELIVERY_CHARGE_PRICE_FIELDS
+    + DELIVERY_CHARGE_OVERRIDE_FIELDS
+    + ('wallet_transaction_id',)
+)
+
+# Only a Logistics Administrator prices a shipment by hand. Hub managers and
+# delivery executives are deliberately excluded: they are portal users with
+# write access to every shipment passing through their hub or round, so
+# including them would leave the hole open to a much wider set of accounts.
+DELIVERY_CHARGE_ADMIN_GROUP = 'keralariders_logistics.group_logistics_admin'
+
+# Bumped whenever _delivery_charge_signature_parts changes shape, so an
+# override stamped by an older version lapses instead of being misread.
+CHARGE_SIGNATURE_VERSION = 'c1'
 
 delivery_states = [
     ('order_added', 'Order Added'),
@@ -89,6 +129,9 @@ class Shipment(models.Model):
     def create(self, vals_list):
         Seller = self.env['logistics.seller']
         for vals in vals_list:
+            # Portal creates run sudoed, so the price has to be guarded here
+            # too or a crafted RPC create would simply arrive pre-priced.
+            self._check_delivery_charge_write(vals)
             if vals.get('name', _('New')) == _('New'):
                 vals['name'] = self.env['ir.sequence'].sudo().next_by_code('logistics.shipment') or _('New')
             # Initial custody: package starts with the seller until DE pickup.
@@ -106,6 +149,11 @@ class Shipment(models.Model):
                 for key, value in from_vals.items():
                     vals.setdefault(key, value)
         shipments = super(Shipment, self).create(vals_list)
+        priced_by_hand = self.browse()
+        for vals, shipment in zip(vals_list, shipments):
+            if any(name in vals for name in DELIVERY_CHARGE_PRICE_FIELDS):
+                priced_by_hand |= shipment
+        priced_by_hand._sync_delivery_charge_override()
         shipments.filtered(lambda s: s.estimated_route_ids and not s.active_leg_id)._sync_active_leg()
         shipments._auto_assign_pickup_executive()
         return shipments
@@ -122,7 +170,11 @@ class Shipment(models.Model):
                     "(pickup, hub receive, dispatch, deliver, etc.). "
                     "Contact a Logistics Administrator for overrides."
                 ))
-        return super().write(vals)
+        self._check_delivery_charge_write(vals)
+        res = super().write(vals)
+        if any(name in vals for name in DELIVERY_CHARGE_PRICE_FIELDS):
+            self._sync_delivery_charge_override()
+        return res
 
     def _write_with_state(self, vals):
         """Internal helper for transition methods that may update state."""
@@ -2470,6 +2522,276 @@ class Shipment(models.Model):
     total_weight = fields.Float(string='Total Weight (Kg)', digits=(16, 3), default=0.0)
     currency_id = fields.Many2one('res.currency', string='Currency', default=lambda self: self.env.company.currency_id.id)
 
+    # -------------------------------------------------------------------------
+    # Delivery charge integrity
+    #
+    # The delivery charge is a payment instruction: action_add_wallet_transaction
+    # debits the seller's wallet with it. Portal sellers hold read/write/create
+    # on logistics.shipment because they raise their own consignments and
+    # declare the weight and the two addresses, so the charge cannot be defended
+    # with access rights alone — every field that decides the number has to be
+    # guarded in the model. Two independent layers:
+    #
+    #   1. :meth:`_check_delivery_charge_write` refuses a write to the charge
+    #      fields unless the *real* user is a Logistics Administrator. Every
+    #      portal controller runs sudo() and sudo() leaves env.user as the real
+    #      user, so the check still fires there. Trusted server code opts in
+    #      with ``allow_delivery_charge_write``, the same convention ``state``
+    #      and ``logistics.seller.fulfilment_method`` already use.
+    #   2. :meth:`_delivery_charge_to_bill` prices the shipment again from the
+    #      seller's declarations at the moment of the debit and bills *that*,
+    #      never the stored column. This is what holds if a write path is ever
+    #      missed by layer 1.
+    #
+    # Layer 2 would destroy the manual price ops legitimately sets on the
+    # backend form (the fields are readonly=False precisely so they can), so an
+    # administrator's edit is recorded as an override: the amount, who set it,
+    # and a fingerprint of the inputs it was priced against. At debit time the
+    # override wins while its fingerprint still describes the shipment. That is
+    # the whole distinction between an override and tampering — provenance, not
+    # the value in the column. A tampered column has no stamp (layer 1 refuses
+    # the write that would create one) so it is recomputed away, and a stamped
+    # price stops applying the moment the shipment it was quoted for changes.
+    # -------------------------------------------------------------------------
+    delivery_charge_override_amount = fields.Monetary(
+        string='Manual Delivery Charge', currency_field='currency_id',
+        readonly=True, copy=False, tracking=True,
+        help='Price set by hand by a Logistics Administrator. Held separately '
+             'from the calculated charge so the wallet debit can tell an '
+             'approved override from a tampered value.',
+    )
+    delivery_charge_override_signature = fields.Char(
+        string='Manual Charge Inputs', readonly=True, copy=False,
+        help='Fingerprint of the shipment as it stood when the manual charge '
+             'was set. Kept as readable text rather than a hash so a lapsed '
+             'override can be diagnosed by eye. The override applies while it '
+             'still matches; once the weight, route or tax moves, the rate '
+             'card takes over again.',
+    )
+    delivery_charge_override_uid = fields.Many2one(
+        'res.users', string='Charge Overridden By', readonly=True, copy=False,
+        tracking=True,
+    )
+    delivery_charge_override_on = fields.Datetime(
+        string='Charge Overridden On', readonly=True, copy=False,
+    )
+
+    def _can_write_delivery_charge(self):
+        """Whether the current user may set what a seller is billed.
+
+        Checks the *real* user rather than the superuser flag, so a ``sudo()``
+        made while serving a portal request is still refused.
+        """
+        if self.env.context.get('allow_delivery_charge_write'):
+            return True
+        return self.env.user.has_group(DELIVERY_CHARGE_ADMIN_GROUP)
+
+    def _delivery_charge_guarded_fields(self):
+        """The fields only logistics staff may write.
+
+        A method rather than a bare constant so a carrier that prices from
+        somewhere other than the rate card can add its own inputs to the same
+        guard instead of growing a second one.
+        """
+        return DELIVERY_CHARGE_FIELDS
+
+    def _check_delivery_charge_write(self, vals):
+        attempted = [name for name in self._delivery_charge_guarded_fields()
+                     if name in vals]
+        if attempted and not self._can_write_delivery_charge():
+            raise AccessError(_(
+                "The delivery charge is calculated by KeralaXpress from the "
+                "rate card and cannot be set by hand (%(fields)s). Declare the "
+                "weight and the pickup and delivery addresses and the charge "
+                "follows; contact KeralaXpress support if a price looks wrong.",
+                fields=', '.join(attempted),
+            ))
+
+    def _round_charge(self, amount):
+        currency = self.currency_id
+        return currency.round(amount) if currency \
+            else float_round(amount, precision_digits=2)
+
+    def _charge_rounding(self):
+        return self.currency_id.rounding or 0.01
+
+    def _delivery_charge_signature_parts(self):
+        """Every input the delivery charge is priced from, in a fixed order.
+
+        Deliberately exhaustive rather than clever: a new pricing input is
+        added here and a manual override starts lapsing on it automatically,
+        rather than needing a matching comparison remembered elsewhere.
+        """
+        self.ensure_one()
+        return [
+            CHARGE_SIGNATURE_VERSION,
+            # Grams, so a rounding difference cannot hide a real change.
+            'w%d' % round((self.total_weight or 0.0) * 1000),
+            'from%d' % (self.shipping_from_district_id.id or 0),
+            'to%d' % (self.shipping_to_district_id.id or 0),
+            'tax%d' % round((self.tax_percentage or 0.0) * 10000),
+            'pkg%d' % (self.seller_id.delivery_package_id.id or 0),
+        ]
+
+    def _delivery_charge_signature(self):
+        self.ensure_one()
+        return '|'.join(self._delivery_charge_signature_parts())
+
+    def _authoritative_delivery_charge(self):
+        """Price this shipment from inputs the seller cannot fake.
+
+        The seller declares the weight and the two addresses; the rate card,
+        the seller's package and the tax rate are ours. Nothing here reads the
+        stored charge columns, which is the entire point — those are what a
+        tampering seller controls.
+
+        :return: ``(subtotal, total including tax)``, rounded to the currency.
+        """
+        self.ensure_one()
+        subtotal = self.env['logistics.delivery.charges'].sudo().calculate_delivery_charge(
+            self.total_weight,
+            self.shipping_from_district_id == self.shipping_to_district_id,
+            package_id=self.seller_id.delivery_package_id.id or None,
+        )
+        total = subtotal * (1 + self.tax_percentage) if self.tax_percentage \
+            else subtotal
+        return self._round_charge(subtotal), self._round_charge(total)
+
+    def _sync_delivery_charge_override(self):
+        """Record whether the stored charge is a manual price, after a staff write.
+
+        Only reached once :meth:`_check_delivery_charge_write` has passed, so
+        anything stamped here was set by an administrator or by trusted server
+        code. A charge that merely agrees with the rate card is not an
+        override: the backend form re-sends these fields on every save
+        (``force_save="1"``) and an ops edit to the weight legitimately moves
+        them, and neither is a deliberate deviation from the calculated price.
+        """
+        for record in self:
+            _subtotal, computed = record._authoritative_delivery_charge()
+            deviates = float_compare(
+                record.delivery_charges_total, computed,
+                precision_rounding=record._charge_rounding(),
+            ) != 0
+            if deviates:
+                # Stamped by trusted code, hence the context key: the stamp is
+                # what the debit believes, so the fields carrying it are
+                # guarded just as tightly as the charge itself.
+                record.with_context(allow_delivery_charge_write=True).write({
+                    'delivery_charge_override_amount': record.delivery_charges_total,
+                    'delivery_charge_override_signature': record._delivery_charge_signature(),
+                    'delivery_charge_override_uid': self.env.user.id,
+                    'delivery_charge_override_on': fields.Datetime.now(),
+                })
+            elif record.delivery_charge_override_signature:
+                record._clear_delivery_charge_override()
+
+    def _clear_delivery_charge_override(self):
+        """Drop a manual price that no longer applies.
+
+        Written rather than left behind so the record cannot come back to life
+        if the shipment is later edited back to the inputs it was quoted for.
+        """
+        self.with_context(allow_delivery_charge_write=True).write({
+            'delivery_charge_override_amount': 0.0,
+            'delivery_charge_override_signature': False,
+            'delivery_charge_override_uid': False,
+            'delivery_charge_override_on': False,
+        })
+
+    def _delivery_charge_override_applies(self):
+        """Whether a manual price still describes the shipment it was set for."""
+        self.ensure_one()
+        stamped = self.delivery_charge_override_signature
+        return bool(stamped) and stamped == self._delivery_charge_signature()
+
+    def _log_delivery_charge_note(self, message):
+        """Leave an internal note an administrator can find.
+
+        Also logged to the server log: a chatter failure must not swallow the
+        only record that a shipment was priced against a tampered column.
+        """
+        self.ensure_one()
+        _logger.warning('Shipment %s: %s', self.name, message)
+        try:
+            self.sudo().message_post(
+                body=Markup('<p>%s</p>') % message,
+                subtype_xmlid='mail.mt_note',
+            )
+        except Exception:  # noqa: BLE001 - never block a debit on chatter
+            _logger.exception(
+                'Could not post the delivery charge note on shipment %s',
+                self.name,
+            )
+
+    def _delivery_charge_to_bill(self):
+        """The amount to debit, priced afresh at the moment money moves.
+
+        Authoritative by construction: the return value is either the rate card
+        price recomputed here, or an override an administrator stamped and that
+        still applies. The stored ``delivery_charges_total`` is never billed,
+        and is corrected to match when it disagrees.
+        """
+        self.ensure_one()
+        currency = self.currency_id
+        as_money = currency.format if currency else lambda amount: '%.2f' % amount
+
+        if self._delivery_charge_override_applies():
+            amount = self._round_charge(self.delivery_charge_override_amount)
+            self._log_delivery_charge_note(_(
+                "Wallet debited at the manual delivery charge of %(amount)s "
+                "set by %(user)s. The rate card is not applied while this "
+                "override stands.",
+                amount=as_money(amount),
+                user=self.delivery_charge_override_uid.display_name or _('an administrator'),
+            ))
+            return amount
+
+        subtotal, computed = self._authoritative_delivery_charge()
+        if not self.total_weight:
+            # Pricing a weightless parcel gives 0.00, which would ship it for
+            # free. Refuse instead: there is nothing to price it from.
+            raise UserError(_(
+                "Shipment %(awb)s has no weight, so its delivery charge cannot "
+                "be calculated. Enter the parcel weight before requesting "
+                "pickup.",
+                awb=self.name,
+            ))
+
+        if self.delivery_charge_override_signature:
+            self._log_delivery_charge_note(_(
+                "The manual delivery charge of %(manual)s set by %(user)s no "
+                "longer applies: the shipment changed after it was set. The "
+                "rate card price of %(computed)s has been charged instead.",
+                manual=as_money(self._round_charge(self.delivery_charge_override_amount)),
+                user=self.delivery_charge_override_uid.display_name or _('an administrator'),
+                computed=as_money(computed),
+            ))
+            self._clear_delivery_charge_override()
+        elif float_compare(self.delivery_charges_total, computed,
+                           precision_rounding=self._charge_rounding()) != 0:
+            self._log_delivery_charge_note(_(
+                "The stored delivery charge of %(stored)s did not match the "
+                "rate card, which prices %(weight).3f kg on this route at "
+                "%(computed)s. The wallet has been debited %(computed)s and "
+                "the shipment corrected. A stored charge that disagrees with "
+                "the rate card was written outside the backend form — please "
+                "check how it was changed.",
+                stored=as_money(self.delivery_charges_total),
+                weight=self.total_weight,
+                computed=as_money(computed),
+            ))
+
+        if float_compare(self.delivery_charges_total, computed,
+                         precision_rounding=self._charge_rounding()) != 0 \
+                or float_compare(self.delivery_charges_subtotal, subtotal,
+                                 precision_rounding=self._charge_rounding()) != 0:
+            self.with_context(allow_delivery_charge_write=True).write({
+                'delivery_charges_subtotal': subtotal,
+                'delivery_charges_total': computed,
+            })
+        return computed
+
     item_description = fields.Text(string='Item Description')
     total_order_value = fields.Monetary(string='Total Order Amount', currency_field='currency_id', default=0.0)
     cod_amount = fields.Monetary(string='COD Amount', currency_field='currency_id', default=0.0)
@@ -2542,17 +2864,27 @@ class Shipment(models.Model):
             raise UserError(f'No Wallets found for this Seller!')
         if not self.wallet_transaction_id:
             wallet = self.seller_id.wallet_ids[0]
+            # Priced again from the seller's declarations here, immediately
+            # before the money moves, so a stored charge that was tampered with
+            # (or left stale) cannot decide either the balance check or the
+            # debit. See "Delivery charge integrity" above.
+            charge = self._delivery_charge_to_bill()
             # Check wallet balance
-            if wallet.balance < self.delivery_charges_total:
+            if wallet.balance < charge:
                 raise UserError(f'Insufficient balance available in your Wallet. Current balance is {wallet.currency_id.format(wallet.balance)}. Please recharge before proceeding')
-            
-            self.wallet_transaction_id = self.env['logistics.wallet.transaction'].sudo().create({
+
+            transaction = self.env['logistics.wallet.transaction'].sudo().create({
                 'wallet_id': wallet.id,
-                'amount': -self.delivery_charges_total,
+                'amount': -charge,
                 'transaction_date': fields.Date.context_today(self),
                 'shipment_id': self.id,
                 'reference': self.display_name,
-            }).id
+            })
+            # Guarded field: the link is what records that this shipment has
+            # been paid for, so only trusted code may set it.
+            self.with_context(allow_delivery_charge_write=True).write({
+                'wallet_transaction_id': transaction.id,
+            })
 
     def delete_wallet_transaction(self):
         if not self.wallet_transaction_id:
