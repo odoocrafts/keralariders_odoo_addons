@@ -273,24 +273,37 @@ class LogisticsPortal(CustomerPortal):
         }
         return request.render("keralariders_logistics.portal_my_shipments", values)
 
-    @http.route(['/my/shipments/new'], type='http', auth="user", website=True)
-    def portal_my_shipments_new(self, **kw):
-        partner = request.env.user.partner_id
-        seller = request.env['logistics.seller'].search([('partner_id', '=', partner.id)], limit=1)
-        if not seller:
-            return request.redirect('/my')
-            
-        districts = request.env['logistics.district'].sudo().search([])
-        states = request.env['res.country.state'].sudo().search([('country_id', '=', request.env.company.country_id.id)])
+    def _portal_seller(self):
+        """The logged-in user's seller, or an empty recordset."""
+        if request.env.user._is_public():
+            return request.env['logistics.seller'].browse()
+        return request.env['logistics.seller'].search(
+            [('partner_id', '=', request.env.user.partner_id.id)], limit=1
+        )
 
+    def _portal_shipment_form_values(self, seller, **extra):
+        """Shared context for the standalone shipment form and the order forms."""
+        districts = request.env['logistics.district'].sudo().search([])
+        states = request.env['res.country.state'].sudo().search(
+            [('country_id', '=', request.env.company.country_id.id)]
+        )
         values = {
-            'page_name': 'shipment_new',
             'seller': seller,
             'districts': districts,
             'states': states,
+            'hide_indiapost_pickup_date': False,
             'error': request.session.pop('error', None),
             **self._shipment_form_indiapost_values(seller),
         }
+        values.update(extra)
+        return values
+
+    @http.route(['/my/shipments/new'], type='http', auth="user", website=True)
+    def portal_my_shipments_new(self, **kw):
+        seller = self._portal_seller()
+        if not seller:
+            return request.redirect('/my')
+        values = self._portal_shipment_form_values(seller, page_name='shipment_new')
         return request.render("keralariders_logistics.portal_my_shipment_new", values)
 
     @staticmethod
@@ -315,66 +328,137 @@ class LogisticsPortal(CustomerPortal):
             'max_total_dimension_cm': 300,
         }
 
+    def _portal_destination_from_post(self, post, pincode, require_known_pincode=False):
+        """Resolve destination district/state from the form, preferring the pincode.
+
+        Bulk upload already looks the district up from the pincode; the web
+        form offers a dropdown as a fallback. Unknown pincodes fail the order
+        flow the same way a CSV row does, so a charge cannot be computed from
+        an empty district pair.
+        """
+        def _optional_int(key):
+            raw = post.get(key)
+            if not raw:
+                return False
+            try:
+                return int(raw)
+            except (TypeError, ValueError):
+                return False
+
+        district_id = _optional_int('shipping_to_district_id')
+        state_id = _optional_int('shipping_to_state_id')
+        pincode_info = request.env['logistics.district'].sudo().get_district_from_pincode(pincode)
+        looked_up = pincode_info.get('district_id') if pincode_info else False
+        if looked_up:
+            district_id = district_id or looked_up.id
+            state_id = state_id or looked_up.state_id.id
+        elif require_known_pincode and not district_id:
+            raise UserError(_("Unknown pincode %s") % pincode)
+        return district_id, state_id
+
+    def _portal_draft_shipment_vals(self, seller, post, order=None,
+                                   require_known_pincode=False):
+        """Whitelist of shipment create values from a portal POST.
+
+        Charge, tax, wallet and fulfilment fields are never copied from the
+        request: the seller's record decides the carrier, and the rate card /
+        India Post quote decide the price. A crafted form cannot reopen the
+        tampering hole closed in 993b0d1.
+        """
+        shipping_to_name = (post.get('shipping_to_name') or '').strip()
+        shipping_to_mobile = (post.get('shipping_to_mobile') or '').strip()
+        shipping_to_address = (post.get('shipping_to_address') or '').strip()
+        shipping_to_zip = (post.get('shipping_to_zip') or '').strip()
+        item_description = (post.get('item_description') or '').strip()
+        missing = []
+        if not shipping_to_name:
+            missing.append('Customer Name')
+        if not shipping_to_mobile:
+            missing.append('Phone Number')
+        if not shipping_to_address:
+            missing.append('Address')
+        if not shipping_to_zip:
+            missing.append('Pincode')
+        if not item_description:
+            missing.append('Item Description')
+        if missing:
+            raise UserError(_("Missing required fields: %s") % ', '.join(missing))
+
+        try:
+            total_weight = float(post.get('total_weight') or 0)
+        except (TypeError, ValueError):
+            raise UserError("Weight must be greater than 0.")
+        if total_weight <= 0:
+            raise UserError("Weight must be greater than 0.")
+
+        shipping_from_vals = request.env['logistics.shipment'].sudo()._shipping_from_vals_for_seller(seller)
+        if not shipping_from_vals.get('shipping_from_zip'):
+            raise UserError(_("Update seller pickup pincode before creating shipments."))
+
+        district_id, state_id = self._portal_destination_from_post(
+            post, shipping_to_zip, require_known_pincode=require_known_pincode,
+        )
+
+        payment_type = (post.get('order_payment_type') or 'prepaid').strip().lower()
+        if payment_type not in ('prepaid', 'cod'):
+            payment_type = 'prepaid'
+        try:
+            order_value = float(post.get('total_order_value') or 0)
+        except (TypeError, ValueError):
+            order_value = 0.0
+
+        package_post = post
+        pickup_fallback = post.get('pickup_date') or (
+            order.pickup_date if order else None
+        )
+        if pickup_fallback and not post.get('indiapost_pickup_date'):
+            package_post = dict(post, indiapost_pickup_date=pickup_fallback)
+
+        vals = {
+            'seller_id': seller.id,
+            'shipping_to_name': shipping_to_name,
+            'shipping_to_address': shipping_to_address,
+            'shipping_to_zip': shipping_to_zip,
+            'shipping_to_district_id': district_id,
+            'shipping_to_state_id': state_id,
+            'shipping_to_mobile': shipping_to_mobile,
+            'item_description': item_description,
+            'total_weight': total_weight,
+            'order_payment_type': payment_type,
+            'total_order_value': order_value,
+            'billing_same_as_shipping': True,
+            'state': 'order_added',
+            **shipping_from_vals,
+            **self._shipment_package_vals(package_post, seller),
+        }
+        if order:
+            vals['order_id'] = order.id
+        return vals
+
+    def _portal_create_draft_shipment(self, seller, post, order=None,
+                                      require_known_pincode=False):
+        """Create one draft shipment the same way bulk upload does."""
+        vals = self._portal_draft_shipment_vals(
+            seller, post, order=order,
+            require_known_pincode=require_known_pincode,
+        )
+        shipment = request.env['logistics.shipment'].sudo().create(vals)
+        if shipment.order_payment_type == 'cod':
+            shipment.cod_amount = shipment.total_order_value
+        warning = self._shipment_quote_after_create(shipment)
+        return shipment, warning
+
     @http.route(['/my/shipments/create'], type='http', auth="user", website=True, methods=['POST'])
     def portal_my_shipments_create(self, **post):
-        partner = request.env.user.partner_id
-        seller = request.env['logistics.seller'].search([('partner_id', '=', partner.id)], limit=1)
+        seller = self._portal_seller()
         if not seller:
             return request.redirect('/my')
-            
+
         try:
-            # Server-side required customer contact fields
-            shipping_to_name = (post.get('shipping_to_name') or '').strip()
-            shipping_to_mobile = (post.get('shipping_to_mobile') or '').strip()
-            shipping_to_address = (post.get('shipping_to_address') or '').strip()
-            shipping_to_zip = (post.get('shipping_to_zip') or '').strip()
-            missing = []
-            if not shipping_to_name:
-                missing.append('Customer Name')
-            if not shipping_to_mobile:
-                missing.append('Phone Number')
-            if not shipping_to_address:
-                missing.append('Address')
-            if not shipping_to_zip:
-                missing.append('Pincode')
-            if missing:
-                raise UserError(_("Missing required fields: %s") % ', '.join(missing))
-
-            total_weight = float(post.get('total_weight') or 0)
-            if total_weight <= 0:
-                raise UserError("Weight must be greater than 0.")
-
-            shipping_from_vals = request.env['logistics.shipment'].sudo()._shipping_from_vals_for_seller(seller)
-            if not shipping_from_vals.get('shipping_from_zip'):
-                raise UserError(_("Update seller pickup pincode before creating shipments."))
-
-            shipment_vals = {
-                'seller_id': seller.id,
-                'shipping_to_name': shipping_to_name,
-                'shipping_to_address': shipping_to_address,
-                'shipping_to_zip': shipping_to_zip,
-                'shipping_to_district_id': int(post.get('shipping_to_district_id')) if post.get('shipping_to_district_id') else False,
-                'shipping_to_state_id': int(post.get('shipping_to_state_id')) if post.get('shipping_to_state_id') else False,
-                'shipping_to_mobile': shipping_to_mobile,
-                'item_description': post.get('item_description'),
-                'total_weight': total_weight,
-                'order_payment_type': post.get('order_payment_type', 'prepaid'),
-                'total_order_value': float(post.get('total_order_value') or 0),
-                'billing_same_as_shipping': True,
-                'state': 'order_added',
-                **shipping_from_vals,
-                **self._shipment_package_vals(post, seller),
-            }
-            shipment = request.env['logistics.shipment'].sudo().create(shipment_vals)
-
-            if shipment.order_payment_type == 'cod':
-                shipment.cod_amount = shipment.total_order_value
-
+            shipment, warning = self._portal_create_draft_shipment(seller, post)
             message = f"Shipment '{shipment.name}' saved as Draft!"
-            warning = self._shipment_quote_after_create(shipment)
             request.session['success'] = f"{message} {warning}".strip()
             return request.redirect('/my/shipments')
-
         except Exception as e:
             request.session['error'] = str(e)
             return request.redirect('/my/shipments/new')
@@ -634,6 +718,114 @@ class LogisticsPortal(CustomerPortal):
             'error': request.session.pop('error', None),
         }
         return request.render("keralariders_logistics.portal_my_order_new", values)
+
+    def _portal_seller_order(self, seller, order_id):
+        """The seller's order, or an empty recordset if it is not theirs."""
+        if not seller or not order_id:
+            return request.env['logistics.order'].browse()
+        return request.env['logistics.order'].search([
+            ('id', '=', order_id),
+            ('seller_id', '=', seller.id),
+        ], limit=1)
+
+    @http.route(['/my/orders/manual'], type='http', auth="user", website=True)
+    def portal_my_orders_manual(self, **kw):
+        seller = self._portal_seller()
+        if not seller:
+            return request.redirect('/my')
+        values = self._portal_shipment_form_values(
+            seller, page_name='order_manual', hide_indiapost_pickup_date=True,
+        )
+        return request.render("keralariders_logistics.portal_my_order_manual", values)
+
+    @http.route(['/my/orders/create'], type='http', auth="user", website=True, methods=['POST'])
+    def portal_my_orders_create(self, **post):
+        """Create one order and its first shipment from the portal form.
+
+        Validates the shipment before inserting the order so a missing
+        customer / pincode / weight cannot leave a headless draft behind.
+        Charge and fulfilment fields in the POST are ignored; the same
+        create path as bulk upload prices the parcel.
+        """
+        seller = self._portal_seller()
+        if not seller:
+            return request.redirect('/my')
+        try:
+            pickup_date = (post.get('pickup_date') or '').strip()
+            if not pickup_date:
+                raise UserError(_("Pickup date is required."))
+            vals = self._portal_draft_shipment_vals(
+                seller, post, require_known_pincode=True,
+            )
+            with request.env.cr.savepoint():
+                order = request.env['logistics.order'].sudo().create({
+                    'seller_id': seller.id,
+                    'pickup_date': pickup_date,
+                })
+                vals['order_id'] = order.id
+                shipment = request.env['logistics.shipment'].sudo().create(vals)
+                if shipment.order_payment_type == 'cod':
+                    shipment.cod_amount = shipment.total_order_value
+                warning = self._shipment_quote_after_create(shipment)
+            message = _("Order '%s' created with 1 shipment.") % order.name
+            request.session['success'] = f"{message} {warning}".strip()
+            return request.redirect(f'/my/orders/{order.id}')
+        except Exception as e:
+            request.session['error'] = str(e)
+            return request.redirect('/my/orders/manual')
+
+    @http.route(
+        ['/my/orders/<int:order_id>/shipments/new'],
+        type='http', auth="user", website=True,
+    )
+    def portal_my_order_shipment_new(self, order_id=None, **kw):
+        seller = self._portal_seller()
+        if not seller:
+            return request.redirect('/my')
+        order = self._portal_seller_order(seller, order_id)
+        if not order:
+            return request.redirect('/my/orders')
+        if order.state != 'draft':
+            request.session['error'] = _(
+                "Shipments can only be added while the order is still a draft."
+            )
+            return request.redirect(f'/my/orders/{order.id}')
+        values = self._portal_shipment_form_values(
+            seller,
+            page_name='order_shipment_new',
+            order=order,
+            hide_indiapost_pickup_date=True,
+        )
+        return request.render(
+            "keralariders_logistics.portal_my_order_shipment_new", values,
+        )
+
+    @http.route(
+        ['/my/orders/<int:order_id>/shipments/create'],
+        type='http', auth="user", website=True, methods=['POST'],
+    )
+    def portal_my_order_shipment_create(self, order_id=None, **post):
+        seller = self._portal_seller()
+        if not seller:
+            return request.redirect('/my')
+        order = self._portal_seller_order(seller, order_id)
+        if not order:
+            return request.redirect('/my/orders')
+        if order.state != 'draft':
+            request.session['error'] = _(
+                "Shipments can only be added while the order is still a draft."
+            )
+            return request.redirect(f'/my/orders/{order.id}')
+        try:
+            _shipment, warning = self._portal_create_draft_shipment(
+                seller, post, order=order, require_known_pincode=True,
+            )
+            message = _("Shipment added to order '%s'.") % order.name
+            request.session['success'] = f"{message} {warning}".strip()
+            return request.redirect(f'/my/orders/{order.id}')
+        except Exception as e:
+            request.session['error'] = str(e)
+            return request.redirect(f'/my/orders/{order.id}/shipments/new')
 
     @http.route(['/my/orders/bulk_upload'], type='http', auth="user", website=True, methods=['POST'])
     def portal_my_orders_bulk_upload(self, **post):

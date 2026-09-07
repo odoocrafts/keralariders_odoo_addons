@@ -57,6 +57,17 @@
             <field name="perm_unlink" eval="False"/>
         </record>
 
+        <record id="logistics_order_portal_rule" model="ir.rule">
+            <field name="name">Portal Order Rule (Seller)</field>
+            <field name="model_id" ref="model_logistics_order"/>
+            <field name="domain_force">[('seller_id.partner_id', '=', user.partner_id.id)]</field>
+            <field name="groups" eval="[(4, ref('base.group_portal'))]"/>
+            <field name="perm_read" eval="True"/>
+            <field name="perm_write" eval="True"/>
+            <field name="perm_create" eval="True"/>
+            <field name="perm_unlink" eval="False"/>
+        </record>
+
         <!-- Admin: unrestricted access (OR'd with implied hub_manager/executive rules) -->
         <record id="logistics_hub_admin_rule" model="ir.rule">
             <field name="name">Logistics Admin All Hubs</field>

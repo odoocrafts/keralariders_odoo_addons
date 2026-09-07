@@ -67,12 +67,18 @@
             <li t-if="page_name == 'cod_settlements'" class="breadcrumb-item">
                 COD Settlements
             </li>
-            <li t-if="page_name == 'order' or page_name == 'order_new'" t-attf-class="breadcrumb-item #{'active ' if not order else ''}">
-                <a t-if="page_name == 'order_new'" t-attf-href="/my/orders?{{ keep_query() }}">Orders</a>
+            <li t-if="page_name in ('order', 'order_new', 'order_manual', 'order_shipment_new')" t-attf-class="breadcrumb-item #{'active ' if not order else ''}">
+                <a t-if="page_name in ('order_new', 'order_manual', 'order_shipment_new')" t-attf-href="/my/orders?{{ keep_query() }}">Orders</a>
                 <t t-else="">Orders</t>
             </li>
             <li t-if="page_name == 'order_new'" class="breadcrumb-item">
-                New Order
+                Bulk Upload
+            </li>
+            <li t-if="page_name == 'order_manual'" class="breadcrumb-item">
+                Add Order
+            </li>
+            <li t-if="page_name == 'order_shipment_new'" class="breadcrumb-item">
+                Add Shipment
             </li>
             <li t-if="page_name == 'shipment' or page_name == 'shipment_new'" t-attf-class="breadcrumb-item #{'active ' if not shipment else ''}">
                 <a t-if="page_name == 'shipment_new'" t-attf-href="/my/shipments?{{ keep_query() }}">Shipments</a>
@@ -522,21 +528,10 @@
         </t>
     </template>
 
-    <!-- New Shipment Form -->
-    <template id="portal_my_shipment_new" name="New Shipment">
-        <t t-call="portal.portal_layout">
-            <t t-if="error">
-                <div class="alert alert-danger" role="alert"><t t-esc="error"/></div>
-            </t>
-            
-            <div class="card shadow-sm mb-4">
-                <div class="card-header bg-white py-3">
-                    <h4 class="mb-0">Create New Shipment</h4>
-                </div>
-                <div class="card-body">
-                    <form action="/my/shipments/create" method="post">
-                        <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
-                        
+    <!-- Shared shipment fields. Used by the standalone shipment form and by
+         the order "Add Order" / "Add Shipment" forms so there is one surface
+         for customer, package and India Post pickup. -->
+    <template id="portal_shipment_form_fields" name="Portal Shipment Form Fields">
                         <div class="row">
                             <div class="col-md-6 mb-4">
                                 <h5 class="text-muted border-bottom pb-2">Shipping To (Destination)</h5>
@@ -659,7 +654,7 @@
                                 <t t-if="uses_indiapost">
                                     <h5 class="text-muted border-bottom pb-2 mt-4">India Post Pickup</h5>
                                     <div class="row">
-                                        <div class="col-md-6 mb-3">
+                                        <div t-if="not hide_indiapost_pickup_date" class="col-md-6 mb-3">
                                             <label class="form-label" for="indiapost_pickup_date">Pickup Date</label>
                                             <input type="date" id="indiapost_pickup_date"
                                                    name="indiapost_pickup_date" class="form-control"
@@ -683,15 +678,6 @@
                                 </t>
                             </div>
                         </div>
-                        
-                        <div class="text-end border-top pt-3">
-                            <a href="/my/shipments" class="btn btn-secondary me-2">Cancel</a>
-                            <button type="submit" class="btn btn-primary">Save as Draft (Order Added)</button>
-                        </div>
-                    </form>
-                </div>
-            </div>
-            
             <script>
                 document.getElementById('order_payment_type').addEventListener('change', function() {
                     var codContainer = document.getElementById('total_order_value_container');
@@ -712,7 +698,7 @@
             <script t-if="uses_indiapost">
                 <![CDATA[
                 (function () {
-                    var form = document.querySelector('form[action="/my/shipments/create"]');
+                    var form = document.querySelector('form.kx-portal-shipment-form');
                     if (!form) { return; }
                     var box = document.getElementById('kx_package_error');
                     var PARCEL_THRESHOLD_G = 500;
@@ -776,9 +762,32 @@
                 })();
                 ]]>
             </script>
-        </t>
     </template>
 
+    <!-- New Shipment Form -->
+    <template id="portal_my_shipment_new" name="New Shipment">
+        <t t-call="portal.portal_layout">
+            <t t-if="error">
+                <div class="alert alert-danger" role="alert"><t t-esc="error"/></div>
+            </t>
+            
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-white py-3">
+                    <h4 class="mb-0">Create New Shipment</h4>
+                </div>
+                <div class="card-body">
+                    <form action="/my/shipments/create" method="post" class="kx-portal-shipment-form">
+                        <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                        <t t-call="keralariders_logistics.portal_shipment_form_fields"/>
+                        <div class="text-end border-top pt-3">
+                            <a href="/my/shipments" class="btn btn-secondary me-2">Cancel</a>
+                            <button type="submit" class="btn btn-primary">Save as Draft (Order Added)</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </t>
+    </template>
     <!-- Charge Calculator.
          Two pricing models share this page. Sellers on India Post (and every
          anonymous visitor) get a live Speed Post quote, which needs pincodes
