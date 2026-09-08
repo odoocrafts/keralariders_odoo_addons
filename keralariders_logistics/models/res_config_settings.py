@@ -153,6 +153,32 @@ class ResConfigSettings(models.TransientModel):
         help="Added on top of the India Post total when quoting sellers. Zero "
              "means pure passthrough.",
     )
+    indiapost_webhooks_enabled = fields.Boolean(
+        string="Accept India Post Webhooks", default=True,
+        config_parameter=CONFIG_PREFIX + 'indiapost_webhooks_enabled',
+        help="When on, booking and tracking events posted by India Post update "
+             "shipments. When off the endpoints still return HTTP 200 so India "
+             "Post does not retry, but nothing is applied.",
+    )
+    # Display-only: the two URLs already registered on India Post's portal.
+    # Computed from web.base.url so staging and production stay distinct.
+    indiapost_booking_webhook_url = fields.Char(
+        string="Booking Events Webhook URL",
+        compute='_compute_indiapost_webhook_urls',
+    )
+    indiapost_other_webhook_url = fields.Char(
+        string="Other Events Webhook URL",
+        compute='_compute_indiapost_webhook_urls',
+    )
+
+    def _compute_indiapost_webhook_urls(self):
+        base = (self.env['ir.config_parameter'].sudo().get_param('web.base.url')
+                or '').rstrip('/')
+        booking = '%s%s' % (base, ipc.BOOKING_WEBHOOK_PATH)
+        other = '%s%s' % (base, ipc.OTHER_WEBHOOK_PATH)
+        for rec in self:
+            rec.indiapost_booking_webhook_url = booking
+            rec.indiapost_other_webhook_url = other
 
     @api.model
     def get_values(self):
@@ -161,6 +187,14 @@ class ResConfigSettings(models.TransientModel):
             'keralariders_logistics.company_cod_account_id'
         )
         res['company_cod_account_id'] = int(account_id) if account_id else False
+        # A missing config parameter must not uncheck the webhook switch:
+        # Boolean config fields otherwise render as False and the next save
+        # would disable a live India Post callback.
+        raw = self.env['ir.config_parameter'].sudo().get_param(
+            CONFIG_PREFIX + 'indiapost_webhooks_enabled', default='True')
+        res['indiapost_webhooks_enabled'] = str(raw).strip().lower() in (
+            '1', 'true', 't', 'yes',
+        )
         return res
 
     def set_values(self):

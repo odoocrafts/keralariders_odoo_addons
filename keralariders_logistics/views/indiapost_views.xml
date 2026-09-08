@@ -340,6 +340,8 @@
                 <filter name="labels" string="Labels" domain="[('operation', '=', 'label')]"/>
                 <filter name="tracking" string="Tracking"
                         domain="[('operation', '=', 'tracking')]"/>
+                <filter name="webhooks" string="Webhooks"
+                        domain="[('operation', 'ilike', 'webhook')]"/>
                 <separator/>
                 <filter name="today" string="Today"
                         domain="[('create_date', '&gt;=', datetime.datetime.combine(context_today(), datetime.time(0,0,0)))]"/>

@@ -35,6 +35,12 @@ CONTRACT_SETTING_BY_ARTICLE_TYPE = {
     ARTICLE_TYPE_BUSINESS_PARCEL: 'indiapost_bp_contract_id',
 }
 
+# Inbound webhook paths registered on India Post's Customer Self-Service
+# Portal. India Post POSTs to us; we never call these URLs. Paths are fixed
+# because they are already live on production.
+BOOKING_WEBHOOK_PATH = '/indiapost/bookingeventwebhook'
+OTHER_WEBHOOK_PATH = '/indiapost/othereventwebhook'
+
 # Within Speed Post the API picks one of these two concrete products from the
 # weight and returns the name in the tariff response.
 PRODUCT_DOC = 'SP_INLAND_DOC'

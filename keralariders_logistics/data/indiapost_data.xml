@@ -21,9 +21,10 @@
 
     <data noupdate="0">
 
-        <!-- Status sync. India Post's inbound webhook has no published
-             authentication scheme, so polling the bulk tracking endpoint is
-             the only safe status source. -->
+        <!-- Status sync. India Post now also POSTs booking and tracking
+             events to /indiapost/bookingeventwebhook and
+             /indiapost/othereventwebhook. Polling remains the fallback
+             because the webhook payload schema is unpublished. -->
         <!-- model_id points at logistics.shipment rather than the abstract
              logistics.indiapost.tracking service, because ir.cron expects a
              concrete model. The work itself lives on the service. -->

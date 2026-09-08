@@ -51,3 +51,22 @@ class TestIndiapostSettings(IndiapostHermeticMixin, TransactionCase):
         # This is the production crash path: opening the form.
         Settings.default_get(list(Settings.fields_get()))
         Settings._get_classified_fields()
+
+    def test_webhook_urls_follow_web_base_url(self):
+        self.env['ir.config_parameter'].sudo().set_param(
+            'web.base.url', 'https://erp.keralaxpress.com')
+        settings = self.env['res.config.settings'].create({})
+        self.assertEqual(
+            settings.indiapost_booking_webhook_url,
+            'https://erp.keralaxpress.com/indiapost/bookingeventwebhook',
+        )
+        self.assertEqual(
+            settings.indiapost_other_webhook_url,
+            'https://erp.keralaxpress.com/indiapost/othereventwebhook',
+        )
+        self.assertFalse(getattr(
+            settings._fields['indiapost_booking_webhook_url'],
+            'config_parameter', None))
+        self.assertTrue(settings._fields['indiapost_webhooks_enabled'].type
+                         in ('boolean',))
+

@@ -194,6 +194,35 @@
                                 </div>
                             </div>
                         </setting>
+
+                        <setting id="indiapost_webhooks" string="Inbound Webhooks"
+                                 help="Register these exact URLs on India Post's Customer Self-Service Portal under Event Configuration. India Post POSTs events here; we never call these addresses."
+                                 invisible="not indiapost_enabled">
+                            <div class="content-group">
+                                <div class="row">
+                                    <field name="indiapost_webhooks_enabled"/>
+                                    <label for="indiapost_webhooks_enabled" class="o_light_label ms-2"/>
+                                </div>
+                                <div class="row mt-2">
+                                    <label for="indiapost_booking_webhook_url" class="col-lg-4 o_light_label"/>
+                                    <field name="indiapost_booking_webhook_url" readonly="1"/>
+                                </div>
+                                <div class="text-muted">
+                                    Booking events (booked, accepted, rejected, label).
+                                </div>
+                                <div class="row mt-2">
+                                    <label for="indiapost_other_webhook_url" class="col-lg-4 o_light_label"/>
+                                    <field name="indiapost_other_webhook_url" readonly="1"/>
+                                </div>
+                                <div class="text-muted">
+                                    Tracking and other non-booking events. Built from
+                                    this database's web base URL so staging and
+                                    production stay distinct. Paths are not
+                                    configurable: they are already registered
+                                    with India Post.
+                                </div>
+                            </div>
+                        </setting>
                     </block>
                 </app>
             </xpath>

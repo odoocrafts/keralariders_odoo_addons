@@ -65,6 +65,7 @@ SETTING_DEFAULTS = {
     'indiapost_request_timeout': str(DEFAULT_READ_TIMEOUT_S),
     'indiapost_pickup_lead_days': '1',
     'indiapost_default_pod': False,
+    'indiapost_webhooks_enabled': True,
     'indiapost_quote_markup_percent': '0',
 }
 
@@ -161,7 +162,8 @@ class IndiapostClient(models.AbstractModel):
                 value = default
             settings[key] = value
         # Booleans arrive as the strings config parameters store.
-        for key in ('indiapost_enabled', 'indiapost_default_pod'):
+        for key in ('indiapost_enabled', 'indiapost_default_pod',
+                    'indiapost_webhooks_enabled'):
             settings[key] = str(settings[key]).strip().lower() in (
                 '1', 'true', 't', 'yes',
             )

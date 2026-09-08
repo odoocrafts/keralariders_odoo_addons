@@ -12,10 +12,10 @@ instead: "Item Bagged", "Item Dispatched", "Item Received", "Item Invoiced",
 both, exact codes first and then phrase matching, so it keeps working whichever
 form production sends.
 
-The inbound webhook mentioned in the vendor document has no specified
-authentication, source IPs or retry policy, so this cron is the only status
-source. :mod:`controllers.indiapost_webhook` holds a disabled placeholder that
-can be wired up without touching anything here.
+Inbound webhooks at ``/indiapost/bookingeventwebhook`` and
+``/indiapost/othereventwebhook`` normalise whatever payload India Post POSTs
+into the same ``tracking_details`` shape and hand it to
+``_ip_apply_tracking``, so polling and push share one status mapping.
 """
 
 from odoo import api, fields, models, _
@@ -27,6 +27,10 @@ import re
 from .indiapost_client import IndiapostApiError
 
 _logger = logging.getLogger(__name__)
+
+# Logged once per (kind, key-tuple) so the first live payload can be tightened
+# without flooding the log on every India Post retry.
+_LOGGED_WEBHOOK_SHAPES = set()
 
 TRACKING_PATH = '/v1/tracking/bulk'
 # The endpoint accepts up to 500 barcodes per call.
@@ -64,6 +68,12 @@ EVENT_CODE_MAP = {
     'ITEM_REDIRECT': (_HOLD, 'Item Redirected'),
     'ITEM_RETURN': (_RETURNED, 'Item Returned to Sender'),
     'ITEM_DELIVERY': (_DELIVERED, 'Item Delivered'),
+    'ACCEPTED': (_BOOKED, 'Booking Accepted'),
+    'BOOKING_ACCEPTED': (_BOOKED, 'Booking Accepted'),
+    'BOOKING_REJECTED': (_CANCELLED, 'Booking Rejected'),
+    'REJECTED': (_CANCELLED, 'Booking Rejected'),
+    'LABEL_GENERATED': (_HOLD, 'Label Generated'),
+    'LABEL': (_HOLD, 'Label Generated'),
 }
 
 # Phrase rules for the free text the API actually returns. Ordered: the first
@@ -95,6 +105,9 @@ EVENT_PHRASE_RULES = [
     ('PICKED UP', _PICKED, 'Item Pickedup'),
     ('PICKUP ASSIGNED', _PICKUP_SCHEDULED, 'Pickup Assigned'),
     ('PICKUP REQUEST', _PICKUP_SCHEDULED, 'Pickup Request Raised'),
+    ('BOOKING REJECTED', _CANCELLED, 'Booking Rejected'),
+    ('BOOKING ACCEPTED', _BOOKED, 'Booking Accepted'),
+    ('LABEL GENERATED', _HOLD, 'Label Generated'),
 ]
 
 # How far along the journey each state sits, so a late scan can never drag a
@@ -241,22 +254,7 @@ class IndiapostTracking(models.AbstractModel):
                 shipment.sudo().write({'indiapost_del_status': del_status})
             return False
 
-        parsed = []
-        for scan in scans:
-            moment = self._ip_scan_datetime(scan)
-            state, event_type, label = classify_event(scan.get('event'))
-            parsed.append({
-                'moment': moment,
-                'state': state,
-                'event_type': event_type,
-                'label': label,
-                'office': (scan.get('office') or '').strip(),
-                'office_id': str(scan.get('officeid') or ''),
-                'raw': re.sub(r'\s+', ' ', str(scan.get('event') or '')).strip(),
-            })
-        parsed.sort(key=lambda item: (item['moment'] or datetime.datetime.min,
-                                      item['raw']))
-
+        parsed = self._ip_parse_scans(scans)
         created = self._ip_create_events(shipment, parsed)
         target = self._ip_target_state(shipment, parsed)
         vals = {}
@@ -270,18 +268,56 @@ class IndiapostTracking(models.AbstractModel):
         return bool(created or vals)
 
     @api.model
+    def _ip_parse_scans(self, scans):
+        """Normalise scan dicts into the shape ``_ip_create_events`` expects."""
+        parsed = []
+        for scan in scans:
+            if not isinstance(scan, dict):
+                continue
+            moment = self._ip_scan_datetime(scan)
+            state, event_type, label = classify_event(scan.get('event'))
+            parsed.append({
+                'moment': moment,
+                'state': state,
+                'event_type': event_type,
+                'label': label,
+                'office': (scan.get('office') or '').strip(),
+                'office_id': str(scan.get('officeid') or ''),
+                'raw': re.sub(r'\s+', ' ', str(scan.get('event') or '')).strip(),
+                'event_id': str(
+                    scan.get('eventId') or scan.get('event_id')
+                    or scan.get('eventID') or ''
+                ).strip(),
+            })
+        parsed.sort(key=lambda item: (item['moment'] or datetime.datetime.min,
+                                      item['raw']))
+        return parsed
+
+    @api.model
     def _ip_scan_datetime(self, scan):
         """Combine the scan's ISO date with its separate time field.
 
-        ``date`` looks like 2026-02-19T00:00:00Z and carries no useful time;
-        the real clock time is in ``time`` as HH:MM:SS.
+        Bulk tracking ``date`` looks like 2026-02-19T00:00:00Z and carries no
+        useful time; the real clock time is in ``time`` as HH:MM:SS. Webhook
+        payloads may send a single ISO datetime instead.
         """
-        raw_date = str(scan.get('date') or '')[:10]
-        raw_time = str(scan.get('time') or '').strip()
+        for key in ('eventDateTime', 'event_date_time', 'datetime',
+                    'timestamp', 'dateTime'):
+            parsed = self._ip_parse_iso_datetime(scan.get(key))
+            if parsed:
+                return parsed
+        raw_date = str(scan.get('date') or scan.get('eventDate')
+                       or scan.get('event_date') or '')
+        raw_time = str(scan.get('time') or scan.get('eventTime')
+                       or scan.get('event_time') or '').strip()
+        if 'T' in raw_date and not raw_time:
+            parsed = self._ip_parse_iso_datetime(raw_date)
+            if parsed:
+                return parsed
         try:
-            day = datetime.datetime.strptime(raw_date, '%Y-%m-%d').date()
+            day = datetime.datetime.strptime(raw_date[:10], '%Y-%m-%d').date()
         except ValueError:
-            return None
+            return self._ip_parse_iso_datetime(raw_date)
         for fmt in ('%H:%M:%S', '%H:%M'):
             try:
                 clock = datetime.datetime.strptime(raw_time, fmt).time()
@@ -289,6 +325,30 @@ class IndiapostTracking(models.AbstractModel):
             except ValueError:
                 clock = datetime.time()
         return datetime.datetime.combine(day, clock)
+
+    @staticmethod
+    def _ip_parse_iso_datetime(raw):
+        text = str(raw or '').strip()
+        if not text:
+            return None
+        text = text.replace('Z', '+00:00')
+        try:
+            parsed = datetime.datetime.fromisoformat(text)
+            return parsed.replace(tzinfo=None)
+        except ValueError:
+            pass
+        for fmt, size in (
+            ('%Y-%m-%d %H:%M:%S', 19),
+            ('%Y-%m-%d %H:%M', 16),
+            ('%d-%m-%Y %H:%M:%S', 19),
+            ('%d/%m/%Y %H:%M:%S', 19),
+            ('%Y-%m-%d', 10),
+        ):
+            try:
+                return datetime.datetime.strptime(text[:size], fmt)
+            except ValueError:
+                continue
+        return None
 
     @api.model
     def _ip_create_events(self, shipment, parsed):
@@ -307,22 +367,36 @@ class IndiapostTracking(models.AbstractModel):
             note = item['label'] or item['raw']
             if item['raw'] and item['label'] and item['raw'] != item['label']:
                 note = '%s (%s)' % (item['label'], item['raw'])
-            Event.create({
-                'shipment_id': shipment.id,
-                'event_type': item['event_type'],
-                'event_time': item['moment'] or fields.Datetime.now(),
-                'actor_user_id': False,
-                'note': note,
-                'indiapost_event_code': item['raw'][:120],
-                'indiapost_event_key': key,
-                'indiapost_office_name': item['office'][:120],
-            })
+            try:
+                with self.env.cr.savepoint():
+                    Event.create({
+                        'shipment_id': shipment.id,
+                        'event_type': item['event_type'],
+                        'event_time': item['moment'] or fields.Datetime.now(),
+                        'actor_user_id': False,
+                        'note': note,
+                        'indiapost_event_code': item['raw'][:120],
+                        'indiapost_event_key': key,
+                        'indiapost_office_name': item['office'][:120],
+                    })
+            except Exception as exc:
+                # Duplicate article+code+timestamp (or event id) from a
+                # webhook retry. The unique constraint is the last line of
+                # defence after the in-memory ``known`` set.
+                message = str(exc)
+                if 'indiapost_scan_uniq' in message \
+                        or 'already been recorded' in message:
+                    continue
+                raise
             created += 1
         return created
 
     @staticmethod
     def _ip_event_key(item):
         """Stable identity for a scan, so repeated polls do not duplicate it."""
+        event_id = str(item.get('event_id') or '').strip()
+        if event_id:
+            return ('id|%s' % event_id)[:255]
         moment = item['moment'].strftime('%Y%m%d%H%M%S') if item['moment'] else '-'
         return '%s|%s|%s' % (moment, item['office_id'] or item['office'],
                              item['raw'])[:255]
@@ -395,3 +469,251 @@ class IndiapostTracking(models.AbstractModel):
                 'sticky': False,
             },
         }
+
+    # ------------------------------------------------------------------
+    # Inbound webhooks
+    # ------------------------------------------------------------------
+    # India Post has not published the POST body. Walk common article / event
+    # keys (and nested ``data``) so a Test ping and a real scan both land.
+    _WEBHOOK_ARTICLE_KEYS = frozenset({
+        'articlenumber', 'article_number', 'articleno', 'article_no',
+        'barcodeno', 'barcode_no', 'barcode', 'awb', 'awbnumber',
+        'awb_number', 'articleid', 'article_id',
+    })
+    _WEBHOOK_EVENT_KEYS = (
+        'event', 'eventCode', 'event_code', 'eventName', 'event_name',
+        'eventType', 'event_type', 'status', 'statusCode', 'status_code',
+        'eventDescription', 'event_description', 'event_desc', 'remarks',
+        'message',
+    )
+    _WEBHOOK_EVENT_ID_KEYS = (
+        'eventId', 'event_id', 'eventID', 'txnId', 'txn_id', 'messageId',
+        'message_id',
+    )
+    _WEBHOOK_OFFICE_KEYS = (
+        'office', 'officeName', 'office_name', 'location',
+    )
+    _WEBHOOK_OFFICE_ID_KEYS = (
+        'officeid', 'officeId', 'office_id', 'officeCode', 'office_code',
+    )
+    _WEBHOOK_SCAN_LIST_KEYS = (
+        'tracking_details', 'trackingDetails', 'events', 'eventList',
+        'event_list', 'scans', 'statusHistory', 'status_history',
+    )
+
+    @staticmethod
+    def _ip_norm_key(key):
+        return re.sub(r'[^a-z0-9]', '', str(key).lower())
+
+    @classmethod
+    def _ip_first_str(cls, node, keys):
+        if not isinstance(node, dict):
+            return ''
+        for key in keys:
+            value = node.get(key)
+            if isinstance(value, (str, int, float)) and str(value).strip():
+                return str(value).strip()
+        return ''
+
+    @api.model
+    def _ip_log_webhook_keys(self, kind, payload):
+        if isinstance(payload, dict):
+            keys = tuple(sorted(str(key) for key in payload.keys()))
+        elif isinstance(payload, list):
+            keys = ('<list:%s>' % len(payload),)
+        else:
+            keys = (type(payload).__name__,)
+        shape = (kind, keys)
+        if shape in _LOGGED_WEBHOOK_SHAPES:
+            return
+        _LOGGED_WEBHOOK_SHAPES.add(shape)
+        _logger.info('India Post %s webhook payload keys: %s', kind, list(keys))
+
+    @api.model
+    def _ip_article_from(self, node, depth=0):
+        """First article / barcode / AWB found while walking ``node``."""
+        if depth > 6 or node is None:
+            return ''
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if self._ip_norm_key(key) in self._WEBHOOK_ARTICLE_KEYS:
+                    if isinstance(value, (str, int)) and str(value).strip():
+                        return str(value).strip()
+            nested = node.get('booking_details') or node.get('bookingDetails')
+            found = self._ip_article_from(nested, depth + 1)
+            if found:
+                return found
+            for key in ('data', 'payload', 'result', 'body', 'event', 'record'):
+                found = self._ip_article_from(node.get(key), depth + 1)
+                if found:
+                    return found
+            return ''
+        if isinstance(node, (list, tuple)):
+            for item in node[:50]:
+                found = self._ip_article_from(item, depth + 1)
+                if found:
+                    return found
+        return ''
+
+    @api.model
+    def _ip_normalize_scan(self, item):
+        if isinstance(item, str):
+            return {
+                'event': item, 'date': '', 'time': '',
+                'office': '', 'officeid': '', 'event_id': '',
+            }
+        if not isinstance(item, dict):
+            return {}
+        event = self._ip_first_str(item, self._WEBHOOK_EVENT_KEYS)
+        office = self._ip_first_str(item, self._WEBHOOK_OFFICE_KEYS)
+        officeid = self._ip_first_str(item, self._WEBHOOK_OFFICE_ID_KEYS)
+        event_id = self._ip_first_str(item, self._WEBHOOK_EVENT_ID_KEYS)
+        date = item.get('date') or ''
+        time = item.get('time') or ''
+        combined = self._ip_first_str(item, (
+            'eventDateTime', 'event_date_time', 'eventDate', 'event_date',
+            'dateTime', 'datetime', 'timestamp',
+        ))
+        if combined:
+            parsed = self._ip_parse_iso_datetime(combined)
+            if parsed:
+                date = parsed.strftime('%Y-%m-%dT00:00:00Z')
+                time = parsed.strftime('%H:%M:%S')
+        return {
+            'event': event,
+            'date': date,
+            'time': time,
+            'office': office,
+            'officeid': officeid,
+            'event_id': event_id,
+        }
+
+    @api.model
+    def _ip_scans_from(self, payload):
+        if not isinstance(payload, dict):
+            return []
+        for key in self._WEBHOOK_SCAN_LIST_KEYS:
+            value = payload.get(key)
+            if isinstance(value, list) and value:
+                scans = []
+                for item in value:
+                    if isinstance(item, str):
+                        scans.append(self._ip_normalize_scan(item))
+                    elif isinstance(item, dict):
+                        scans.append(self._ip_normalize_scan(item))
+                return [scan for scan in scans if scan.get('event') or scan.get('event_id')]
+        nested = payload.get('data')
+        if isinstance(nested, dict):
+            nested_scans = self._ip_scans_from(nested)
+            if nested_scans:
+                return nested_scans
+        scan = self._ip_normalize_scan(payload)
+        if scan.get('event') or scan.get('event_id'):
+            return [scan]
+        return []
+
+    @api.model
+    def _ip_coerce_webhook_records(self, payload):
+        """Turn an arbitrary webhook body into bulk-tracking-shaped records."""
+        if payload in (None, '', False, {}, []):
+            return []
+        if isinstance(payload, list):
+            records = []
+            for item in payload:
+                records.extend(self._ip_coerce_webhook_records(item))
+            return records
+        if not isinstance(payload, dict):
+            return []
+
+        article = self._ip_article_from(payload)
+        scans = self._ip_scans_from(payload)
+        del_status = payload.get('del_status')
+        if isinstance(del_status, dict):
+            del_status = del_status.get('del_status')
+
+        if not article and not scans:
+            nested = payload.get('data') or payload.get('payload') \
+                or payload.get('result') or payload.get('body')
+            if isinstance(nested, (dict, list)):
+                return self._ip_coerce_webhook_records(nested)
+            return []
+
+        return [{
+            'article': article,
+            'del_status': del_status,
+            'tracking_details': scans,
+        }]
+
+    @api.model
+    def _ip_find_shipment(self, article):
+        article = (article or '').strip()
+        if not article:
+            return self.env['logistics.shipment']
+        Shipment = self.env['logistics.shipment'].sudo()
+        shipment = Shipment.search(
+            [('indiapost_article_number', '=', article)], limit=1)
+        if shipment:
+            return shipment
+        shipment = Shipment.search([('name', '=', article)], limit=1)
+        if shipment:
+            return shipment
+        barcode = self.env['logistics.indiapost.barcode'].sudo().search(
+            [('barcode', '=', article)], limit=1)
+        return barcode.shipment_id
+
+    @api.model
+    def _ip_apply_booking_side_effects(self, shipment, parsed):
+        """Record booked / rejected without touching tariff or charges."""
+        if not parsed:
+            return
+        if shipment.indiapost_booking_state == 'booked':
+            return
+        for item in parsed:
+            if item['event_type'] == 'indiapost_booked':
+                vals = {'indiapost_booking_state': 'booked'}
+                if not shipment.indiapost_booked_on:
+                    vals['indiapost_booked_on'] = (
+                        item['moment'] or fields.Datetime.now())
+                shipment.sudo().write(vals)
+                return
+            if item['state'] == 'cancelled':
+                shipment.sudo().write({
+                    'indiapost_booking_state': 'error',
+                    'indiapost_booking_error': (
+                        item['raw'] or item['label'] or 'Booking rejected'),
+                })
+                return
+
+    @api.model
+    def ingest_webhook(self, kind, payload):
+        """Apply one inbound webhook. Never raises; caller logs and returns 200.
+
+        Tariff / charge keys in the payload are ignored on purpose: India Post
+        must not be able to set what a seller is billed.
+        """
+        self._ip_log_webhook_keys(kind, payload)
+        settings = self.env['logistics.indiapost.client']._ip_settings()
+        if not settings.get('indiapost_webhooks_enabled', True):
+            _logger.info('India Post %s webhook ignored: acceptance is off.', kind)
+            return
+
+        records = self._ip_coerce_webhook_records(payload)
+        for record in records:
+            article = record.get('article')
+            if not article:
+                continue
+            shipment = self._ip_find_shipment(article)
+            if not shipment:
+                _logger.info(
+                    'India Post %s webhook: unknown article %s', kind, article)
+                continue
+            tracking_record = {
+                'del_status': record.get('del_status'),
+                'tracking_details': record.get('tracking_details') or [],
+            }
+            self._ip_apply_tracking(shipment, tracking_record)
+            if kind == 'booking':
+                self._ip_apply_booking_side_effects(
+                    shipment, self._ip_parse_scans(
+                        tracking_record['tracking_details']))
+
