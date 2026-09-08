@@ -19,8 +19,33 @@ from . import indiapost_common as ipc
 
 _logger = logging.getLogger(__name__)
 
-DEFAULT_BASE_URL = 'https://test.cept.gov.in/beextcustomer'
+# Hosts from the Department of Posts integration documents. Paths are the same
+# in both environments; only the host changes. Sandbox stays the install
+# default so a fresh copy cannot accidentally hit production.
+SANDBOX_BASE_URL = 'https://test.cept.gov.in/beextcustomer'
+PRODUCTION_BASE_URL = 'https://app.indiapost.gov.in/beextcustomer'
+DEFAULT_BASE_URL = SANDBOX_BASE_URL
+BASE_URL_BY_ENVIRONMENT = {
+    'sandbox': SANDBOX_BASE_URL,
+    'production': PRODUCTION_BASE_URL,
+}
+KNOWN_BASE_URLS = frozenset(BASE_URL_BY_ENVIRONMENT.values())
 LOGIN_PATH = '/v1/access/login'
+
+
+def resolve_indiapost_base_url(environment, stored=''):
+    """The host that belongs to ``environment``, unless a custom URL is set.
+
+    Switching Environment in Settings must not keep pointing at the other
+    environment's host. A URL that is empty or is one of the two documented
+    India Post hosts is replaced with the host for the selected environment.
+    Anything else (a proxy, a pinned revision) is left alone.
+    """
+    env_url = BASE_URL_BY_ENVIRONMENT.get(environment) or SANDBOX_BASE_URL
+    current = str(stored or '').strip().rstrip('/')
+    if not current or current in KNOWN_BASE_URLS:
+        return env_url
+    return current
 
 # Tokens are Keycloak JWTs valid for 900 seconds. Renew with a minute to spare
 # so a long booking batch cannot expire mid-flight.
@@ -167,9 +192,9 @@ class IndiapostClient(models.AbstractModel):
             settings[key] = str(settings[key]).strip().lower() in (
                 '1', 'true', 't', 'yes',
             )
-        settings['indiapost_base_url'] = (
-            str(settings['indiapost_base_url']).strip().rstrip('/')
-            or DEFAULT_BASE_URL
+        settings['indiapost_base_url'] = resolve_indiapost_base_url(
+            settings['indiapost_environment'],
+            settings['indiapost_base_url'],
         )
         for key, fallback in (
             ('indiapost_tariff_cache_minutes', 30),

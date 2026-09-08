@@ -94,9 +94,40 @@ class TestIndiapostContracts(IndiapostHermeticMixin, TransactionCase):
         self.assertEqual(sp_article['article_type'],
                          ipc.ARTICLE_TYPE_SPEED_POST)
         self.assertEqual(sp_article['contract_id'], SP_CONTRACT)
+        self.assertEqual(sp_article['bulk_customer_id'],
+                         self.settings['indiapost_customer_id'])
         self.assertEqual(bp_article['article_type'],
                          ipc.ARTICLE_TYPE_BUSINESS_PARCEL)
         self.assertEqual(bp_article['contract_id'], BP_CONTRACT)
+        self.assertEqual(bp_article['bulk_customer_id'],
+                         self.settings['indiapost_customer_id'])
+
+    def test_production_booking_json_carries_customer_contract_and_article_type(self):
+        """Production booking must send all three identifiers India Post checks.
+
+        The production customer id is a settings value, not a code default, so
+        this test writes it the same way the live wizard will.
+        """
+        production_customer_id = '1381763460'
+        self.params.set_param(PREFIX + 'indiapost_customer_id',
+                              production_customer_id)
+        settings = self.Client._ip_settings()
+
+        speed_post = self._new_shipment()
+        parcel = self._new_shipment(
+            indiapost_article_type=ipc.ARTICLE_TYPE_BUSINESS_PARCEL)
+        sp_article = speed_post._ip_prepare_article(
+            settings, 'ET214330016IN')
+        bp_article = parcel._ip_prepare_article(settings, 'ET214330024IN')
+
+        self.assertEqual(sp_article['bulk_customer_id'], production_customer_id)
+        self.assertEqual(sp_article['contract_id'], SP_CONTRACT)
+        self.assertEqual(sp_article['article_type'],
+                         ipc.ARTICLE_TYPE_SPEED_POST)
+        self.assertEqual(bp_article['bulk_customer_id'], production_customer_id)
+        self.assertEqual(bp_article['contract_id'], BP_CONTRACT)
+        self.assertEqual(bp_article['article_type'],
+                         ipc.ARTICLE_TYPE_BUSINESS_PARCEL)
 
     def test_the_label_prints_the_product_it_was_booked_as(self):
         parcel = self._new_shipment(

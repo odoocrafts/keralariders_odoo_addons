@@ -2,7 +2,11 @@ from odoo import models, fields, api, _
 from odoo.exceptions import ValidationError
 
 from . import indiapost_common as ipc
-from .indiapost_client import CONFIG_PREFIX, DEFAULT_BASE_URL
+from .indiapost_client import (
+    CONFIG_PREFIX,
+    DEFAULT_BASE_URL,
+    resolve_indiapost_base_url,
+)
 
 
 class ResConfigSettings(models.TransientModel):
@@ -170,6 +174,17 @@ class ResConfigSettings(models.TransientModel):
         string="Other Events Webhook URL",
         compute='_compute_indiapost_webhook_urls',
     )
+
+    @api.onchange('indiapost_environment')
+    def _onchange_indiapost_environment(self):
+        """Point Base URL at the documented host for the selected environment.
+
+        Sandbox stays https://test.cept.gov.in/beextcustomer; production uses
+        https://app.indiapost.gov.in/beextcustomer. A custom URL is left
+        untouched so a proxy or pinned host is not overwritten.
+        """
+        self.indiapost_base_url = resolve_indiapost_base_url(
+            self.indiapost_environment, self.indiapost_base_url)
 
     def _compute_indiapost_webhook_urls(self):
         base = (self.env['ir.config_parameter'].sudo().get_param('web.base.url')

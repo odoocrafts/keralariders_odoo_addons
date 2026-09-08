@@ -34,10 +34,12 @@
                                 </div>
                                 <div class="alert alert-warning mt-2 mb-0" role="alert"
                                      invisible="indiapost_environment != 'production'">
-                                    Production mode also switches barcode
-                                    allocation to production ranges. Confirm the
-                                    base URL and that India Post has whitelisted
-                                    this server's public IP before going live.
+                                    Production uses
+                                    https://app.indiapost.gov.in/beextcustomer
+                                    and switches barcode allocation to
+                                    production ranges. Confirm India Post has
+                                    whitelisted this server's public IP before
+                                    going live.
                                 </div>
                                 <button name="action_indiapost_test_connection"
                                         type="object" string="Test Connection"

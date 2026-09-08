@@ -9,6 +9,11 @@ that cannot come back.
 
 from odoo.tests import TransactionCase, tagged
 
+from odoo.addons.keralariders_logistics.models.indiapost_client import (
+    CONFIG_PREFIX,
+    PRODUCTION_BASE_URL,
+    SANDBOX_BASE_URL,
+)
 from odoo.addons.keralariders_logistics.tests.common import IndiapostHermeticMixin
 
 
@@ -69,4 +74,40 @@ class TestIndiapostSettings(IndiapostHermeticMixin, TransactionCase):
             'config_parameter', None))
         self.assertTrue(settings._fields['indiapost_webhooks_enabled'].type
                          in ('boolean',))
+
+    def test_production_environment_uses_the_documented_host(self):
+        """Selecting production must not keep the UAT host as the base URL."""
+        params = self.env['ir.config_parameter'].sudo()
+        params.set_param(CONFIG_PREFIX + 'indiapost_environment', 'production')
+        params.set_param(CONFIG_PREFIX + 'indiapost_base_url', SANDBOX_BASE_URL)
+
+        settings = self.env['logistics.indiapost.client']._ip_settings()
+        self.assertEqual(settings['indiapost_base_url'], PRODUCTION_BASE_URL)
+
+        wizard = self.env['res.config.settings'].new({
+            'indiapost_environment': 'sandbox',
+            'indiapost_base_url': PRODUCTION_BASE_URL,
+        })
+        wizard._onchange_indiapost_environment()
+        self.assertEqual(wizard.indiapost_base_url, SANDBOX_BASE_URL)
+
+        wizard.indiapost_environment = 'production'
+        wizard._onchange_indiapost_environment()
+        self.assertEqual(wizard.indiapost_base_url, PRODUCTION_BASE_URL)
+
+    def test_a_custom_base_url_is_left_alone(self):
+        custom = 'https://proxy.example.invalid/beextcustomer'
+        params = self.env['ir.config_parameter'].sudo()
+        params.set_param(CONFIG_PREFIX + 'indiapost_environment', 'production')
+        params.set_param(CONFIG_PREFIX + 'indiapost_base_url', custom)
+
+        settings = self.env['logistics.indiapost.client']._ip_settings()
+        self.assertEqual(settings['indiapost_base_url'], custom)
+
+        wizard = self.env['res.config.settings'].new({
+            'indiapost_environment': 'production',
+            'indiapost_base_url': custom,
+        })
+        wizard._onchange_indiapost_environment()
+        self.assertEqual(wizard.indiapost_base_url, custom)
 
