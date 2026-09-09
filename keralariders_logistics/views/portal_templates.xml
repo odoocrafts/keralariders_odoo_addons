@@ -581,7 +581,7 @@
                                 <div class="row">
                                     <div class="col-md-6 mb-3">
                                         <label class="form-label">Total Weight (Kg)</label>
-                                        <input type="number" step="0.001" name="total_weight" class="form-control" required="1"/>
+                                        <input type="number" step="0.001" id="total_weight" name="total_weight" class="form-control" required="1"/>
                                     </div>
                                     <div class="col-md-6 mb-3">
                                         <label class="form-label">Payment Type</label>
@@ -598,10 +598,31 @@
                                 </div>
 
                                 <!-- Package size. Mandatory for India Post
-                                     sellers: Speed Post charges on volumetric
-                                     weight and rejects parcels of 500 g or more
+                                     sellers: both Speed Post and Business Parcel
+                                     charge on volumetric weight and refuse parcels
                                      that measure under 14 x 9 cm. -->
                                 <h5 class="text-muted border-bottom pb-2 mt-4">Package Size</h5>
+                                <div t-if="uses_indiapost" class="mb-3">
+                                    <label class="form-label">India Post service</label>
+                                    <div class="d-flex flex-wrap gap-4">
+                                        <t t-foreach="indiapost_article_types" t-as="product">
+                                            <div class="form-check">
+                                                <input class="form-check-input" type="radio"
+                                                       t-att-id="'kx_ship_article_%s' % product['code']"
+                                                       name="indiapost_article_type"
+                                                       t-att-value="product['code']"
+                                                       t-att-checked="'checked' if product['code'] == 'SP' else None"/>
+                                                <label class="form-check-label"
+                                                       t-att-for="'kx_ship_article_%s' % product['code']">
+                                                    <t t-esc="product['label']"/>
+                                                    <span t-if="product['code'] == 'BP'" class="text-muted small">
+                                                        (normal parcel)
+                                                    </span>
+                                                </label>
+                                            </div>
+                                        </t>
+                                    </div>
+                                </div>
                                 <div class="row">
                                     <div class="col-4 mb-3">
                                         <label class="form-label" for="length_cm">
@@ -644,9 +665,11 @@
                                     Parcels of
                                     <t t-esc="parcel_weight_threshold_g"/> g and above must measure at
                                     least <t t-esc="parcel_min_length_cm"/> x
-                                    <t t-esc="parcel_min_breadth_cm"/> x 1 cm. Pad small heavy items
-                                    or India Post will refuse them. Length + breadth + height must
-                                    stay within <t t-esc="max_total_dimension_cm"/> cm.
+                                    <t t-esc="parcel_min_breadth_cm"/> x 1 cm if they travel as Speed
+                                    Post. Business Parcel (normal parcel) uses those same minimums at
+                                    every weight. Pad small heavy items or India Post will refuse them.
+                                    Length + breadth + height must stay within
+                                    <t t-esc="max_total_dimension_cm"/> cm.
                                 </div>
                                 <div class="alert alert-danger py-2 d-none" role="alert"
                                      id="kx_package_error"></div>
@@ -704,6 +727,11 @@
                     var PARCEL_THRESHOLD_G = 500;
                     var MIN_L = 14, MIN_B = 9, MAX_SIDE = 150, MAX_TOTAL = 300;
 
+                    function articleType() {
+                        var checked = form.querySelector('input[name="indiapost_article_type"]:checked');
+                        return (checked && checked.value) || 'SP';
+                    }
+
                     function num(id) {
                         var el = document.getElementById(id);
                         var value = parseFloat(el && el.value);
@@ -723,15 +751,18 @@
                             found.push('Length + breadth + height must not exceed '
                                 + MAX_TOTAL + ' cm. This package totals ' + (l + b + h) + ' cm.');
                         }
-                        if (grams >= PARCEL_THRESHOLD_G) {
+                        var asParcel = articleType() === 'BP' || grams > PARCEL_THRESHOLD_G;
+                        var productName = articleType() === 'BP' ? 'Business Parcel' : 'Speed Post parcel';
+                        if (asParcel) {
                             if (l < MIN_L || b < MIN_B) {
-                                found.push('An article of ' + PARCEL_THRESHOLD_G + ' g or more travels as a '
-                                    + 'Speed Post parcel, and parcels must measure at least '
+                                found.push((articleType() === 'BP'
+                                    ? 'Business Parcel (normal parcel) must measure at least '
+                                    : 'An article of ' + PARCEL_THRESHOLD_G + ' g or more travels as a Speed Post parcel, and parcels must measure at least ')
                                     + MIN_L + ' cm x ' + MIN_B + ' cm. Repack this item in a box of at '
                                     + 'least ' + MIN_L + ' x ' + MIN_B + ' x 1 cm.');
                             }
                             if (l > MAX_SIDE || b > MAX_SIDE || h > MAX_SIDE) {
-                                found.push('No side of a Speed Post parcel may exceed ' + MAX_SIDE + ' cm.');
+                                found.push('No side of a ' + productName + ' may exceed ' + MAX_SIDE + ' cm.');
                             }
                         }
                         return found;
@@ -751,6 +782,9 @@
                     ['total_weight', 'length_cm', 'breadth_cm', 'height_cm'].forEach(function (id) {
                         var el = document.getElementById(id);
                         if (el) { el.addEventListener('input', review); }
+                    });
+                    form.querySelectorAll('input[name="indiapost_article_type"]').forEach(function (el) {
+                        el.addEventListener('change', review);
                     });
 
                     form.addEventListener('submit', function (ev) {
@@ -790,10 +824,12 @@
     </template>
     <!-- Charge Calculator.
          Two pricing models share this page. Sellers on India Post (and every
-         anonymous visitor) get a live Speed Post quote, which needs pincodes
+         anonymous visitor) get a live India Post quote, which needs pincodes
          and dimensions because the product and the chargeable weight both
-         depend on size. Sellers still on the KeralaXpress hub network keep the
-         original district-pair weight slab price. -->
+         depend on size. Speed Post and Business Parcel (normal parcel) are
+         priced from different India Post tables. Sellers still on the
+         KeralaXpress hub network keep the original district-pair weight slab
+         price. -->
     <template id="portal_my_calculator" name="Charge Calculator">
         <t t-call="portal.portal_layout">
             <div class="container mt-4 mb-5">
@@ -802,7 +838,7 @@
                         <div class="card shadow-sm">
                             <div class="card-header bg-primary text-white py-3 d-flex justify-content-between align-items-center">
                                 <h4 class="mb-0">Delivery Charge Calculator</h4>
-                                <span t-if="is_indiapost" class="badge text-bg-light text-primary">India Post Speed Post</span>
+                                <span t-if="is_indiapost" class="badge text-bg-light text-primary">India Post</span>
                                 <span t-else="" class="badge text-bg-light text-primary">KeralaXpress Network</span>
                             </div>
                             <div class="card-body p-4">
@@ -832,6 +868,9 @@
                                         </div>
 
                                         <div class="d-flex justify-content-center flex-wrap gap-2 mb-4">
+                                            <span t-if="quote.get('article_type_label')" class="badge rounded-pill text-bg-primary fs-6 px-3 py-2">
+                                                <t t-esc="quote['article_type_label']"/>
+                                            </span>
                                             <span class="badge rounded-pill text-bg-success fs-6 px-3 py-2">
                                                 Charged on <t t-esc="quote['chargeable_weight_g']"/> g
                                             </span>
@@ -897,7 +936,7 @@
 
                                         <div t-if="quote['weight_banded']" class="text-muted small">
                                             <i class="fa fa-info-circle me-1"/>
-                                            Speed Post charges in 50 g steps, so
+                                            India Post charges in 50 g steps, so
                                             <t t-esc="quote['actual_weight_g']"/> g is priced as
                                             <t t-esc="quote['billed_weight_g']"/> g.
                                         </div>
@@ -951,6 +990,26 @@
                                     <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
 
                                     <t t-if="is_indiapost">
+                                        <div class="mb-3">
+                                            <label class="form-label">Service</label>
+                                            <div class="d-flex flex-wrap gap-4">
+                                                <t t-foreach="indiapost_article_types" t-as="product">
+                                                    <div class="form-check">
+                                                        <input class="form-check-input" type="radio"
+                                                               t-att-id="'kx_article_%s' % product['code']"
+                                                               name="indiapost_article_type"
+                                                               t-att-value="product['code']"
+                                                               t-att-checked="'checked' if form.get('indiapost_article_type', 'SP') == product['code'] else None"/>
+                                                        <label class="form-check-label" t-att-for="'kx_article_%s' % product['code']">
+                                                            <t t-esc="product['label']"/>
+                                                            <span t-if="product['code'] == 'BP'" class="text-muted small">
+                                                                (normal parcel)
+                                                            </span>
+                                                        </label>
+                                                    </div>
+                                                </t>
+                                            </div>
+                                        </div>
                                         <div class="row">
                                             <div class="col-md-6 mb-3">
                                                 <label class="form-label" for="origin_pincode">Pickup Pincode</label>
@@ -997,12 +1056,20 @@
                                             </div>
                                         </div>
 
-                                        <div class="alert alert-info py-2" role="alert">
+                                        <div class="alert alert-info py-2" role="alert" id="kx_calc_help_sp">
                                             <i class="fa fa-info-circle me-1"/>
                                             Speed Post prices on whichever is greater: the actual
                                             weight or length x breadth x height / 5. Parcels of
                                             500 g and above must measure at least 14 x 9 x 1 cm, and
                                             length + breadth + height must not exceed 300 cm.
+                                        </div>
+                                        <div class="alert alert-info py-2 d-none" role="alert" id="kx_calc_help_bp">
+                                            <i class="fa fa-info-circle me-1"/>
+                                            Business Parcel (normal parcel) prices on whichever is
+                                            greater: the actual weight or length x breadth x height / 5.
+                                            There is no document product: volumetric weight applies at
+                                            every weight. Parcels must measure at least 14 x 9 x 1 cm,
+                                            and length + breadth + height must not exceed 300 cm.
                                         </div>
 
                                         <div class="accordion mb-3" id="kx_vas_accordion">
@@ -1061,6 +1128,26 @@
                                                 </div>
                                             </div>
                                         </div>
+                                        <script>
+                                            <![CDATA[
+                                            (function () {
+                                                var form = document.getElementById('kx_calculator_form');
+                                                if (!form) { return; }
+                                                var sp = document.getElementById('kx_calc_help_sp');
+                                                var bp = document.getElementById('kx_calc_help_bp');
+                                                function sync() {
+                                                    var checked = form.querySelector('input[name="indiapost_article_type"]:checked');
+                                                    var isBp = checked && checked.value === 'BP';
+                                                    if (sp) { sp.classList.toggle('d-none', isBp); }
+                                                    if (bp) { bp.classList.toggle('d-none', !isBp); }
+                                                }
+                                                form.querySelectorAll('input[name="indiapost_article_type"]').forEach(function (el) {
+                                                    el.addEventListener('change', sync);
+                                                });
+                                                sync();
+                                            })();
+                                            ]]>
+                                        </script>
                                     </t>
 
                                     <t t-else="">

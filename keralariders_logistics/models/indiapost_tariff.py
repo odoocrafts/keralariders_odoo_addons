@@ -1,10 +1,15 @@
-"""Speed Post tariff lookups, with a short-lived cache.
+"""India Post tariff lookups, with a short-lived cache.
 
 The public rate calculator is ``auth="public"``, so without a cache an
 anonymous visitor could turn the page into a load generator against India
 Post. Quotes are therefore cached on
-(source pincode, destination pincode, weight band, dimensions, VAS flags) for a
-configurable number of minutes.
+(environment, article type, source pincode, destination pincode, weight band,
+dimensions, VAS flags) for a configurable number of minutes.
+
+Speed Post is priced on ``/v1/speed-post/tariffs``. Business Parcel is a
+different table: production answers on ``/v1/business-parcel-tariff/calculate``
+and the Speed Post path still returns HTTP 422 "No matching domestic speed
+post tariff found … product: BUSINESS_PARCEL".
 """
 
 from odoo import api, fields, models, _
@@ -19,7 +24,10 @@ from .indiapost_client import IndiapostApiError
 
 _logger = logging.getLogger(__name__)
 
-TARIFF_PATH = '/v1/speed-post/tariffs'
+SPEED_POST_TARIFF_PATH = '/v1/speed-post/tariffs'
+BUSINESS_PARCEL_TARIFF_PATH = '/v1/business-parcel-tariff/calculate'
+# Historical alias: Speed Post was the only product this module quoted.
+TARIFF_PATH = SPEED_POST_TARIFF_PATH
 
 # Value added services we can price. INS carries a declared value, the rest are
 # flags. Observed on a 250 g Kochi -> Delhi article with a base tariff of 77:
@@ -104,6 +112,35 @@ class IndiapostTariff(models.AbstractModel):
         return hashlib.sha256(raw.encode('utf-8')).hexdigest()
 
     @api.model
+    def _ip_tariff_path(self, article_type=ipc.ARTICLE_TYPE_SPEED_POST):
+        """The production document gives each product its own tariff URL."""
+        if article_type == ipc.ARTICLE_TYPE_BUSINESS_PARCEL:
+            return BUSINESS_PARCEL_TARIFF_PATH
+        return SPEED_POST_TARIFF_PATH
+
+    @api.model
+    def _ip_normalize_tariff_payload(self, payload):
+        """Speed Post and Business Parcel return the same figures in different shapes.
+
+        Speed Post: ``vas_charges`` is a number and ``vas_details`` is a dict.
+        Business Parcel: ``vas_charges`` is the dict of lines and there is no
+        ``vas_details``. The rest of the quote path expects the Speed Post
+        shape, so Business Parcel responses are rewritten here rather than
+        forked at every consumer.
+        """
+        payload = dict(payload or {})
+        vas = payload.get('vas_charges')
+        details = payload.get('vas_details')
+        if isinstance(vas, dict):
+            details = details if isinstance(details, dict) else vas
+            payload['vas_details'] = details
+            payload['vas_charges'] = round(sum(
+                ipc.as_amount(value) for value in details.values()), 2)
+        elif not isinstance(details, dict):
+            payload['vas_details'] = {}
+        return payload
+
+    @api.model
     def _ip_tariff_params(self, source_pincode, destination_pincode, weight_g,
                           length_cm, breadth_cm, height_cm,
                           insurance_value=0.0,
@@ -179,7 +216,7 @@ class IndiapostTariff(models.AbstractModel):
         cached = bool(entry)
         if not entry:
             response = self.env['logistics.indiapost.client'].call(
-                'GET', TARIFF_PATH,
+                'GET', self._ip_tariff_path(article_type),
                 params=self._ip_tariff_params(
                     source_pincode, destination_pincode, billed_g, length,
                     breadth, height, insurance_value=insurance_value,
@@ -188,7 +225,8 @@ class IndiapostTariff(models.AbstractModel):
             )
             entry = self._ip_store_quote(
                 cache_key, source_pincode, destination_pincode, billed_g,
-                length, breadth, height, vas_key, response.payload or {},
+                length, breadth, height, vas_key,
+                self._ip_normalize_tariff_payload(response.payload or {}),
                 settings,
             )
 
@@ -200,6 +238,9 @@ class IndiapostTariff(models.AbstractModel):
         quote.update({
             'ok': True,
             'cached': cached,
+            'article_type': article_type,
+            'article_type_label': ipc.ARTICLE_TYPE_LABELS.get(
+                article_type, article_type),
             'actual_weight_g': actual_g,
             'billed_weight_g': billed_g,
             'weight_banded': billed_g != actual_g,

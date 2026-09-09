@@ -233,7 +233,48 @@ class TestPortalManualOrder(IndiapostHermeticMixin, HttpCase):
         shipment = order.shipment_ids
         self.assertEqual(shipment.fulfilment_method, 'indiapost')
         self.assertEqual(shipment.length_cm, 30.0)
+        self.assertEqual(
+            shipment.indiapost_article_type, 'SP',
+            'the order form must still default to Speed Post',
+        )
         self.assertNotAlmostEqual(shipment.delivery_charges_total, 1.0, places=2)
+
+    def test_indiapost_order_form_offers_speed_post_and_business_parcel(self):
+        self.authenticate(self.ip_login, self.ip_login)
+        form = self.url_open('/my/orders/manual')
+        self.assertEqual(form.status_code, 200)
+        self.assertIn('name="indiapost_article_type"', form.text)
+        self.assertIn('Speed Post', form.text)
+        self.assertIn('Business Parcel', form.text)
+        self.assertIn('normal parcel', form.text)
+
+    def test_indiapost_order_stores_posted_business_parcel(self):
+        self.authenticate(self.ip_login, self.ip_login)
+        form = self.url_open('/my/orders/manual')
+        self.url_open('/my/orders/create', data=self._shipment_post(
+            self._csrf(form.text),
+            length_cm='30',
+            breadth_cm='20',
+            height_cm='15',
+            indiapost_article_type='BP',
+        ))
+        self.env.invalidate_all()
+        shipment = self._orders_of(self.ip_seller).shipment_ids
+        self.assertEqual(shipment.indiapost_article_type, 'BP')
+
+    def test_invalid_article_type_falls_back_to_speed_post(self):
+        self.authenticate(self.ip_login, self.ip_login)
+        form = self.url_open('/my/orders/manual')
+        self.url_open('/my/orders/create', data=self._shipment_post(
+            self._csrf(form.text),
+            length_cm='30',
+            breadth_cm='20',
+            height_cm='15',
+            indiapost_article_type='HACK',
+        ))
+        self.env.invalidate_all()
+        shipment = self._orders_of(self.ip_seller).shipment_ids
+        self.assertEqual(shipment.indiapost_article_type, 'SP')
 
     def test_cannot_add_a_shipment_to_another_sellers_order(self):
         other = self.env['logistics.order'].create({

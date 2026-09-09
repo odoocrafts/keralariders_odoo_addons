@@ -87,11 +87,14 @@
                                     any contract and booking stays blocked
                                     there whatever is entered here. Business
                                     Parcel rates are not loaded in the sandbox
-                                    either, so a Business Parcel quote is
-                                    refused with "No matching domestic speed
-                                    post tariff found … product:
-                                    BUSINESS_PARCEL". Speed Post tariffs,
-                                    labels and tracking all work.
+                                    either, so quoting Business Parcel through
+                                    the Speed Post tariff URL is refused with
+                                    "No matching domestic speed post tariff
+                                    found … product: BUSINESS_PARCEL". Production
+                                    prices Business Parcel on
+                                    /v1/business-parcel-tariff/calculate.
+                                    Speed Post tariffs, labels and tracking all
+                                    work in both environments.
                                 </div>
                             </div>
                         </setting>

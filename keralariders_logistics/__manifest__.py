@@ -1,6 +1,6 @@
 {
     'name': 'Kerala Riders Logistics',
-    'version': '1.5.2',
+    'version': '1.5.3',
     'category': 'Operations/Logistics',
     'summary': 'Last-mile delivery management platform for Kerala Riders',
     'description': """
@@ -19,8 +19,8 @@ Features:
 - Seller / DE / Hub Manager portals
 - Same-district skip-hub local delivery
 - Comprehensive reporting
-- India Post (Speed Post) fulfilment: live tariffs, bulk booking, address
-  labels and tracking sync, selectable per seller
+- India Post fulfilment: live Speed Post and Business Parcel tariffs, bulk
+  booking, address labels and tracking sync, selectable per seller
     """,
     'author': 'Odoocrafts',
     'website': 'https://keralariders.com',

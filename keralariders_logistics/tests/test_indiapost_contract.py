@@ -161,6 +161,14 @@ class TestIndiapostContracts(IndiapostHermeticMixin, TransactionCase):
             Tariff._ip_cache_key(
                 *args, article_type=ipc.ARTICLE_TYPE_BUSINESS_PARCEL),
         )
+        self.assertEqual(
+            Tariff._ip_tariff_path(ipc.ARTICLE_TYPE_SPEED_POST),
+            '/v1/speed-post/tariffs',
+        )
+        self.assertEqual(
+            Tariff._ip_tariff_path(ipc.ARTICLE_TYPE_BUSINESS_PARCEL),
+            '/v1/business-parcel-tariff/calculate',
+        )
 
     # ------------------------------------------------------------------
     # A contract that is not configured

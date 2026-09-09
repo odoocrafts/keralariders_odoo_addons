@@ -316,9 +316,14 @@ class LogisticsPortal(CustomerPortal):
             days=request.env['logistics.indiapost.client'].sudo()._ip_settings()[
                 'indiapost_pickup_lead_days'],
         )
+        article_field = Shipment._fields['indiapost_article_type']
         return {
             'uses_indiapost': uses_indiapost,
             'pickup_slots': Shipment._fields['indiapost_pickup_slot'].selection,
+            'indiapost_article_types': [
+                {'code': code, 'label': label}
+                for code, label in article_field.selection
+            ],
             'earliest_pickup_date': earliest,
             # Surfaced in the form so sellers know why the box matters, and
             # mirrored server-side by logistics.shipment._check_indiapost_package.
@@ -501,6 +506,8 @@ class LogisticsPortal(CustomerPortal):
             'is_cylindrical': bool(post.get(prefix + 'is_cylindrical')),
         }
         if uses_indiapost:
+            vals['indiapost_article_type'] = LogisticsPortal._ip_article_type_from_post(
+                post, prefix=prefix)
             slot = post.get(prefix + 'indiapost_pickup_slot')
             valid_slots = dict(
                 request.env['logistics.shipment']
@@ -1202,12 +1209,26 @@ class LogisticsPortal(CustomerPortal):
         request.session['ip_calc_stamps'] = stamps
         return throttled
 
+    @staticmethod
+    def _ip_article_type_from_post(post, prefix=''):
+        """Only Speed Post (SP) and Business Parcel (BP) are bookable products."""
+        selection = dict(
+            request.env['logistics.shipment']
+            ._fields['indiapost_article_type'].selection
+        )
+        raw = (post.get(prefix + 'indiapost_article_type') or 'SP').strip().upper()
+        return raw if raw in selection else 'SP'
+
     def _calculator_values(self, form=None, quote=None, error=None):
         seller = self._calculator_seller()
         method = self._calculator_method(seller)
         form = dict(form or {})
         if method == 'indiapost' and seller and not form.get('origin_pincode'):
             form['origin_pincode'] = (seller.zip or '').strip()
+        if method == 'indiapost' and not form.get('indiapost_article_type'):
+            form['indiapost_article_type'] = 'SP'
+        article_field = request.env['logistics.shipment']._fields[
+            'indiapost_article_type']
         return {
             'page_name': 'calculator',
             'districts': request.env['logistics.district'].sudo().search([]),
@@ -1217,6 +1238,10 @@ class LogisticsPortal(CustomerPortal):
             'form': form,
             'quote': quote,
             'error': error,
+            'indiapost_article_types': [
+                {'code': code, 'label': label}
+                for code, label in article_field.selection
+            ],
             'pickup_slots': [
                 {'code': code, 'label': label}
                 for code, label in request.env['logistics.shipment']
@@ -1246,7 +1271,7 @@ class LogisticsPortal(CustomerPortal):
         )
 
     def _calculator_quote_indiapost(self, post, seller):
-        """Live India Post Speed Post rate for the submitted package."""
+        """Live India Post rate for the submitted package and product."""
         if self._calculator_throttled():
             return None, _(
                 'Too many rate lookups from this session. Please wait a few '
@@ -1273,6 +1298,7 @@ class LogisticsPortal(CustomerPortal):
         quote = request.env['logistics.indiapost.tariff'].sudo().quote_safe(
             post.get('origin_pincode') or (seller.zip if seller else ''),
             post.get('dest_pincode'),
+            article_type=self._ip_article_type_from_post(post),
             weight_kg=weight,
             length_cm=length,
             breadth_cm=breadth,
