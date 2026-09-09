@@ -9,11 +9,14 @@ them), seed any offices they need, flush the tariff cache, and patch
 ``ir.config_parameter`` values are never trusted.
 """
 
+import io
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from odoo.addons.keralariders_logistics.models.indiapost_client import (
     IndiapostApiError,
 )
+from odoo.tools.pdf import PdfFileReader, PdfFileWriter
 
 
 CONFIG_PREFIX = 'keralariders_logistics.'
@@ -29,6 +32,7 @@ TEST_OFFICES = (
 
 STUB_CREDENTIALS = (
     ('indiapost_enabled', 'True'),
+    ('indiapost_environment', 'sandbox'),
     ('indiapost_username', '9999537187'),
     ('indiapost_password', 'kx_test_secret'),
     ('indiapost_customer_id', '9999537187'),
@@ -110,6 +114,113 @@ class IndiapostHermeticMixin:
         ))
 
     @classmethod
+    def _ip_ensure_test_barcode_range(cls):
+        """A sandbox range tests can allocate from without touching the UAT block."""
+        Range = cls.env['logistics.indiapost.barcode.range'].sudo()
+        rng = Range.search([
+            ('prefix', '=', 'TT'),
+            ('environment', '=', 'sandbox'),
+            ('start_serial', '=', 90000001),
+        ], limit=1)
+        if rng:
+            return rng
+        return Range.create({
+            'name': 'TEST range TT (do not use in production)',
+            'environment': 'sandbox',
+            'prefix': 'TT',
+            'start_serial': 90000001,
+            'end_serial': 90009999,
+            'next_serial': 90000001,
+            'sequence': 0,
+            'low_stock_threshold': 0,
+        })
+
+    @staticmethod
+    def _ip_blank_pdf_bytes():
+        writer = PdfFileWriter()
+        if hasattr(writer, 'add_blank_page'):
+            writer.add_blank_page(width=595, height=842)
+        else:
+            writer.addBlankPage(width=595, height=842)
+        buf = io.BytesIO()
+        writer.write(buf)
+        return buf.getvalue()
+
+    @staticmethod
+    def _ip_pdf_page_count(pdf_bytes):
+        reader = PdfFileReader(io.BytesIO(pdf_bytes), strict=False)
+        if hasattr(reader, 'getNumPages'):
+            return reader.getNumPages()
+        return len(reader.pages)
+
+    @staticmethod
+    def _ip_stub_call(*args, **kwargs):
+        """Booking + label responses with no HTTP and no live AWB consumption.
+
+        ``call`` may be invoked as a bound model method ``(self, method, path,
+        ...)`` or, when patched without autospec, as ``(method, path, ...)``.
+        """
+        operation = kwargs.get('operation')
+        expect_pdf = kwargs.get('expect_pdf', False)
+        body = kwargs.get('body')
+        path = kwargs.get('path')
+        if path is None:
+            for arg in args:
+                if isinstance(arg, str) and arg.startswith('/'):
+                    path = arg
+                    break
+        if body is None:
+            for arg in args:
+                if isinstance(arg, (dict, list)):
+                    body = arg
+                    break
+        is_label = (
+            operation == 'label'
+            or expect_pdf
+            or (isinstance(path, str) and 'label' in path)
+        )
+        if is_label:
+            return SimpleNamespace(
+                status=200,
+                payload=None,
+                content=IndiapostHermeticMixin._ip_blank_pdf_bytes(),
+                headers={'Content-Type': 'application/pdf'},
+                is_pdf=True,
+                attempts=1,
+            )
+        articles = body.get('articles') if isinstance(body, dict) else []
+        valid = [{
+            'index': index,
+            'barcode_no': article.get('barcode_no'),
+            'calculated_tariff': 52.0,
+            'offset_number': 1,
+            'block_number': 1,
+        } for index, article in enumerate(articles or [])]
+        return SimpleNamespace(
+            status=200,
+            payload={
+                'success': True,
+                'batch_id': 'TEST-BATCH',
+                'correlation_id': 'TEST-CORR',
+                'mail_booking_dom_id': 'TEST-MB',
+                'valid_articles': valid,
+                'error_articles': [],
+            },
+            content=b'{}',
+            headers={},
+            is_pdf=False,
+            attempts=1,
+        )
+
+    def _ip_patch_call(self, side_effect=None):
+        return patch.object(
+            self.registry['logistics.indiapost.client'],
+            'call',
+            autospec=True,
+            side_effect=side_effect or self._ip_stub_call,
+        )
+
+    @classmethod
     def _ip_make_hermetic(cls, enabled=True):
         if enabled:
             cls._ip_enable_stub_credentials()
@@ -117,4 +228,5 @@ class IndiapostHermeticMixin:
             cls._ip_disable()
         cls._ip_seed_test_offices()
         cls._ip_flush_tariff_cache()
+        cls._ip_ensure_test_barcode_range()
         cls._ip_block_network()

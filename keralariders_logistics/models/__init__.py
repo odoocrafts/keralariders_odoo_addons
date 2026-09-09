@@ -21,3 +21,4 @@ from . import indiapost_tariff
 from . import indiapost_shipment
 from . import indiapost_tracking
 from . import indiapost_order
+from . import ir_actions_report

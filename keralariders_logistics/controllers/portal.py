@@ -1057,7 +1057,26 @@ class LogisticsPortal(CustomerPortal):
             
         try:
             order.sudo().action_request_pickup()
-            request.session['success'] = f"Pickup requested successfully for Order {order.name}. {order.total_charges} deducted from wallet."
+            request.session['success'] = (
+                f"Pickup requested successfully for Order {order.name}. "
+                f"{order.total_charges} deducted from wallet."
+            )
+            ip_failed = order.shipment_ids.filtered(
+                lambda s: s.fulfilment_method == 'indiapost'
+                and s.indiapost_booking_state == 'error')
+            if ip_failed:
+                details = '\n'.join(
+                    '%s: %s' % (
+                        shipment.name,
+                        shipment.indiapost_booking_error
+                        or _('India Post booking failed.'),
+                    )
+                    for shipment in ip_failed
+                )
+                request.session['error'] = _(
+                    'Pickup was requested and your wallet was charged, but '
+                    'India Post could not book the shipment:\n%s'
+                ) % details
         except Exception as e:
             request.session['error'] = str(e)
             

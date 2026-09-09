@@ -15,6 +15,7 @@ validator accepts.
 
 from odoo import api, fields, models, _
 from odoo.exceptions import AccessError, UserError, ValidationError
+from odoo.tools.pdf import merge_pdf
 
 import base64
 import logging
@@ -1238,6 +1239,8 @@ class Shipment(models.Model):
         fetched = 0
         problems = []
         for shipment in self:
+            if shipment.indiapost_label_pdf:
+                continue
             if not shipment.indiapost_article_number:
                 problems.append(_('%s has no India Post article number yet.')
                                 % shipment.name)
@@ -1294,6 +1297,62 @@ class Shipment(models.Model):
                                        or 'label.pdf'),
             'target': 'new',
         }
+
+    def _ip_label_pdf_bytes(self):
+        """Raw bytes of the stored India Post label, or empty."""
+        self.ensure_one()
+        data = self.indiapost_label_pdf
+        if not data:
+            return b''
+        if isinstance(data, bytes) and data[:4] == b'%PDF':
+            return data
+        try:
+            decoded = base64.b64decode(data)
+        except (TypeError, ValueError):
+            return b''
+        return decoded if decoded[:4] == b'%PDF' else b''
+
+    def _ip_ensure_label_pdf(self):
+        """Fetch a missing India Post label when the article is already booked.
+
+        Print AWB must not fail if India Post is unreachable: a missing label
+        just means the KeralaXpress page is printed alone.
+        """
+        self.ensure_one()
+        if self.indiapost_label_pdf:
+            return True
+        if not self.indiapost_article_number:
+            return False
+        try:
+            self.action_indiapost_fetch_label()
+        except Exception:
+            _logger.warning(
+                'India Post label fetch during Print AWB failed for %s',
+                self.name, exc_info=True)
+        return bool(self.indiapost_label_pdf)
+
+    def _ip_merge_awb_pdf(self, kx_pdf_bytes):
+        """Append the stored India Post label after the KeralaXpress AWB page.
+
+        Returns the original bytes when there is no usable label, or when the
+        merge itself fails — Print AWB must still produce the KX page.
+        """
+        self.ensure_one()
+        if self.fulfilment_method != 'indiapost':
+            return kx_pdf_bytes
+        if not kx_pdf_bytes or kx_pdf_bytes[:4] != b'%PDF':
+            return kx_pdf_bytes
+        self._ip_ensure_label_pdf()
+        label = self._ip_label_pdf_bytes()
+        if not label:
+            return kx_pdf_bytes
+        try:
+            return merge_pdf([kx_pdf_bytes, label])
+        except Exception:
+            _logger.warning(
+                'Could not merge India Post label onto AWB PDF for %s',
+                self.name, exc_info=True)
+            return kx_pdf_bytes
 
     # ------------------------------------------------------------------
     # Tracking
