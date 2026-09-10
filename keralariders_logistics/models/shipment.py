@@ -158,12 +158,17 @@ class Shipment(models.Model):
         )
 
     def _awb_indiapost_logo_data_uri(self):
-        """Inline India Post emblem so Print AWB does not fetch a static URL."""
+        """Inline the official India Post wordmark so Print AWB needs no URL.
+
+        PNG (the 2008 red-envelope / yellow-wing mark) prints reliably in
+        wkhtmltopdf; the SVG sibling is the same mark for anything that
+        prefers vectors.
+        """
         path = file_path(
-            'keralariders_logistics/static/src/img/indiapost_emblem.svg')
+            'keralariders_logistics/static/src/img/indiapost_logo.png')
         with open(path, 'rb') as handle:
             encoded = base64.b64encode(handle.read()).decode()
-        return 'data:image/svg+xml;base64,%s' % encoded
+        return 'data:image/png;base64,%s' % encoded
 
     @api.model
     def _shipping_from_vals_for_seller(self, seller):

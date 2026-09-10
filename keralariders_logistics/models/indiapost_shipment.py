@@ -19,7 +19,6 @@ validator accepts. The official CEPT label SENDER line follows ``sender_*``.
 
 from odoo import api, fields, models, _
 from odoo.exceptions import AccessError, UserError, ValidationError
-from odoo.tools.pdf import merge_pdf
 
 import base64
 import logging
@@ -473,6 +472,13 @@ class Shipment(models.Model):
     )
     indiapost_label_fetched_on = fields.Datetime(string='Label Fetched On',
                                                  copy=False, readonly=True)
+    indiapost_sort_code = fields.Char(
+        string='India Post Sort Code', copy=False, readonly=True,
+        help='Letter India Post prints in the destination PIN box of the CEPT '
+             'label (transmission mode: S=Surface, A=Air). Taken from the '
+             'stored label PDF when possible, otherwise the transmission_mode '
+             'sent on label create. Never invent a value.',
+    )
 
     # ------------------------------------------------------------------
     # Tracking
@@ -1317,6 +1323,8 @@ class Shipment(models.Model):
                 % shipment.indiapost_article_number,
                 'indiapost_label_size': payload['size'],
                 'indiapost_label_fetched_on': fields.Datetime.now(),
+                'indiapost_sort_code': shipment._ip_sort_code_from_label(
+                    response.content, payload.get('transmission_mode')),
             })
             fetched += 1
 
@@ -1358,47 +1366,29 @@ class Shipment(models.Model):
             return b''
         return decoded if decoded[:4] == b'%PDF' else b''
 
-    def _ip_ensure_label_pdf(self):
-        """Fetch a missing India Post label when the article is already booked.
+    @staticmethod
+    def _ip_sort_code_from_label(pdf_bytes, transmission_mode=None):
+        """Letter for the AWB PIN box: PDF first, then the mode we sent."""
+        parsed = ipc.parse_label_sort_code_from_pdf(pdf_bytes or b'')
+        if parsed:
+            return parsed
+        mode = (transmission_mode or '').strip().upper()
+        if ipc.LABEL_SORT_TOKEN_RE.fullmatch(mode):
+            return mode
+        return False
 
-        Print AWB must not fail if India Post is unreachable: a missing label
-        just means the KeralaXpress page is printed alone.
+    def _awb_indiapost_sort_code(self):
+        """Letter printed in the destination PIN box, or '' if unknown.
+
+        Prefers the value persisted at label fetch. Existing shipments that
+        already store a CEPT PDF are parsed on the fly. Never invents PIN or S.
         """
         self.ensure_one()
-        if self.indiapost_label_pdf:
-            return True
-        if not self.indiapost_article_number:
-            return False
-        try:
-            self.action_indiapost_fetch_label()
-        except Exception:
-            _logger.warning(
-                'India Post label fetch during Print AWB failed for %s',
-                self.name, exc_info=True)
-        return bool(self.indiapost_label_pdf)
-
-    def _ip_merge_awb_pdf(self, kx_pdf_bytes):
-        """Append the stored India Post label after the KeralaXpress AWB page.
-
-        Returns the original bytes when there is no usable label, or when the
-        merge itself fails — Print AWB must still produce the KX page.
-        """
-        self.ensure_one()
-        if self.fulfilment_method != 'indiapost':
-            return kx_pdf_bytes
-        if not kx_pdf_bytes or kx_pdf_bytes[:4] != b'%PDF':
-            return kx_pdf_bytes
-        self._ip_ensure_label_pdf()
-        label = self._ip_label_pdf_bytes()
-        if not label:
-            return kx_pdf_bytes
-        try:
-            return merge_pdf([kx_pdf_bytes, label])
-        except Exception:
-            _logger.warning(
-                'Could not merge India Post label onto AWB PDF for %s',
-                self.name, exc_info=True)
-            return kx_pdf_bytes
+        stored = (self.indiapost_sort_code or '').strip().upper()
+        if stored:
+            return stored
+        parsed = ipc.parse_label_sort_code_from_pdf(self._ip_label_pdf_bytes())
+        return parsed or ''
 
     # ------------------------------------------------------------------
     # Tracking

@@ -135,32 +135,24 @@
         </t>
     </template>
 
-    <!-- India Post fulfilment: KeralaXpress waybill with IP marks and seller address. -->
+    <!-- India Post fulfilment: one-page waybill. No KeralaXpress AWB barcode/QR. -->
     <template id="report_shipment_document_indiapost">
         <t t-call="web.basic_layout">
                     <t t-set="seller_addr" t-value="o._awb_seller_address()"/>
+                    <t t-set="ip_sort" t-value="o._awb_indiapost_sort_code()"/>
                     <div class="page awb-layout-indiapost" style="font-family: Arial, sans-serif; font-size: 12px; color: black;">
 
                         <table style="width: 100%; border-collapse: collapse; border: 2px solid black; border-bottom: 0px;">
                             <tr>
-                                <td style="width: 50%; border: 2px solid black; padding: 5px 10px; text-align: left; vertical-align: middle;">
+                                <td class="awb-header-kx" style="width: 50%; border: 2px solid black; padding: 5px 10px; text-align: left; vertical-align: middle;">
                                     <img t-if="o.seller_id.image_1920" t-att-src="image_data_uri(o.seller_id.image_1920)" style="max-width: 200px;" alt="Logo"/>
                                     <img t-else="" t-att-src="image_data_uri(company.logo)" style="max-width: 200px;" alt="Logo"/>
                                 </td>
-                                <td style="width: 50%; border: 2px solid black; padding: 5px 10px; vertical-align: middle;">
-                                    <table style="width: 100%; border-collapse: collapse;">
-                                        <tr>
-                                            <td style="text-align: left; vertical-align: middle;">
-                                                <img t-if="company.logo" t-att-src="image_data_uri(company.logo)" style="max-width: 160px;" alt="Logo"/>
-                                            </td>
-                                            <td style="text-align: right; vertical-align: top; width: 90px;">
-                                                <img t-att-src="o._awb_indiapost_logo_data_uri()"
-                                                     class="awb-indiapost-logo"
-                                                     style="max-width: 80px; max-height: 80px;"
-                                                     alt="India Post"/>
-                                            </td>
-                                        </tr>
-                                    </table>
+                                <td class="awb-header-indiapost" style="width: 50%; border: 2px solid black; padding: 5px 10px; text-align: right; vertical-align: middle;">
+                                    <img t-att-src="o._awb_indiapost_logo_data_uri()"
+                                         class="awb-indiapost-logo"
+                                         style="max-width: 200px; max-height: 90px;"
+                                         alt="India Post"/>
                                 </td>
                             </tr>
                         </table>
@@ -168,8 +160,12 @@
 
                             <t t-if="o.indiapost_article_number">
                             <tr>
-                                <td style="width: 22%; border: 2px solid black; padding: 8px; text-align: center; vertical-align: middle;">
-                                    <div style="border: 2px solid black; display: inline-block; padding: 6px 18px; font-size: 28px; font-weight: 900; letter-spacing: 2px;">PIN</div>
+                                <td class="awb-indiapost-sort" style="width: 22%; border: 2px solid black; padding: 8px; text-align: center; vertical-align: middle;">
+                                    <div t-if="ip_sort"
+                                         class="awb-indiapost-sort-letter"
+                                         style="border: 2px solid black; display: inline-block; padding: 6px 18px; font-size: 28px; font-weight: 900; letter-spacing: 2px;">
+                                        <t t-esc="ip_sort"/>
+                                    </div>
                                     <div style="font-size: 22px; font-weight: 900; margin-top: 8px;" t-field="o.shipping_to_zip"/>
                                 </td>
                                 <td style="width: 53%; border: 2px solid black; padding: 8px; text-align: center; vertical-align: middle;">
@@ -193,17 +189,6 @@
                                 </td>
                             </tr>
                             </t>
-
-                            <tr>
-                                <td colspan="3" style="border: 2px solid black; padding: 12px; text-align: center;">
-                                    <div style="margin: 0 auto; display: inline-block;">
-                                        <img t-att-src="'https://api.qrserver.com/v1/create-qr-code/?size=150x150&amp;data=%s' % (o.name)" style="width: 150px; margin: 0 auto; display: block;" alt="QR Code"/>
-                                    </div>
-                                    <h6>
-                                        <strong>AWB# <span t-field="o.name"/></strong>
-                                    </h6>
-                                </td>
-                            </tr>
 
                             <tr>
                                 <td colspan="2" style="width: 70%; border: 2px solid black; padding: 10px 15px; vertical-align: middle; font-size: 15px;">
@@ -262,17 +247,6 @@
                                 </td>
                                 <td style="width: 30%; border: 2px solid black; border-top: none; text-align: right; padding: 7px; vertical-align: middle; font-size: 14px; font-weight: bold;">
                                     <span t-field="o.total_order_value"/>
-                                </td>
-                            </tr>
-
-                            <tr>
-                                <td colspan="3" style="border: 2px solid black; padding: 2px; text-align: center;">
-                                    <div style="margin: 0 auto; display: inline-block;" class="mt-2">
-                                        <img t-att-src="'https://bwipjs-api.metafloor.com/?bcid=code128&amp;text=%s&amp;scale=2' % o.name" style="width: 330px; height: 70px; margin: 0 auto; display: block;" alt="AWB Barcode"/>
-                                    </div>
-                                    <h6>
-                                        <strong>AWB# <span t-field="o.name"/></strong>
-                                    </h6>
                                 </td>
                             </tr>
 

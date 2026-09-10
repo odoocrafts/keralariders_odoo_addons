@@ -578,6 +578,7 @@
                                     <field name="indiapost_label_pdf"
                                            filename="indiapost_label_filename"/>
                                     <field name="indiapost_label_fetched_on"/>
+                                    <field name="indiapost_sort_code"/>
                                 </group>
                                 <group string="Tracking">
                                     <field name="indiapost_del_status"/>

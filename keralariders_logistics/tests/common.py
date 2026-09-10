@@ -136,6 +136,16 @@ class IndiapostHermeticMixin:
         })
 
     @staticmethod
+    def _ip_pdf_with_text(text):
+        """Minimal PDF whose bytes contain ``(text)`` for sort-code parsing."""
+        payload = (text or 'X').encode('ascii', 'replace')
+        return (
+            b'%PDF-1.4\n1 0 obj<<>>endobj\nstream\nBT ('
+            + payload
+            + b') Tj ET\nendstream\n%%EOF\n'
+        )
+
+    @staticmethod
     def _ip_blank_pdf_bytes():
         writer = PdfFileWriter()
         if hasattr(writer, 'add_blank_page'):

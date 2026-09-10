@@ -1,19 +1,11 @@
-"""Merge the stored India Post label onto the KeralaXpress AWB PDF.
+"""Print AWB is a single QWeb page for every fulfilment method.
 
-Print AWB (admin shipment, admin order delivery slips, seller portal) all go
-through ``keralariders_logistics.report_shipment_document``. That QWeb picks
-the hub layout or the India Post layout from ``fulfilment_method``. When the
-report is rendered for an India Post shipment that already has a label, the
-stored India Post PDF is still appended as page 2. Hub-network shipments stay
-the single KeralaXpress page.
+India Post shipments use ``report_shipment_document_indiapost``. The official
+CEPT sticker stays on the separate Print India Post Label action and is not
+merged onto this report.
 """
 
-import io
-import logging
-
 from odoo import models
-
-_logger = logging.getLogger(__name__)
 
 SHIPMENT_AWB_REPORT = 'keralariders_logistics.report_shipment_document'
 
@@ -33,24 +25,5 @@ class IrActionsReport(models.Model):
         return self._ip_append_indiapost_labels(collected)
 
     def _ip_append_indiapost_labels(self, collected_streams):
-        Shipment = self.env['logistics.shipment']
-        for res_id, stream_data in collected_streams.items():
-            if not res_id:
-                continue
-            stream = stream_data.get('stream')
-            if not stream:
-                continue
-            shipment = Shipment.browse(res_id)
-            if not shipment.exists() or shipment.fulfilment_method != 'indiapost':
-                continue
-            try:
-                kx_pdf = stream.getvalue()
-            except Exception:
-                _logger.warning(
-                    'Print AWB stream for shipment %s could not be read',
-                    res_id, exc_info=True)
-                continue
-            merged = shipment._ip_merge_awb_pdf(kx_pdf)
-            if merged and merged != kx_pdf:
-                stream_data['stream'] = io.BytesIO(merged)
+        """Identity: Print AWB must not grow a second CEPT page."""
         return collected_streams

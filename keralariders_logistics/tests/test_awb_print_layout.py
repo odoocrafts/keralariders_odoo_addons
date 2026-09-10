@@ -1,12 +1,15 @@
 """Print AWB layout follows fulfilment_method; hub stays the old waybill.
 
 Hermetic: no India Post HTTP, no barcode allocation, no live AWB consumption.
+India Post Print AWB is one page: no KeralaXpress AWB barcode/QR, no CEPT merge.
 """
+import base64
 import re
 from urllib.parse import quote
 
 from odoo.tests import HttpCase, TransactionCase, tagged
 
+from odoo.addons.keralariders_logistics.models import indiapost_common as ipc
 from odoo.addons.keralariders_logistics.tests.common import IndiapostHermeticMixin
 
 ARTICLE = 'EY547878418IN'
@@ -69,6 +72,19 @@ class TestAwbPrintLayout(IndiapostHermeticMixin, TransactionCase):
         self.assertTrue(match, 'India Post AWB is missing the seller cell')
         return match.group(1)
 
+    def _sort_cell(self, html):
+        match = re.search(
+            r'class="awb-indiapost-sort"[^>]*>(.*?)</td>', html, flags=re.DOTALL)
+        self.assertTrue(match, 'India Post AWB is missing the sort/PIN cell')
+        return match.group(1)
+
+    def _header_ip_cell(self, html):
+        match = re.search(
+            r'class="awb-header-indiapost"[^>]*>(.*?)</td>', html,
+            flags=re.DOTALL)
+        self.assertTrue(match, 'India Post AWB is missing the carrier logo cell')
+        return match.group(1)
+
     def test_hub_print_awb_keeps_old_layout(self):
         shipment = self._new_shipment(self.hub_seller)
         self.assertEqual(shipment.fulfilment_method, 'own_network')
@@ -76,9 +92,13 @@ class TestAwbPrintLayout(IndiapostHermeticMixin, TransactionCase):
         self.assertIn(shipment.name, html)
         self.assertIn('Hub Pickup Street', html)
         self.assertIn('AWB Hub Seller', html)
+        self.assertIn('AWB#', html)
+        self.assertIn('bcid=code128', html)
+        self.assertIn('create-qr-code', html)
         self.assertNotIn('awb-layout-indiapost', html)
         self.assertNotIn('awb-indiapost-logo', html)
         self.assertNotIn('awb-indiapost-barcode', html)
+        self.assertNotIn('awb-header-indiapost', html)
         self.assertNotIn('TrackConsignment.aspx', html)
         self.assertNotIn('India Post', html)
 
@@ -87,13 +107,14 @@ class TestAwbPrintLayout(IndiapostHermeticMixin, TransactionCase):
         shipment.sudo().write({
             'indiapost_article_number': ARTICLE,
             'indiapost_booking_state': 'booked',
+            'indiapost_sort_code': 'S',
         })
         html = self._awb_html(shipment)
         self.assertIn('awb-layout-indiapost', html)
         self.assertIn('awb-indiapost-logo', html)
         self.assertIn('awb-indiapost-barcode', html)
         self.assertIn(ARTICLE, html)
-        self.assertIn(shipment.name, html)
+        self.assertIn('data:image/png;base64,', html)
 
         seller_html = self._seller_cell(html)
         self.assertIn(SELLER_STREET, seller_html)
@@ -111,6 +132,71 @@ class TestAwbPrintLayout(IndiapostHermeticMixin, TransactionCase):
         self.assertIn(CONSIGNOR, self.env['logistics.indiapost.client']._ip_settings()[
             'indiapost_sender_name'])
 
+        self.assertNotIn('AWB#', html)
+        self.assertNotIn('bcid=code128&text=%s' % shipment.name, html)
+        self.assertNotIn('bcid=code128&amp;text=%s' % shipment.name, html)
+        self.assertNotIn('data=%s' % shipment.name, html)
+        self.assertNotRegex(html, r'>PIN<')
+        header_ip = self._header_ip_cell(html)
+        self.assertIn('awb-indiapost-logo', header_ip)
+        self.assertIn('alt="India Post"', header_ip)
+
+    def test_indiapost_sort_letter_used_when_set(self):
+        shipment = self._new_shipment(self.ip_seller)
+        shipment.sudo().write({
+            'indiapost_article_number': ARTICLE,
+            'indiapost_booking_state': 'booked',
+            'indiapost_sort_code': 'A',
+        })
+        self.assertEqual(shipment._awb_indiapost_sort_code(), 'A')
+        html = self._awb_html(shipment)
+        sort_html = self._sort_cell(html)
+        self.assertIn('awb-indiapost-sort-letter', sort_html)
+        self.assertIn('A', sort_html)
+        self.assertIn('695001', sort_html)
+        self.assertNotIn('PIN', sort_html)
+
+    def test_indiapost_sort_box_omits_letter_when_unknown(self):
+        shipment = self._new_shipment(self.ip_seller)
+        shipment.sudo().write({
+            'indiapost_article_number': ARTICLE,
+            'indiapost_booking_state': 'booked',
+        })
+        self.assertEqual(shipment._awb_indiapost_sort_code(), '')
+        html = self._awb_html(shipment)
+        sort_html = self._sort_cell(html)
+        self.assertNotIn('awb-indiapost-sort-letter', sort_html)
+        self.assertNotIn('PIN', sort_html)
+        self.assertIn('695001', sort_html)
+
+    def test_sort_code_parsed_from_stored_label_pdf(self):
+        shipment = self._new_shipment(self.ip_seller)
+        pdf = self._ip_pdf_with_text('S 680561')
+        shipment.sudo().write({
+            'indiapost_article_number': ARTICLE,
+            'indiapost_label_pdf': base64.b64encode(pdf),
+        })
+        self.assertEqual(ipc.parse_label_sort_code('S 680561'), 'S')
+        self.assertEqual(ipc.parse_label_sort_code('A New Delhi GPO\n110001'), 'A')
+        self.assertEqual(ipc.parse_label_sort_code(''), '')
+        self.assertEqual(ipc.parse_label_sort_code('RECEIVER: SABITHA'), '')
+        self.assertEqual(ipc.parse_label_sort_code_from_pdf(pdf), 'S')
+        self.assertEqual(shipment._awb_indiapost_sort_code(), 'S')
+
+    def test_sort_code_persisted_from_label_not_hardcoded(self):
+        shipment = self._new_shipment(self.ip_seller)
+        shipment.sudo().write({
+            'indiapost_article_number': ARTICLE,
+            'indiapost_booking_state': 'booked',
+        })
+        air_pdf = self._ip_pdf_with_text('A 695001')
+        code = shipment._ip_sort_code_from_label(air_pdf, 'S')
+        self.assertEqual(code, 'A')
+        blank = self._ip_blank_pdf_bytes()
+        self.assertEqual(shipment._ip_sort_code_from_label(blank, 'S'), 'S')
+        self.assertFalse(shipment._ip_sort_code_from_label(blank, ''))
+        self.assertFalse(shipment._ip_sort_code_from_label(b'', None))
+
     def test_awb_seller_address_never_uses_company(self):
         shipment = self._new_shipment(self.ip_seller)
         addr = shipment._awb_seller_address()
@@ -119,6 +205,12 @@ class TestAwbPrintLayout(IndiapostHermeticMixin, TransactionCase):
         self.assertNotEqual(addr['name'], shipment.company_id.name)
         self.assertNotEqual(addr['name'], CONSIGNOR)
         self.assertNotIn('Vazhiyambalam', addr['street'])
+
+    def test_indiapost_logo_is_png_wordmark_not_emblem_svg(self):
+        shipment = self._new_shipment(self.ip_seller)
+        uri = shipment._awb_indiapost_logo_data_uri()
+        self.assertTrue(uri.startswith('data:image/png;base64,'))
+        self.assertGreater(len(uri), 1000)
 
 
 @tagged('post_install', '-at_install')
@@ -162,6 +254,7 @@ class TestAwbPrintLayoutPortal(IndiapostHermeticMixin, HttpCase):
         shipment.sudo().write({
             'indiapost_article_number': ARTICLE,
             'indiapost_booking_state': 'booked',
+            'indiapost_sort_code': 'S',
         })
         html = self.env['ir.actions.report']._render_qweb_html(
             'keralariders_logistics.report_shipment_document',
@@ -172,6 +265,8 @@ class TestAwbPrintLayoutPortal(IndiapostHermeticMixin, HttpCase):
         self.assertIn('awb-layout-indiapost', html)
         self.assertIn(SELLER_STREET, html)
         self.assertIn(ARTICLE, html)
+        self.assertNotIn('AWB#', html)
+        self.assertNotRegex(html, r'>PIN<')
 
         self.authenticate(self.ip_login, self.ip_login)
         response = self.url_open(
@@ -182,3 +277,4 @@ class TestAwbPrintLayoutPortal(IndiapostHermeticMixin, HttpCase):
         self.assertIn('awb-layout-indiapost', body)
         self.assertIn(SELLER_STREET, body)
         self.assertIn(ARTICLE, body)
+        self.assertNotIn('AWB#', body)

@@ -119,6 +119,15 @@ ADDRESS_LINES_MAX_TOTAL = 240
 ADDRESS_LINE_COUNT = 3
 MOBILE_RE = re.compile(r'^[6-9]\d{9}$')
 PINCODE_RE = re.compile(r'^\d{6}$')
+# First token of a CEPT address label: transmission/routing letter in the PIN
+# box (``S 680561``, ``A New Delhi GPO``). S=Surface, A=Air; never invent it.
+LABEL_SORT_PINBOX_RE = re.compile(
+    r'(?m)^\s*([A-Z]{1,3})\s+(\d{6})\b')
+LABEL_SORT_GLUED_RE = re.compile(r'^([A-Z]{1,3})\d{6}$')
+LABEL_SORT_TOKEN_RE = re.compile(r'^[A-Z]{1,3}$')
+# Uncompressed PDF string literals, e.g. ``(S 680561)`` or ``(S New Delhi)``.
+LABEL_SORT_PDF_LITERAL_RE = re.compile(
+    rb'\(([A-Z]{1,3})(?:\\040| )+(?:\d{6}|[A-Za-z])')
 BULK_CUSTOMER_ID_RE = re.compile(r'^\d{10}$')
 CONTRACT_ID_RE = re.compile(r'^\d{8}$')
 BULK_REFERENCE_MAX_LEN = 50
@@ -548,6 +557,69 @@ def office_is_bookable(record):
     if not record.get('delivery_office_flag'):
         return False
     return (record.get('office_type_code') or '').upper() not in NON_BOOKABLE_OFFICE_TYPES
+
+
+def parse_label_sort_code(text):
+    """Routing / transmission letter from a CEPT address-label text layer.
+
+    Official labels start ``S 680561`` or ``S New Delhi GPO``. Returns ``''``
+    when the letter cannot be read — callers must not substitute ``PIN`` or
+    a hardcoded ``S``.
+    """
+    if not text:
+        return ''
+    pinbox = LABEL_SORT_PINBOX_RE.search(text)
+    if pinbox:
+        return pinbox.group(1)
+    first = text.strip().split()[0] if text.strip() else ''
+    glued = LABEL_SORT_GLUED_RE.match(first)
+    if glued:
+        return glued.group(1)
+    if LABEL_SORT_TOKEN_RE.fullmatch(first):
+        return first
+    return ''
+
+
+def parse_label_sort_code_from_pdf(pdf_bytes):
+    """Best-effort sort letter from stored CEPT PDF bytes, or ``''``."""
+    if not pdf_bytes:
+        return ''
+    text = extract_pdf_text(pdf_bytes)
+    code = parse_label_sort_code(text)
+    if code:
+        return code
+    match = LABEL_SORT_PDF_LITERAL_RE.search(pdf_bytes)
+    if match:
+        return match.group(1).decode('ascii')
+    return ''
+
+
+def extract_pdf_text(pdf_bytes):
+    """Plain text from a PDF, or ``''`` if the reader cannot see a text layer."""
+    if not pdf_bytes or pdf_bytes[:4] != b'%PDF':
+        return ''
+    try:
+        from odoo.tools.pdf import PdfFileReader
+    except ImportError:
+        return ''
+    import io
+    try:
+        reader = PdfFileReader(io.BytesIO(pdf_bytes), strict=False)
+        if hasattr(reader, 'pages'):
+            pages = reader.pages
+        elif hasattr(reader, 'getNumPages'):
+            pages = [reader.getPage(i) for i in range(reader.getNumPages())]
+        else:
+            return ''
+        chunks = []
+        for page in pages:
+            if hasattr(page, 'extract_text'):
+                chunks.append(page.extract_text() or '')
+            elif hasattr(page, 'extractText'):
+                chunks.append(page.extractText() or '')
+        return '\n'.join(chunks)
+    except Exception:
+        return ''
 
 
 def office_sort_key(record):

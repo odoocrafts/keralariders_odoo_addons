@@ -1,13 +1,13 @@
-"""Auto-book India Post on pickup, and merge the postal label onto Print AWB.
+"""Auto-book India Post on pickup. Print AWB stays a single page.
 
 The HTTP client is mocked: these tests never consume a live AWB and never
 leave the process. Barcodes, when allocated, come from the TT test range.
+The official CEPT sticker is stored for Print India Post Label, not merged.
 """
 
 import base64
 import io
 import re
-from unittest.mock import patch
 
 from odoo import fields
 from odoo.tests import HttpCase, TransactionCase, tagged
@@ -175,7 +175,7 @@ class TestIndiapostAutobook(IndiapostHermeticMixin, TransactionCase):
         self.assertTrue(shipment.indiapost_booking_error)
         self.assertIn(IP_NETWORK_BLOCKED, shipment.indiapost_booking_error)
 
-    def test_merged_pdf_has_two_pages_when_label_present(self):
+    def test_print_awb_stays_one_page_when_label_present(self):
         _order, shipment = self._new_order(self.ip_seller)
         kx = self._ip_blank_pdf_bytes()
         label = self._ip_blank_pdf_bytes()
@@ -185,28 +185,36 @@ class TestIndiapostAutobook(IndiapostHermeticMixin, TransactionCase):
             'indiapost_label_pdf': base64.b64encode(label),
             'indiapost_label_filename': 'EY547878418IN.pdf',
         })
-        merged = shipment._ip_merge_awb_pdf(kx)
-        self.assertEqual(self._ip_pdf_page_count(merged), 2)
+        collected = {shipment.id: {'stream': io.BytesIO(kx)}}
+        result = self.env['ir.actions.report']._ip_append_indiapost_labels(
+            collected)
+        out = result[shipment.id]['stream'].getvalue()
+        self.assertEqual(self._ip_pdf_page_count(out), 1)
+        self.assertEqual(out, kx)
 
-    def test_merged_pdf_stays_one_page_without_label(self):
+    def test_print_awb_stays_one_page_without_label(self):
         _order, shipment = self._new_order(self.ip_seller)
         kx = self._ip_blank_pdf_bytes()
         shipment.sudo().write({
             'indiapost_article_number': 'EY547878418IN',
             'indiapost_booking_state': 'booked',
         })
-        with patch.object(type(shipment), 'action_indiapost_fetch_label',
-                          return_value=None):
-            merged = shipment._ip_merge_awb_pdf(kx)
-        self.assertEqual(self._ip_pdf_page_count(merged), 1)
-        self.assertEqual(merged, kx)
+        collected = {shipment.id: {'stream': io.BytesIO(kx)}}
+        result = self.env['ir.actions.report']._ip_append_indiapost_labels(
+            collected)
+        out = result[shipment.id]['stream'].getvalue()
+        self.assertEqual(self._ip_pdf_page_count(out), 1)
+        self.assertEqual(out, kx)
 
     def test_own_network_print_awb_is_unchanged(self):
         _order, shipment = self._new_order(self.own_seller)
         kx = self._ip_blank_pdf_bytes()
-        self.assertEqual(shipment._ip_merge_awb_pdf(kx), kx)
+        collected = {shipment.id: {'stream': io.BytesIO(kx)}}
+        result = self.env['ir.actions.report']._ip_append_indiapost_labels(
+            collected)
+        self.assertEqual(result[shipment.id]['stream'].getvalue(), kx)
 
-    def test_report_hook_merges_label_into_awb_stream(self):
+    def test_report_hook_does_not_append_cept_label(self):
         _order, shipment = self._new_order(self.ip_seller)
         kx = self._ip_blank_pdf_bytes()
         shipment.sudo().write({
@@ -218,8 +226,9 @@ class TestIndiapostAutobook(IndiapostHermeticMixin, TransactionCase):
         collected = {shipment.id: {'stream': io.BytesIO(kx)}}
         result = self.env['ir.actions.report']._ip_append_indiapost_labels(
             collected)
-        merged = result[shipment.id]['stream'].getvalue()
-        self.assertEqual(self._ip_pdf_page_count(merged), 2)
+        out = result[shipment.id]['stream'].getvalue()
+        self.assertEqual(self._ip_pdf_page_count(out), 1)
+        self.assertEqual(out, kx)
 
 
 @tagged('post_install', '-at_install')
