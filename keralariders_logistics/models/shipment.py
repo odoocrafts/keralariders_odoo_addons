@@ -135,7 +135,44 @@ class Shipment(models.Model):
             'district': district,
             'state': state,
             'zip': zipcode,
+            'phone': self._awb_seller_phone(),
         }
+
+    def _awb_customer_phone(self):
+        """Customer / consignee delivery mobile shown on Print AWB.
+
+        Same field India Post booking uses as ``receiver_mobile_no``.
+        Empty string when unset — never invent a number.
+        """
+        self.ensure_one()
+        return (self.shipping_to_mobile or '').strip()
+
+    def _awb_seller_phone(self):
+        """Seller pickup phone shown on Print AWB.
+
+        Same sources as India Post pickup (``_ip_seller_mobile``): seller
+        phone, partner phone, partner mobile if present, then a shipping-from
+        phone field if one exists. Returns empty when none is set so the AWB
+        can omit the line instead of raising.
+        """
+        self.ensure_one()
+        seller = self.seller_id
+        partner = seller.partner_id if seller else self.env['res.partner']
+        candidates = []
+        if seller:
+            candidates.append(seller.phone)
+        if partner:
+            candidates.append(partner.phone)
+            if 'mobile' in partner._fields:
+                candidates.append(partner.mobile)
+        for field_name in ('shipping_from_mobile', 'shipping_from_phone'):
+            if field_name in self._fields:
+                candidates.append(self[field_name])
+        for candidate in candidates:
+            value = (candidate or '').strip()
+            if value:
+                return value
+        return ''
 
     def _awb_indiapost_qr_payload(self):
         """Public DoP tracking URL encoded in the India Post AWB QR."""

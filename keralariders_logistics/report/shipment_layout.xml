@@ -191,7 +191,8 @@
                             </t>
 
                             <tr>
-                                <td colspan="2" style="width: 70%; border: 2px solid black; padding: 10px 15px; vertical-align: middle; font-size: 15px;">
+                                <td colspan="2" class="awb-shipto" style="width: 70%; border: 2px solid black; padding: 10px 15px; vertical-align: middle; font-size: 15px;">
+                                    <t t-set="customer_phone" t-value="o._awb_customer_phone()"/>
                                     <strong>Ship To: </strong><strong style="font-size: 17px;" t-field="o.shipping_to_name" class="text-uppercase"/>
                                     <br/>
                                     <strong>Address: </strong>
@@ -200,6 +201,10 @@
                                         <span t-field="o.shipping_to_state_id"/>
                                     <br/>
                                     <strong>PIN: </strong><strong t-field="o.shipping_to_zip"/>
+                                    <t t-if="customer_phone">
+                                        <br/>
+                                        <strong>Mob: </strong><span t-esc="customer_phone"/>
+                                    </t>
                                 </td>
                                 <td style="width: 30%; border: 2px solid black; padding: 15px; text-align: center; vertical-align: middle;">
                                     <t t-if="o.order_payment_type == 'cod'">
@@ -224,6 +229,10 @@
                                         <span t-esc="seller_addr['state']"/>
                                     <br/>
                                     <strong>PIN: </strong><strong t-esc="seller_addr['zip']"/>
+                                    <t t-if="seller_addr['phone']">
+                                        <br/>
+                                        <strong>Phone: </strong><span t-esc="seller_addr['phone']"/>
+                                    </t>
                                 </td>
                                 <td style="width: 30%; border: 2px solid black; padding: 10px 15px; vertical-align: middle; font-size: 15px;">
                                     <span><strong>Date: </strong><span t-field="o.order_date" t-options="{'widget': 'date'}"/></span>

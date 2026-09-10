@@ -5,6 +5,8 @@ India Post Print AWB is one page: no KeralaXpress AWB barcode/QR, no CEPT merge.
 """
 import base64
 import re
+import xml.etree.ElementTree as ET
+from pathlib import Path
 from urllib.parse import quote
 
 from odoo.tests import HttpCase, TransactionCase, tagged
@@ -72,6 +74,12 @@ class TestAwbPrintLayout(IndiapostHermeticMixin, TransactionCase):
         self.assertTrue(match, 'India Post AWB is missing the seller cell')
         return match.group(1)
 
+    def _shipto_cell(self, html):
+        match = re.search(
+            r'class="awb-shipto"[^>]*>(.*?)</td>', html, flags=re.DOTALL)
+        self.assertTrue(match, 'India Post AWB is missing the ship-to cell')
+        return match.group(1)
+
     def _sort_cell(self, html):
         match = re.search(
             r'class="awb-indiapost-sort"[^>]*>(.*?)</td>', html, flags=re.DOTALL)
@@ -101,6 +109,8 @@ class TestAwbPrintLayout(IndiapostHermeticMixin, TransactionCase):
         self.assertNotIn('awb-header-indiapost', html)
         self.assertNotIn('TrackConsignment.aspx', html)
         self.assertNotIn('India Post', html)
+        self.assertNotIn('Mob:', html)
+        self.assertNotIn('Phone:', html)
 
     def test_indiapost_print_awb_uses_seller_and_ip_marks(self):
         shipment = self._new_shipment(self.ip_seller)
@@ -202,9 +212,61 @@ class TestAwbPrintLayout(IndiapostHermeticMixin, TransactionCase):
         addr = shipment._awb_seller_address()
         self.assertEqual(addr['street'], SELLER_STREET)
         self.assertEqual(addr['name'], 'AWB IP Seller')
+        self.assertEqual(addr['phone'], '9400662693')
         self.assertNotEqual(addr['name'], shipment.company_id.name)
         self.assertNotEqual(addr['name'], CONSIGNOR)
         self.assertNotIn('Vazhiyambalam', addr['street'])
+
+    def test_indiapost_print_awb_includes_customer_and_seller_phones(self):
+        shipment = self._new_shipment(self.ip_seller)
+        shipment.sudo().write({
+            'indiapost_article_number': ARTICLE,
+            'indiapost_booking_state': 'booked',
+            'indiapost_sort_code': 'S',
+        })
+        self.assertEqual(shipment._awb_customer_phone(), '9876543210')
+        self.assertEqual(shipment._awb_seller_phone(), '9400662693')
+        html = self._awb_html(shipment)
+        shipto_html = self._shipto_cell(html)
+        seller_html = self._seller_cell(html)
+        self.assertIn('Mob:', shipto_html)
+        self.assertIn('9876543210', shipto_html)
+        self.assertNotIn('9400662693', shipto_html)
+        self.assertIn('Phone:', seller_html)
+        self.assertIn('9400662693', seller_html)
+        self.assertNotIn('9876543210', seller_html)
+
+    def test_indiapost_print_awb_omits_empty_phone_lines(self):
+        self.ip_seller.phone = False
+        if self.ip_seller.partner_id:
+            self.ip_seller.partner_id.write({'phone': False})
+        shipment = self._new_shipment(self.ip_seller)
+        shipment.sudo().write({
+            'indiapost_article_number': ARTICLE,
+            'indiapost_booking_state': 'booked',
+        })
+        self.assertFalse(shipment._awb_seller_phone())
+        html = self._awb_html(shipment)
+        seller_html = self._seller_cell(html)
+        shipto_html = self._shipto_cell(html)
+        self.assertNotIn('Phone:', seller_html)
+        self.assertIn('Mob:', shipto_html)
+        self.assertIn('9876543210', shipto_html)
+
+    def test_indiapost_awb_template_xml_parses(self):
+        layout = Path(__file__).resolve().parents[1] / 'report' / 'shipment_layout.xml'
+        tree = ET.parse(layout)
+        ids = {
+            el.attrib.get('id')
+            for el in tree.iter()
+            if el.attrib.get('id')
+        }
+        self.assertIn('report_shipment_document_indiapost', ids)
+        source = layout.read_text(encoding='utf-8')
+        self.assertIn("o._awb_customer_phone()", source)
+        self.assertIn("seller_addr['phone']", source)
+        self.assertIn('Mob:', source)
+        self.assertIn('Phone:', source)
 
     def test_indiapost_logo_is_png_wordmark_not_emblem_svg(self):
         shipment = self._new_shipment(self.ip_seller)
