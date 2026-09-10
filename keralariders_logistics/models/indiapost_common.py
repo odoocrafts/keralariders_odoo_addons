@@ -27,6 +27,18 @@ ARTICLE_TYPES = [
 ]
 ARTICLE_TYPE_LABELS = dict(ARTICLE_TYPES)
 
+# India Post allotted KeralaXpress one production prefix per product: EY
+# serials are Speed Post, CX serials are Business Parcel. Persist that on
+# the barcode range so UAT prefixes (ET) can stay untyped.
+PREFIX_ARTICLE_TYPE = {
+    'EY': ARTICLE_TYPE_SPEED_POST,
+    'CX': ARTICLE_TYPE_BUSINESS_PARCEL,
+}
+ARTICLE_TYPE_PRODUCTION_PREFIX = {
+    ARTICLE_TYPE_SPEED_POST: 'EY',
+    ARTICLE_TYPE_BUSINESS_PARCEL: 'CX',
+}
+
 # A bulk customer is contracted per service, so India Post issued KeralaXpress
 # one contract number per product and a booking has to carry the one belonging
 # to its own product. This is the mapping from product to settings field.

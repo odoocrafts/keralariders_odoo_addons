@@ -1101,7 +1101,7 @@ class Shipment(models.Model):
         barcode = self.indiapost_barcode_id
         if not barcode:
             barcode = self.env['logistics.indiapost.barcode.range'].sudo().allocate(
-                shipment=self)
+                shipment=self, article_type=self._ip_product())
             self.sudo().write({'indiapost_barcode_id': barcode.id})
         return barcode
 

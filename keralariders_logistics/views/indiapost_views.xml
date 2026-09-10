@@ -13,6 +13,7 @@
                 <field name="sequence" widget="handle"/>
                 <field name="name"/>
                 <field name="environment"/>
+                <field name="article_type"/>
                 <field name="prefix"/>
                 <field name="first_barcode"/>
                 <field name="last_barcode"/>
@@ -45,6 +46,7 @@
                     <group>
                         <group string="Range">
                             <field name="environment"/>
+                            <field name="article_type"/>
                             <field name="prefix" placeholder="ET"/>
                             <field name="start_serial"/>
                             <field name="end_serial"/>

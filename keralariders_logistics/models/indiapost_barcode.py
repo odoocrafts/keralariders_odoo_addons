@@ -35,6 +35,12 @@ class IndiapostBarcodeRange(models.Model):
         string='Prefix', required=True, size=2,
         help='Two letters at positions 1-2 of the barcode, e.g. ET.',
     )
+    article_type = fields.Selection(
+        ipc.ARTICLE_TYPES, string='Article Type',
+        help='India Post product this range was allotted for. Production EY '
+             'is Speed Post and CX is Business Parcel. Leave empty on sandbox '
+             'ranges (UAT ET) so they can still serve either product.',
+    )
     start_serial = fields.Integer(string='First Serial', required=True)
     end_serial = fields.Integer(string='Last Serial', required=True)
     next_serial = fields.Integer(
@@ -105,11 +111,34 @@ class IndiapostBarcodeRange(models.Model):
                     '%(end)s), or one past the end when exhausted.'
                 ) % {'start': rng.start_serial, 'end': rng.end_serial})
 
+    def _auto_init(self):
+        res = super()._auto_init()
+        # Fill blanks from the India Post prefix map. UAT ET is not in the
+        # map, so it stays untyped. Already-set rows are left alone.
+        self.env.cr.execute(
+            """
+            UPDATE logistics_indiapost_barcode_range
+               SET article_type = CASE UPPER(BTRIM(prefix))
+                    WHEN 'EY' THEN %s
+                    WHEN 'CX' THEN %s
+                    ELSE article_type
+               END
+             WHERE article_type IS NULL
+               AND UPPER(BTRIM(prefix)) IN ('EY', 'CX')
+            """,
+            (ipc.ARTICLE_TYPE_SPEED_POST, ipc.ARTICLE_TYPE_BUSINESS_PARCEL),
+        )
+        return res
+
     @api.model_create_multi
     def create(self, vals_list):
         for vals in vals_list:
             if vals.get('prefix'):
                 vals['prefix'] = vals['prefix'].strip().upper()
+            if not vals.get('article_type'):
+                inferred = ipc.PREFIX_ARTICLE_TYPE.get(vals.get('prefix') or '')
+                if inferred:
+                    vals['article_type'] = inferred
             if not vals.get('next_serial'):
                 vals['next_serial'] = vals.get('start_serial') or 1
         return super().create(vals_list)
@@ -123,12 +152,50 @@ class IndiapostBarcodeRange(models.Model):
     # Allocation
     # ------------------------------------------------------------------
     @api.model
-    def _ip_pick_range(self, environment):
-        """The highest priority active range with barcodes left."""
-        return self.sudo().search([
+    def _ip_article_type(self, shipment=None, article_type=None):
+        if article_type:
+            return article_type
+        if shipment:
+            return shipment._ip_product()
+        return ipc.ARTICLE_TYPE_SPEED_POST
+
+    @api.model
+    def _ip_missing_range_error(self, environment, article_type):
+        product = ipc.ARTICLE_TYPE_LABELS.get(
+            article_type, article_type or _('(none)'))
+        prefix = ipc.ARTICLE_TYPE_PRODUCTION_PREFIX.get(article_type)
+        if environment == 'production' and prefix:
+            return UserError(_(
+                'No production barcode range for %(product)s (%(prefix)s)'
+            ) % {'product': product, 'prefix': prefix})
+        if environment == 'production':
+            return UserError(_(
+                'No production barcode range for %s'
+            ) % product)
+        return UserError(_(
+            'No India Post barcode range is available for the %s '
+            'environment. Add one under Logistics > India Post > Barcode '
+            'Ranges before booking.'
+        ) % environment)
+
+    @api.model
+    def _ip_pick_range(self, environment, article_type=None):
+        """The highest priority active range with barcodes left.
+
+        Production ranges are bound to a product (EY = Speed Post, CX =
+        Business Parcel). Sandbox ranges stay environment-only so UAT ET
+        and the TT test block can still serve either product.
+        """
+        domain = [
             ('environment', '=', environment),
             ('is_exhausted', '=', False),
-        ], order='sequence, id', limit=1)
+        ]
+        if environment == 'production':
+            domain.append((
+                'article_type', '=',
+                article_type or ipc.ARTICLE_TYPE_SPEED_POST,
+            ))
+        return self.sudo().search(domain, order='sequence, id', limit=1)
 
     def _ip_next_serial(self):
         """Reserve and return the next serial, serialising concurrent callers.
@@ -169,12 +236,15 @@ class IndiapostBarcodeRange(models.Model):
         return next_serial
 
     @api.model
-    def allocate(self, shipment=None, environment=None):
+    def allocate(self, shipment=None, environment=None, article_type=None):
         """Allocate exactly one barcode, optionally pinned to a shipment.
 
         A shipment keeps the same barcode for its whole life: if a booking is
         rejected we re-send the barcode we already reserved rather than burning
-        another one, which is what makes retries idempotent.
+        another one, which is what makes retries idempotent. Already-issued
+        numbers are never moved to another range, even when the product on
+        the shipment no longer matches the prefix (the EY Business Parcel
+        bookings that predate product-bound ranges).
         """
         Barcode = self.env['logistics.indiapost.barcode'].sudo()
         if shipment:
@@ -185,13 +255,11 @@ class IndiapostBarcodeRange(models.Model):
         if not environment:
             environment = self.env['logistics.indiapost.client']._ip_settings()[
                 'indiapost_environment']
-        rng = self._ip_pick_range(environment)
+        article_type = self._ip_article_type(
+            shipment=shipment, article_type=article_type)
+        rng = self._ip_pick_range(environment, article_type=article_type)
         if not rng:
-            raise UserError(_(
-                'No India Post barcode range is available for the %s '
-                'environment. Add one under Logistics > India Post > Barcode '
-                'Ranges before booking.'
-            ) % environment)
+            raise self._ip_missing_range_error(environment, article_type)
 
         serial = rng._ip_next_serial()
         return Barcode.create({
