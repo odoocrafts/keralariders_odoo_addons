@@ -1,7 +1,10 @@
 from odoo import models, fields, api, _
 from odoo.exceptions import AccessError, UserError, ValidationError
 from odoo.tools.float_utils import float_compare, float_round
+from odoo.tools.misc import file_path
 from markupsafe import Markup
+from urllib.parse import quote
+import base64
 import logging
 import re
 import uuid
@@ -92,6 +95,75 @@ class Shipment(models.Model):
                 shipment.tracking_url = f"{base_url}/track/{shipment.tracking_token}"
             else:
                 shipment.tracking_url = False
+
+    def _awb_seller_address(self):
+        """Seller / pickup address for Print AWB.
+
+        Same source the portal copies onto ``shipping_from_*``: the shipment's
+        origin fields, falling back to the seller record. Never the company or
+        the India Post consignor-of-record settings.
+        """
+        self.ensure_one()
+        seller = self.seller_id
+        name = (self.shipping_from_name or '').strip()
+        if not name and seller:
+            name = (seller.name or '').strip()
+        street = (self.shipping_from_address or '').strip()
+        if not street and seller:
+            street = '\n'.join(
+                part for part in (seller.street, seller.street2) if part)
+        street = ', '.join(
+            part.strip() for part in street.splitlines() if part.strip())
+        district = ''
+        if self.shipping_from_district_id:
+            district = self.shipping_from_district_id.name or ''
+        elif seller and seller.district_id:
+            district = seller.district_id.name or ''
+        elif seller:
+            district = seller.city or ''
+        state = ''
+        if self.shipping_from_state_id:
+            state = self.shipping_from_state_id.name or ''
+        elif seller and seller.state_id:
+            state = seller.state_id.name or ''
+        zipcode = (self.shipping_from_zip or '').strip()
+        if not zipcode and seller:
+            zipcode = (seller.zip or '').strip()
+        return {
+            'name': name,
+            'street': street,
+            'district': district,
+            'state': state,
+            'zip': zipcode,
+        }
+
+    def _awb_indiapost_qr_payload(self):
+        """Public DoP tracking URL encoded in the India Post AWB QR."""
+        self.ensure_one()
+        return self.indiapost_tracking_ref or ''
+
+    def _awb_indiapost_qr_img_src(self):
+        self.ensure_one()
+        return (
+            'https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=%s'
+            % quote(self._awb_indiapost_qr_payload(), safe='')
+        )
+
+    def _awb_indiapost_barcode_img_src(self):
+        self.ensure_one()
+        article = (self.indiapost_article_number or '').strip()
+        return (
+            'https://bwipjs-api.metafloor.com/?bcid=code128&text=%s&scale=2'
+            % quote(article, safe='')
+        )
+
+    def _awb_indiapost_logo_data_uri(self):
+        """Inline India Post emblem so Print AWB does not fetch a static URL."""
+        path = file_path(
+            'keralariders_logistics/static/src/img/indiapost_emblem.svg')
+        with open(path, 'rb') as handle:
+            encoded = base64.b64encode(handle.read()).decode()
+        return 'data:image/svg+xml;base64,%s' % encoded
 
     @api.model
     def _shipping_from_vals_for_seller(self, seller):

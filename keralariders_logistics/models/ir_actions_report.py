@@ -1,10 +1,11 @@
 """Merge the stored India Post label onto the KeralaXpress AWB PDF.
 
 Print AWB (admin shipment, admin order delivery slips, seller portal) all go
-through ``keralariders_logistics.report_shipment_document``. When that report
-is rendered for an India Post shipment that already has a label, the stored
-India Post PDF is appended as the next page. Hub-network shipments are left
-as the single KeralaXpress page.
+through ``keralariders_logistics.report_shipment_document``. That QWeb picks
+the hub layout or the India Post layout from ``fulfilment_method``. When the
+report is rendered for an India Post shipment that already has a label, the
+stored India Post PDF is still appended as page 2. Hub-network shipments stay
+the single KeralaXpress page.
 """
 
 import io

@@ -9,3 +9,4 @@ from . import test_portal_calculator
 from . import test_indiapost_webhook
 from . import test_indiapost_autobook
 from . import test_indiapost_pickup_address
+from . import test_awb_print_layout
