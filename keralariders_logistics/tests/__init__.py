@@ -8,3 +8,4 @@ from . import test_portal_manual_order
 from . import test_portal_calculator
 from . import test_indiapost_webhook
 from . import test_indiapost_autobook
+from . import test_indiapost_pickup_address

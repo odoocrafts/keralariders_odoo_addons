@@ -5,12 +5,16 @@ behaves exactly as before. Only ``fulfilment_method == 'indiapost'`` shipments
 go anywhere near this code.
 
 Address model for a booking, as decided by the business:
-  * consignor of record is KeralaXpress, from the settings screen;
-  * pickup happens at the seller's own premises (``pickup_address_flag``);
+  * KeralaXpress remains the bulk customer / contract holder
+    (``bulk_customer_id``, ``contract_id``) — those ids are not the pickup
+    address;
+  * ``sender_*`` is the physical from-address India Post prints as SENDER and
+    collects from, so it is the seller (not the company warehouse);
+  * pickup happens at the same seller premises (``pickup_address_flag``);
   * the alternate address is the seller, so undelivered articles come back to
     the seller and not to us (``alt_address_flag``).
 Those are three independent address groups in one article, which the sandbox
-validator accepts.
+validator accepts. The official CEPT label SENDER line follows ``sender_*``.
 """
 
 from odoo import api, fields, models, _
@@ -392,7 +396,7 @@ class Shipment(models.Model):
         self.ensure_one()
         try:
             return self._ip_origin_pincode()
-        except ipc.IndiapostDataError:
+        except (UserError, ipc.IndiapostDataError):
             return ''
 
     @api.depends('fulfilment_method', 'indiapost_tariff_quoted_on',
@@ -701,7 +705,7 @@ class Shipment(models.Model):
     # Address helpers
     # ------------------------------------------------------------------
     def _ip_origin_pincode(self):
-        """Where India Post collects: the seller's own address."""
+        """Where India Post collects: the shipment pickup / seller pin."""
         self.ensure_one()
         seller = self.seller_id
         candidates = [
@@ -711,11 +715,15 @@ class Shipment(models.Model):
         ]
         for candidate in candidates:
             if (candidate or '').strip():
-                return ipc.normalize_pincode(candidate, _('Seller pickup pincode'))
-        raise ipc.IndiapostDataError(
+                try:
+                    return ipc.normalize_pincode(
+                        candidate, _('Seller pickup pincode'))
+                except ipc.IndiapostDataError as exc:
+                    raise UserError(str(exc)) from exc
+        raise UserError(_(
             'The seller has no pickup pincode, so India Post cannot collect '
-            'this shipment. Add a 6-digit pincode to the seller profile.'
-        )
+            'this shipment. Add a 6-digit pincode to the seller pickup address.'
+        ))
 
     def _ip_locality(self, pincode, fallback_city='', fallback_state=''):
         """Best available (city, state) pair for a pincode.
@@ -731,35 +739,33 @@ class Shipment(models.Model):
         return (city or (fallback_city or '').strip(),
                 state or (fallback_state or '').strip())
 
-    def _ip_sender_group(self, settings):
-        """KeralaXpress as the single consignor of record."""
-        address = ipc.split_address_lines(
-            settings['indiapost_sender_address'], _('Consignor address'))
+    def _ip_sender_group(self, settings, parts=None):
+        """Physical from-address: the seller, which India Post prints as SENDER.
+
+        KeralaXpress stays the bulk customer / contract holder
+        (``bulk_customer_id``, ``contract_id``). These ``sender_*`` fields are
+        the pickup identity on both booking and the official CEPT label, so
+        they must not be the company warehouse when a seller address exists.
+        GSTIN / email remain the contract holder's, when configured.
+        """
+        parts = parts or self._ip_seller_address_parts()
         payload = {
-            'sender_name': ipc.normalize_text(
-                settings['indiapost_sender_name'], _('Consignor name')),
-            'sender_company': ipc.normalize_text(
-                settings['indiapost_sender_company']
-                or settings['indiapost_sender_name'],
-                _('Consignor company')),
-            'sender_add_line_1': address[0],
-            'sender_city': ipc.normalize_text(
-                settings['indiapost_sender_city'], _('Consignor city')),
-            'sender_state': ipc.normalize_text(
-                settings['indiapost_sender_state'], _('Consignor state')),
-            'sender_pincode': ipc.normalize_pincode(
-                settings['indiapost_sender_pincode'], _('Consignor pincode')),
-            'sender_mobile_no': ipc.normalize_mobile(
-                settings['indiapost_sender_mobile'], _('Consignor mobile')),
+            'sender_name': parts['name'],
+            'sender_company': parts['company'],
+            'sender_add_line_1': parts['address'][0],
+            'sender_city': parts['city'],
+            'sender_state': parts['state'],
+            'sender_pincode': parts['pincode'],
+            'sender_mobile_no': parts['mobile'],
         }
-        if address[1]:
-            payload['sender_add_line_2'] = address[1]
-        if address[2]:
-            payload['sender_add_line_3'] = address[2]
-        if settings['indiapost_sender_email']:
+        if parts['address'][1]:
+            payload['sender_add_line_2'] = parts['address'][1]
+        if parts['address'][2]:
+            payload['sender_add_line_3'] = parts['address'][2]
+        if settings.get('indiapost_sender_email'):
             payload['sender_emailid'] = ipc.normalize_text(
                 settings['indiapost_sender_email'], _('Consignor email'))
-        if settings['indiapost_sender_gstin']:
+        if settings.get('indiapost_sender_gstin'):
             payload['sender_tax_reference'] = ipc.normalize_text(
                 settings['indiapost_sender_gstin'], _('Consignor GSTIN'))
         return payload
@@ -797,38 +803,78 @@ class Shipment(models.Model):
                 self.shipping_to_email, _('Customer email'), required=False)
         return payload
 
+    def _ip_seller_mobile(self):
+        """10-digit India mobile India Post will call for pickup."""
+        self.ensure_one()
+        seller = self.seller_id
+        partner = seller.partner_id if seller else self.env['res.partner']
+        candidates = []
+        if seller:
+            candidates.append(seller.phone)
+        if partner:
+            candidates.append(partner.phone)
+            # Odoo 19 ``res.partner`` has no ``mobile``; keep a defensive
+            # lookup so a custom field still wins over a blank phone.
+            if 'mobile' in partner._fields:
+                candidates.append(partner.mobile)
+        for candidate in candidates:
+            if not (candidate or '').strip():
+                continue
+            try:
+                return ipc.normalize_mobile(
+                    candidate, _('Seller mobile number'))
+            except ipc.IndiapostDataError as exc:
+                raise UserError(str(exc)) from exc
+        raise UserError(_(
+            'Seller mobile number is missing for %(awb)s, so India Post '
+            'cannot schedule pickup. Add a 10-digit Indian mobile on the '
+            'seller profile.'
+        ) % {'awb': self.name or _('this shipment')})
+
     def _ip_seller_address_parts(self):
-        """The seller's own address, used for both pickup and returns."""
+        """The seller pickup address used for sender, pickup, and returns.
+
+        Source of truth is the shipment's shipping-from / seller pickup
+        address already shown on the portal. Never the company warehouse.
+        """
         self.ensure_one()
         seller = self.seller_id
         if not seller:
-            raise ipc.IndiapostDataError(
+            raise UserError(_(
                 'This shipment has no seller, so India Post has nowhere to '
                 'collect from.'
-            )
+            ))
         pincode = self._ip_origin_pincode()
-        raw_address = self.shipping_from_address or '\n'.join(
+        raw_address = (self.shipping_from_address or '').strip() or '\n'.join(
             part for part in (seller.street, seller.street2) if part)
-        address = ipc.split_address_lines(
-            raw_address, _('Seller pickup address'))
-        city, state = self._ip_locality(
-            pincode,
-            fallback_city=seller.city or seller.district_id.name,
-            fallback_state=seller.state_id.name,
-        )
-        name = ipc.normalize_text(
-            self.shipping_from_name or seller.name, _('Seller name'))
-        return {
-            'name': name,
-            'company': name,
-            'address': address,
-            'city': ipc.normalize_text(city, _('Seller city')),
-            'state': ipc.normalize_text(state, _('Seller state')),
-            'pincode': pincode,
-            'mobile': ipc.normalize_mobile(
-                seller.phone or seller.partner_id.phone,
-                _('Seller mobile number')),
-        }
+        try:
+            address = ipc.split_address_lines(
+                raw_address, _('Seller pickup address'))
+            city, state = self._ip_locality(
+                pincode,
+                fallback_city=(
+                    seller.city
+                    or (self.shipping_from_district_id.name if self.shipping_from_district_id else '')
+                    or (seller.district_id.name if seller.district_id else '')
+                ),
+                fallback_state=(
+                    (self.shipping_from_state_id.name if self.shipping_from_state_id else '')
+                    or (seller.state_id.name if seller.state_id else '')
+                ),
+            )
+            name = ipc.normalize_text(
+                self.shipping_from_name or seller.name, _('Seller name'))
+            return {
+                'name': name,
+                'company': name,
+                'address': address,
+                'city': ipc.normalize_text(city, _('Seller city')),
+                'state': ipc.normalize_text(state, _('Seller state')),
+                'pincode': pincode,
+                'mobile': self._ip_seller_mobile(),
+            }
+        except ipc.IndiapostDataError as exc:
+            raise UserError(str(exc)) from exc
 
     def _ip_pickup_group(self, parts):
         """India Post collects from the seller, in one of two fixed slots."""
@@ -910,7 +956,7 @@ class Shipment(models.Model):
             # response echoes identifiers we did not expect.
             'bulk_reference': (self.name or '')[:ipc.BULK_REFERENCE_MAX_LEN],
         }
-        article.update(self._ip_sender_group(settings))
+        article.update(self._ip_sender_group(settings, parts=seller_parts))
         article.update(self._ip_receiver_group())
         article.update(self._ip_pickup_group(seller_parts))
         article.update(self._ip_alt_group(seller_parts))
