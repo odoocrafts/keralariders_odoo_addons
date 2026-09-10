@@ -1,39 +1,119 @@
 from odoo import http
 from odoo.http import request
 
+_NOT_FOUND = (
+    "No shipment found with the provided AWB or India Post article number."
+)
+_EMPTY = "Please provide an AWB or India Post article number."
+
+
+def _article_search_values(query):
+    """Exact article values to try, covering typical case variants."""
+    query = (query or '').strip()
+    if not query:
+        return []
+    values = [query, query.upper(), query.lower()]
+    seen = set()
+    unique = []
+    for value in values:
+        if value not in seen:
+            seen.add(value)
+            unique.append(value)
+    return unique
+
 
 class TrackingController(http.Controller):
+
+    def _find_public_shipment(self, query):
+        """Resolve a public tracking query to one ``logistics.shipment``.
+
+        Accepts KeralaXpress AWB (``name``), the public UUID token, or an
+        India Post article number. Public callers already sudo this model
+        for AWB lookup; article search uses the same access.
+        """
+        query = (query or '').strip()
+        if not query:
+            return request.env['logistics.shipment'].sudo().browse()
+
+        Shipment = request.env['logistics.shipment'].sudo()
+
+        by_name = Shipment.search([('name', '=', query)], limit=1)
+        if by_name:
+            return by_name
+
+        by_token = Shipment.search([('tracking_token', '=', query)], limit=1)
+        if by_token:
+            return by_token
+
+        article_vals = _article_search_values(query)
+        matches = Shipment.search([
+            ('indiapost_article_number', 'in', article_vals),
+        ])
+        if not matches:
+            # Case-insensitive exact match for mixed-case stored values, or
+            # when the query merely *looks* like XX########XIN.
+            matches = Shipment.search([
+                ('indiapost_article_number', '=ilike', query),
+            ])
+        if not matches:
+            return Shipment.browse()
+        if len(matches) == 1:
+            return matches
+
+        preferred = matches.filtered(
+            lambda s: s.fulfilment_method == 'indiapost') or matches
+        booked = preferred.filtered('indiapost_booked_on')
+        pool = booked or preferred
+
+        def _latest_key(shipment):
+            stamped = shipment.indiapost_booked_on or shipment.create_date
+            stamp = stamped.timestamp() if stamped else 0
+            return (stamp, shipment.id)
+
+        return pool.sorted(key=_latest_key, reverse=True)[:1]
+
+    def _redirect_to_canonical_track(self, shipment):
+        token = (shipment.tracking_token or '').strip()
+        if token:
+            return request.redirect(f'/track/{token}')
+        return None
 
     @http.route(['/track'], type='http', auth="public", website=False, methods=['GET', 'POST'], csrf=False)
     def track_search(self, **kwargs):
         error = None
-        awb = None
+        query = None
 
         if request.httprequest.method == 'POST':
-            awb = kwargs.get('awb', '').strip()
+            query = (kwargs.get('awb') or kwargs.get('id') or '').strip()
         elif request.httprequest.method == 'GET' and kwargs.get('id'):
-            awb = kwargs.get('id', '').strip()
+            query = kwargs.get('id', '').strip()
 
-        if awb:
-            shipment = request.env['logistics.shipment'].sudo().search([
-                ('name', '=', awb)
-            ], limit=1)
+        if query:
+            shipment = self._find_public_shipment(query)
             if shipment:
-                return request.redirect(f'/track/{shipment.tracking_token}')
-            else:
-                error = "No shipment found with the provided AWB Number."
+                redirect = self._redirect_to_canonical_track(shipment)
+                if redirect:
+                    return redirect
+            error = _NOT_FOUND
         elif request.httprequest.method == 'POST':
-            error = "Please provide an AWB Number."
+            error = _EMPTY
         values = {
             'error': error,
+            'query': query or '',
             'company': request.env.company,
         }
         return request.render('keralariders_logistics.tracking_search_page', values)
 
     @http.route(['/track/<string:token>'], type='http', auth="public", website=False)
     def track_shipment(self, token, **kw):
-        shipment = request.env['logistics.shipment'].sudo().search([('tracking_token', '=', token)], limit=1)
+        shipment = request.env['logistics.shipment'].sudo().search(
+            [('tracking_token', '=', token)], limit=1)
         if not shipment:
+            shipment = self._find_public_shipment(token)
+            if shipment:
+                redirect = self._redirect_to_canonical_track(shipment)
+                if redirect:
+                    return redirect
             return request.not_found()
 
         # If logged in as a DE: claim UI when eligible, else portal delivery detail
