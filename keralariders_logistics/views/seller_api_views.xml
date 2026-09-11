@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_seller_api_credential_list" model="ir.ui.view">
+        <field name="name">logistics.seller.api.credential.list</field>
+        <field name="model">logistics.seller.api.credential</field>
+        <field name="arch" type="xml">
+            <list string="Seller API Keys" create="false">
+                <field name="seller_id"/>
+                <field name="api_key"/>
+                <field name="state" widget="badge"
+                       decoration-success="state == 'active'"
+                       decoration-warning="state == 'disabled'"
+                       decoration-danger="state == 'revoked'"/>
+                <field name="last_used_at"/>
+                <field name="request_count"/>
+                <field name="create_date"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_seller_api_credential_form" model="ir.ui.view">
+        <field name="name">logistics.seller.api.credential.form</field>
+        <field name="model">logistics.seller.api.credential</field>
+        <field name="arch" type="xml">
+            <form string="Seller API Key" create="false">
+                <header>
+                    <button name="action_disable" type="object" string="Disable"
+                            class="btn-secondary" invisible="state != 'active'"/>
+                    <button name="action_revoke" type="object" string="Revoke"
+                            class="btn-secondary" invisible="state == 'revoked'"
+                            confirm="Revoke this key? The seller must generate a new one."/>
+                    <field name="state" widget="statusbar"/>
+                </header>
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="seller_id"/>
+                            <field name="name"/>
+                            <field name="api_key"/>
+                            <field name="last_used_at"/>
+                        </group>
+                        <group>
+                            <field name="request_count"/>
+                            <field name="request_count_date"/>
+                            <field name="note"/>
+                        </group>
+                    </group>
+                    <div class="alert alert-info mb-0" role="alert">
+                        The secret is hashed and is never shown here. Sellers generate
+                        and copy the secret from the portal at /my/api.
+                    </div>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_seller_api_credential" model="ir.actions.act_window">
+        <field name="name">Seller API Keys</field>
+        <field name="res_model">logistics.seller.api.credential</field>
+        <field name="view_mode">list,form</field>
+        <field name="context">{'create': 0}</field>
+    </record>
+
+    <record id="view_seller_api_log_list" model="ir.ui.view">
+        <field name="name">logistics.seller.api.log.list</field>
+        <field name="model">logistics.seller.api.log</field>
+        <field name="arch" type="xml">
+            <list string="Seller API Log" create="false">
+                <field name="create_date"/>
+                <field name="seller_id"/>
+                <field name="method"/>
+                <field name="endpoint"/>
+                <field name="http_status"/>
+                <field name="error_code"/>
+                <field name="remote_addr" optional="hide"/>
+                <field name="duration_ms" optional="hide"/>
+                <field name="api_key_prefix" optional="hide"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_seller_api_log_search" model="ir.ui.view">
+        <field name="name">logistics.seller.api.log.search</field>
+        <field name="model">logistics.seller.api.log</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="seller_id"/>
+                <field name="endpoint"/>
+                <field name="error_code"/>
+                <filter name="errors" string="Errors"
+                        domain="[('http_status', '&gt;=', 400)]"/>
+                <filter name="unauthorized" string="401"
+                        domain="[('http_status', '=', 401)]"/>
+                <group expand="0" string="Group By">
+                    <filter name="group_seller" string="Seller" context="{'group_by': 'seller_id'}"/>
+                    <filter name="group_endpoint" string="Endpoint" context="{'group_by': 'endpoint'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_seller_api_log" model="ir.actions.act_window">
+        <field name="name">Seller API Log</field>
+        <field name="res_model">logistics.seller.api.log</field>
+        <field name="view_mode">list</field>
+        <field name="search_view_id" ref="view_seller_api_log_search"/>
+        <field name="context">{'create': 0}</field>
+    </record>
+
+    <record id="ir_cron_seller_api_gc" model="ir.cron">
+        <field name="name">Seller API: prune logs and idempotency keys</field>
+        <field name="model_id" ref="model_logistics_seller_api_log"/>
+        <field name="state">code</field>
+        <field name="code">model._cron_gc()</field>
+        <field name="interval_number">1</field>
+        <field name="interval_type">days</field>
+        <field name="active" eval="True"/>
+        <field name="user_id" ref="base.user_root"/>
+    </record>
+
+    <menuitem id="menu_seller_api_root" name="Seller API"
+              parent="menu_logistics_configuration" sequence="40"
+              groups="keralariders_logistics.group_logistics_admin"/>
+    <menuitem id="menu_seller_api_credential" name="API Keys"
+              parent="menu_seller_api_root" sequence="1"
+              action="action_seller_api_credential"/>
+    <menuitem id="menu_seller_api_log" name="Request Log"
+              parent="menu_seller_api_root" sequence="2"
+              action="action_seller_api_log"/>
+</odoo>

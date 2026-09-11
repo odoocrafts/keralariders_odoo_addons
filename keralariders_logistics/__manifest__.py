@@ -1,6 +1,6 @@
 {
     'name': 'Kerala Riders Logistics',
-    'version': '1.5.5',
+    'version': '1.6.0',
     'category': 'Operations/Logistics',
     'summary': 'Last-mile delivery management platform for Kerala Riders',
     'description': """
@@ -21,6 +21,7 @@ Features:
 - Comprehensive reporting
 - India Post fulfilment: live Speed Post and Business Parcel tariffs, bulk
   booking, address labels and tracking sync, selectable per seller
+- Seller REST API for e-commerce platforms, with hashed keys and portal docs
     """,
     'author': 'Odoocrafts',
     'website': 'https://keralariders.com',
@@ -56,11 +57,13 @@ Features:
         'views/tracking_template.xml',
         'views/portal_order_templates.xml',
         'views/portal_templates.xml',
+        'views/portal_api_templates.xml',
         'views/wizard_assign_delivery_executive.xml',
         'views/portal_delivery_templates.xml',
         'views/portal_hub_templates.xml',
         'views/brand_overrides.xml',
         'views/indiapost_views.xml',
+        'views/seller_api_views.xml',
         # Loaded last: the crons reference model_* ids and the office seed
         # calls a method on logistics.indiapost.office.
         'data/indiapost_data.xml',

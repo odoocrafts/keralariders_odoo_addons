@@ -209,6 +209,17 @@
             <field name="perm_unlink" eval="False"/>
         </record>
 
+        <record id="logistics_seller_api_credential_portal_rule" model="ir.rule">
+            <field name="name">Portal Seller API Credential Rule</field>
+            <field name="model_id" ref="model_logistics_seller_api_credential"/>
+            <field name="domain_force">[('seller_id.partner_id', '=', user.partner_id.id)]</field>
+            <field name="groups" eval="[(4, ref('base.group_portal'))]"/>
+            <field name="perm_read" eval="True"/>
+            <field name="perm_write" eval="False"/>
+            <field name="perm_create" eval="False"/>
+            <field name="perm_unlink" eval="False"/>
+        </record>
+
         <record id="logistics_shipment_event_hub_manager_rule" model="ir.rule">
             <field name="name">Hub Manager Shipment Event Rule</field>
             <field name="model_id" ref="model_logistics_shipment_event"/>

@@ -1,0 +1,273 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <template id="portal_my_api" name="Seller API">
+        <t t-call="portal.portal_layout">
+            <t t-set="breadcrumbs_searchbar" t-value="True"/>
+
+            <t t-if="error">
+                <div class="alert alert-danger" role="alert"><t t-esc="error"/></div>
+            </t>
+            <t t-if="success">
+                <div class="alert alert-success" role="alert"><t t-esc="success"/></div>
+            </t>
+
+            <t t-if="secret_once">
+                <div class="alert alert-warning" role="alert">
+                    <h5 class="alert-heading">Copy your API secret now</h5>
+                    <p class="mb-2">This secret is shown once. Store it in your shop's private settings — KeralaXpress cannot display it again.</p>
+                    <p class="mb-1"><strong>API Key</strong></p>
+                    <pre class="bg-light border rounded p-2" id="kx_api_key_once"><t t-esc="key_once"/></pre>
+                    <p class="mb-1"><strong>API Secret</strong></p>
+                    <pre class="bg-light border rounded p-2" id="kx_api_secret_once"><t t-esc="secret_once"/></pre>
+                    <button type="button" class="btn btn-sm btn-outline-dark" id="kx_copy_secret_btn">Copy secret</button>
+                </div>
+            </t>
+
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                    <h4 class="mb-0">API credentials</h4>
+                    <div>
+                        <t t-if="active_credential">
+                            <form action="/my/api/keys/generate" method="post" class="d-inline"
+                                  onsubmit="return confirm('Regenerate will revoke the current key. Existing shop connections will stop until you update them.');">
+                                <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                                <button type="submit" class="btn btn-sm btn-outline-primary me-2">Regenerate key</button>
+                            </form>
+                            <form action="/my/api/keys/disable" method="post" class="d-inline"
+                                  onsubmit="return confirm('Disable this API key? Your shop will not be able to book until you generate a new one.');">
+                                <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                                <input type="hidden" name="credential_id" t-att-value="active_credential.id"/>
+                                <button type="submit" class="btn btn-sm btn-outline-danger">Disable</button>
+                            </form>
+                        </t>
+                        <t t-else="">
+                            <form action="/my/api/keys/generate" method="post" class="d-inline">
+                                <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                                <button type="submit" class="btn btn-sm btn-primary">Generate API key</button>
+                            </form>
+                        </t>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted">
+                        Use these credentials from Shopify, WooCommerce, or a custom shop.
+                        They only access <strong>your</strong> shipments and wallet. Call the API over HTTPS.
+                    </p>
+                    <t t-if="active_credential">
+                        <dl class="row mb-0">
+                            <dt class="col-sm-3">API Key</dt>
+                            <dd class="col-sm-9"><code t-esc="active_credential.api_key"/></dd>
+                            <dt class="col-sm-3">Status</dt>
+                            <dd class="col-sm-9"><span class="badge bg-success">Active</span></dd>
+                            <dt class="col-sm-3">Last used</dt>
+                            <dd class="col-sm-9">
+                                <t t-if="active_credential.last_used_at">
+                                    <span t-field="active_credential.last_used_at"/>
+                                </t>
+                                <t t-else="">Never</t>
+                            </dd>
+                        </dl>
+                    </t>
+                    <t t-else="">
+                        <p class="mb-0">No active key. Generate one to connect your shop.</p>
+                    </t>
+                </div>
+            </div>
+
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-white py-3">
+                    <h4 class="mb-0">Business rules</h4>
+                </div>
+                <div class="card-body">
+                    <ul class="mb-0">
+                        <li>The wallet is prepaid. It is debited when you <strong>request pickup</strong> (<code>book: true</code> on create, or <code>POST .../pickup</code>), not when the parcel is delivered.</li>
+                        <li>If the wallet balance is too low, the API returns <code>insufficient_wallet</code> and no AWB is booked.</li>
+                        <li>Returns are free — requesting a return does not debit the wallet.</li>
+                        <li>Charge, carrier, hub and delivery-executive fields cannot be set by the API. KeralaXpress prices the parcel with the same calculator as the portal.</li>
+                        <li>Required to create a shipment: customer name, phone, address, destination pincode, weight (kg), item description. COD also needs an order / COD amount.</li>
+                        <li>Sellers cannot cancel a booked shipment from the API (the portal does not refund wallet on cancel).</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-white py-3">
+                    <h4 class="mb-0">Base URL and authentication</h4>
+                </div>
+                <div class="card-body">
+                    <p><strong>Base URL</strong></p>
+                    <pre class="bg-light border rounded p-2"><t t-esc="base_url"/>/api/v1/seller</pre>
+                    <p>Send both headers on every request:</p>
+                    <pre class="bg-light border rounded p-2">X-Api-Key: YOUR_API_KEY
+X-Api-Secret: YOUR_API_SECRET</pre>
+                    <p class="mb-1">Alternative single header:</p>
+                    <pre class="bg-light border rounded p-2">Authorization: Bearer YOUR_API_KEY:YOUR_API_SECRET</pre>
+                    <p class="text-muted mb-0">
+                        Missing, invalid, disabled or revoked credentials return HTTP 401.
+                        Each key is limited to <t t-esc="daily_limit"/> requests per day (HTTP 429 when exceeded).
+                    </p>
+                </div>
+            </div>
+
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-white py-3">
+                    <h4 class="mb-0">Endpoints</h4>
+                </div>
+                <div class="card-body">
+
+                    <h5 class="mt-2">GET /api/v1/seller/wallet</h5>
+                    <p>Current prepaid wallet balance.</p>
+                    <p class="mb-1"><strong>Response</strong></p>
+                    <pre class="bg-light border rounded p-2">{
+  "ok": true,
+  "data": { "balance": 1500.00, "currency": "INR", "currency_symbol": "₹" }
+}</pre>
+                    <p class="mb-1"><strong>Example</strong></p>
+                    <pre class="bg-light border rounded p-2"><t t-esc="examples.get('wallet')"/></pre>
+
+                    <hr/>
+                    <h5>POST /api/v1/seller/rates</h5>
+                    <p>Same charge calculator as the portal (hub-network slabs or India Post live rates, depending on your account).</p>
+                    <p class="mb-1"><strong>Request</strong></p>
+                    <pre class="bg-light border rounded p-2">{
+  "origin_pincode": "682001",
+  "destination_pincode": "695001",
+  "weight_kg": 1.5,
+  "length_cm": 30,
+  "breadth_cm": 20,
+  "height_cm": 15
+}</pre>
+                    <p class="text-muted">Origin defaults to your seller pickup pincode. Dimensions are required for India Post accounts.</p>
+                    <p class="mb-1"><strong>Response</strong></p>
+                    <pre class="bg-light border rounded p-2">{
+  "ok": true,
+  "data": { "method": "own_network", "charge": 70.0, "currency": "INR", "same_district": false }
+}</pre>
+                    <p class="mb-1"><strong>Example</strong></p>
+                    <pre class="bg-light border rounded p-2"><t t-esc="examples.get('rates')"/></pre>
+
+                    <hr/>
+                    <h5>GET /api/v1/seller/pincodes/{pincode}</h5>
+                    <p>Serviceability check: known Kerala pincode with a district hub.</p>
+                    <pre class="bg-light border rounded p-2">{
+  "ok": true,
+  "data": { "pincode": "695001", "serviceable": true, "district": "Thiruvananthapuram", "hub": "..." }
+}</pre>
+                    <p class="mb-1"><strong>Example</strong></p>
+                    <pre class="bg-light border rounded p-2"><t t-esc="examples.get('pincode')"/></pre>
+
+                    <hr/>
+                    <h5>POST /api/v1/seller/shipments</h5>
+                    <p>
+                        Create a shipment the same way the portal Add Order form does.
+                        Default <code>book: true</code> also requests pickup and <strong>debits the wallet</strong>.
+                        Send <code>Idempotency-Key</code> so shop retries do not create a second AWB.
+                    </p>
+                    <p class="mb-1"><strong>Request</strong></p>
+                    <pre class="bg-light border rounded p-2">{
+  "customer_name": "Jane Doe",
+  "customer_phone": "9876543210",
+  "customer_address": "12 MG Road, Thiruvananthapuram",
+  "destination_pincode": "695001",
+  "weight_kg": 1.5,
+  "item_description": "Clothing",
+  "payment_type": "prepaid",
+  "book": true
+}</pre>
+                    <p>COD example: set <code>"payment_type": "cod"</code> and <code>"cod_amount": 1500</code> (or <code>order_value</code>).</p>
+                    <p class="mb-1"><strong>Response</strong> (HTTP 201)</p>
+                    <pre class="bg-light border rounded p-2">{
+  "ok": true,
+  "data": {
+    "awb": "KX000123",
+    "state": "pickup_requested",
+    "delivery_charge": 70.0,
+    "tracking_url": "https://…/track/…",
+    "booked": true,
+    "wallet_debited": true
+  }
+}</pre>
+                    <p class="mb-1"><strong>Example</strong></p>
+                    <pre class="bg-light border rounded p-2"><t t-esc="examples.get('create')"/></pre>
+
+                    <hr/>
+                    <h5>GET /api/v1/seller/shipments</h5>
+                    <p>Paginated list of your shipments. Query: <code>page</code>, <code>page_size</code> (max 100), <code>state</code>, <code>awb</code>.</p>
+                    <p class="mb-1"><strong>Example</strong></p>
+                    <pre class="bg-light border rounded p-2"><t t-esc="examples.get('list')"/></pre>
+
+                    <hr/>
+                    <h5>GET /api/v1/seller/shipments/{awb}</h5>
+                    <p>One shipment by AWB (only yours).</p>
+                    <p class="mb-1"><strong>Example</strong></p>
+                    <pre class="bg-light border rounded p-2"><t t-esc="examples.get('get')"/></pre>
+
+                    <hr/>
+                    <h5>GET /api/v1/seller/shipments/{awb}/track</h5>
+                    <p>Public-style status history (same wording as /track — no wallet or free-return billing language).</p>
+                    <p class="mb-1"><strong>Example</strong></p>
+                    <pre class="bg-light border rounded p-2"><t t-esc="examples.get('track')"/></pre>
+
+                    <hr/>
+                    <h5>POST /api/v1/seller/shipments/{awb}/pickup</h5>
+                    <p>Request pickup on a draft shipment created with <code>book: false</code>. Debits the wallet.</p>
+                    <p class="mb-1"><strong>Example</strong></p>
+                    <pre class="bg-light border rounded p-2"><t t-esc="examples.get('pickup')"/></pre>
+
+                    <hr/>
+                    <h5>POST /api/v1/seller/shipments/{awb}/return</h5>
+                    <p>Same eligibility as the portal (delivered, or delivery-failed at hub). Free — no wallet debit.</p>
+                    <p class="mb-1"><strong>Example</strong></p>
+                    <pre class="bg-light border rounded p-2"><t t-esc="examples.get('return')"/></pre>
+                </div>
+            </div>
+
+            <div class="card shadow-sm mb-5">
+                <div class="card-header bg-white py-3">
+                    <h4 class="mb-0">Error codes</h4>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>HTTP</th>
+                                    <th>code</th>
+                                    <th>Meaning</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr><td>401</td><td>unauthorized</td><td>Missing, invalid, disabled or revoked key</td></tr>
+                                <tr><td>402</td><td>insufficient_wallet</td><td>Recharge before requesting pickup</td></tr>
+                                <tr><td>400</td><td>validation_error</td><td>Missing/invalid fields</td></tr>
+                                <tr><td>400</td><td>not_serviceable</td><td>Unknown pincode</td></tr>
+                                <tr><td>404</td><td>not_found</td><td>AWB does not belong to this seller</td></tr>
+                                <tr><td>409</td><td>conflict / not_eligible</td><td>Idempotency mismatch, or pickup/return not allowed in this state</td></tr>
+                                <tr><td>429</td><td>rate_limited</td><td>Daily key cap reached</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <pre class="bg-light border rounded p-2 mb-0">{
+  "ok": false,
+  "error": { "code": "insufficient_wallet", "message": "Insufficient balance available in your Wallet. …" }
+}</pre>
+                </div>
+            </div>
+
+            <script>
+                (function () {
+                    var btn = document.getElementById('kx_copy_secret_btn');
+                    var secret = document.getElementById('kx_api_secret_once');
+                    if (!btn || !secret) { return; }
+                    btn.addEventListener('click', function () {
+                        var text = secret.textContent || '';
+                        if (navigator.clipboard &amp;&amp; navigator.clipboard.writeText) {
+                            navigator.clipboard.writeText(text);
+                            btn.textContent = 'Copied';
+                        }
+                    });
+                })();
+            </script>
+        </t>
+    </template>
+</odoo>

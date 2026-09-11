@@ -54,6 +54,13 @@
                     <t t-set="icon" t-value="'/keralariders_logistics/static/src/img/calculator.svg'"/>
                     <t t-set="text" t-value="'Estimate shipping costs (' + delivery_package_name + ' Rates)'"/>
                 </t>
+                <t t-call="keralariders_logistics.logistics_portal_card">
+                    <t t-set="title">Seller API</t>
+                    <t t-set="url" t-value="'/my/api'"/>
+                    <t t-set="count_text" t-value="' '"/>
+                    <t t-set="icon" t-value="'/keralariders_logistics/static/src/img/api.svg'"/>
+                    <t t-set="text">Connect your shop — keys and API docs</t>
+                </t>
             </t>
         </xpath>
     </template>
@@ -89,6 +96,9 @@
             </li>
             <li t-if="page_name == 'calculator'" class="breadcrumb-item">
                 Charge Calculator
+            </li>
+            <li t-if="page_name == 'api'" class="breadcrumb-item">
+                Seller API
             </li>
         </xpath>
     </template>

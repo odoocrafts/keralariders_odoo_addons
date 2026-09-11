@@ -2292,3 +2292,117 @@ class LogisticsPortal(CustomerPortal):
         except (UserError, AccessError, ValueError) as e:
             request.session['error'] = str(e)
         return request.redirect('/my/cod_settlements')
+
+    # -------------------------------------------------------------------------
+    # Seller REST API keys and documentation
+    # -------------------------------------------------------------------------
+    def _portal_api_base_url(self):
+        root = (request.httprequest.url_root or '').rstrip('/')
+        return root or request.env['ir.config_parameter'].sudo().get_param('web.base.url')
+
+    def _portal_api_examples(self, base_url):
+        auth = (
+            '  -H "X-Api-Key: YOUR_API_KEY" \\\n'
+            '  -H "X-Api-Secret: YOUR_API_SECRET"'
+        )
+        return {
+            'wallet': (
+                'curl -s %s/api/v1/seller/wallet \\\n%s'
+            ) % (base_url, auth),
+            'rates': (
+                'curl -s -X POST %s/api/v1/seller/rates \\\n%s \\\n'
+                '  -H "Content-Type: application/json" \\\n'
+                '  -d \'{"origin_pincode":"682001","destination_pincode":"695001","weight_kg":1.5}\''
+            ) % (base_url, auth),
+            'pincode': (
+                'curl -s %s/api/v1/seller/pincodes/695001 \\\n%s'
+            ) % (base_url, auth),
+            'create': (
+                'curl -s -X POST %s/api/v1/seller/shipments \\\n%s \\\n'
+                '  -H "Content-Type: application/json" \\\n'
+                '  -H "Idempotency-Key: order-12345" \\\n'
+                '  -d \'{"customer_name":"Jane Doe","customer_phone":"9876543210",'
+                '"customer_address":"12 MG Road, Thiruvananthapuram",'
+                '"destination_pincode":"695001","weight_kg":1.5,'
+                '"item_description":"Clothing","payment_type":"prepaid","book":true}\''
+            ) % (base_url, auth),
+            'list': (
+                'curl -s "%s/api/v1/seller/shipments?page=1&page_size=20" \\\n%s'
+            ) % (base_url, auth),
+            'get': (
+                'curl -s %s/api/v1/seller/shipments/AWBNUMBER \\\n%s'
+            ) % (base_url, auth),
+            'track': (
+                'curl -s %s/api/v1/seller/shipments/AWBNUMBER/track \\\n%s'
+            ) % (base_url, auth),
+            'pickup': (
+                'curl -s -X POST %s/api/v1/seller/shipments/AWBNUMBER/pickup \\\n%s'
+            ) % (base_url, auth),
+            'return': (
+                'curl -s -X POST %s/api/v1/seller/shipments/AWBNUMBER/return \\\n%s'
+            ) % (base_url, auth),
+        }
+
+    @http.route(['/my/api'], type='http', auth='user', website=True)
+    def portal_my_api(self, **kw):
+        seller = self._portal_seller()
+        if not seller:
+            return request.redirect('/my')
+        Credential = request.env['logistics.seller.api.credential'].sudo()
+        credentials = Credential.search([
+            ('seller_id', '=', seller.id),
+        ], order='create_date desc')
+        active = credentials.filtered(lambda c: c.state == 'active')[:1]
+        base_url = self._portal_api_base_url()
+        values = {
+            'page_name': 'api',
+            'seller': seller,
+            'credentials': credentials,
+            'active_credential': active,
+            'base_url': base_url,
+            'examples': self._portal_api_examples(base_url),
+            'secret_once': request.session.pop('seller_api_secret_once', None),
+            'key_once': request.session.pop('seller_api_key_once', None),
+            'error': request.session.pop('error', None),
+            'success': request.session.pop('success', None),
+            'daily_limit': Credential._daily_limit(),
+        }
+        return request.render('keralariders_logistics.portal_my_api', values)
+
+    @http.route(['/my/api/keys/generate'], type='http', auth='user', website=True, methods=['POST'])
+    def portal_my_api_generate(self, **post):
+        seller = self._portal_seller()
+        if not seller:
+            return request.redirect('/my')
+        try:
+            credential, secret = request.env['logistics.seller.api.credential'].sudo().generate_for_seller(seller)
+            request.session['seller_api_secret_once'] = secret
+            request.session['seller_api_key_once'] = credential.api_key
+            request.session['success'] = _(
+                'API credentials generated. Copy the secret now — it will not be shown again.'
+            )
+        except Exception as exc:
+            request.session['error'] = str(exc)
+        return request.redirect('/my/api')
+
+    @http.route(['/my/api/keys/disable'], type='http', auth='user', website=True, methods=['POST'])
+    def portal_my_api_disable(self, **post):
+        seller = self._portal_seller()
+        if not seller:
+            return request.redirect('/my')
+        try:
+            cred_id = int(post.get('credential_id') or 0)
+        except (TypeError, ValueError):
+            cred_id = 0
+        credential = request.env['logistics.seller.api.credential'].sudo().search([
+            ('id', '=', cred_id),
+            ('seller_id', '=', seller.id),
+            ('state', '=', 'active'),
+        ], limit=1)
+        if credential:
+            credential.action_disable()
+            request.session['success'] = _('API key disabled. Existing integrations will stop working.')
+        else:
+            request.session['error'] = _('No active API key found.')
+        return request.redirect('/my/api')
+

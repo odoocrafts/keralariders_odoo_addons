@@ -1,6 +1,7 @@
 from . import pincode_district
 from . import hub
 from . import seller
+from . import seller_api
 from . import wallet
 from . import delivery_executive
 from . import delivery_charges

@@ -12,3 +12,4 @@ from . import test_indiapost_autobook
 from . import test_indiapost_pickup_address
 from . import test_awb_print_layout
 from . import test_public_tracking
+from . import test_seller_api
