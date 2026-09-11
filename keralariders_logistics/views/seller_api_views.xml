@@ -83,15 +83,17 @@
         <field name="name">logistics.seller.api.log.search</field>
         <field name="model">logistics.seller.api.log</field>
         <field name="arch" type="xml">
-            <search>
+            <search string="Search Seller API Log">
                 <field name="seller_id"/>
                 <field name="endpoint"/>
                 <field name="error_code"/>
+                <separator/>
                 <filter name="errors" string="Errors"
                         domain="[('http_status', '&gt;=', 400)]"/>
-                <filter name="unauthorized" string="401"
+                <filter name="unauthorized" string="Unauthorized"
                         domain="[('http_status', '=', 401)]"/>
-                <group expand="0" string="Group By">
+                <separator/>
+                <group>
                     <filter name="group_seller" string="Seller" context="{'group_by': 'seller_id'}"/>
                     <filter name="group_endpoint" string="Endpoint" context="{'group_by': 'endpoint'}"/>
                 </group>
