@@ -675,13 +675,12 @@
                                 <div t-if="uses_indiapost" class="alert alert-info py-2" role="alert"
                                      id="kx_package_hint">
                                     <i class="fa fa-info-circle me-1"/>
-                                    Parcels of
-                                    <t t-esc="parcel_weight_threshold_g"/> g and above must measure at
-                                    least <t t-esc="parcel_min_length_cm"/> x
-                                    <t t-esc="parcel_min_breadth_cm"/> x 1 cm if they travel as Speed
-                                    Post. Business Parcel (normal parcel) uses those same minimums at
-                                    every weight. Pad small heavy items or India Post will refuse them.
-                                    Length + breadth + height must stay within
+                                    Speed Post and Business Parcel both charge on volumetric
+                                    weight and must measure at least
+                                    <t t-esc="parcel_min_length_cm"/> x
+                                    <t t-esc="parcel_min_breadth_cm"/> x 1 cm at every weight,
+                                    including items below 501 g. Pad small items or India Post
+                                    will refuse them. Length + breadth + height must stay within
                                     <t t-esc="max_total_dimension_cm"/> cm.
                                 </div>
                                 <div class="alert alert-danger py-2 d-none" role="alert"
@@ -737,7 +736,6 @@
                     var form = document.querySelector('form.kx-portal-shipment-form');
                     if (!form) { return; }
                     var box = document.getElementById('kx_package_error');
-                    var PARCEL_THRESHOLD_G = 500;
                     var MIN_L = 14, MIN_B = 9, MAX_SIDE = 150, MAX_TOTAL = 300;
 
                     function articleType() {
@@ -752,7 +750,6 @@
                     }
 
                     function problems() {
-                        var grams = Math.ceil(num('total_weight') * 1000);
                         var l = Math.round(num('length_cm'));
                         var b = Math.round(num('breadth_cm'));
                         var h = Math.round(num('height_cm'));
@@ -764,19 +761,14 @@
                             found.push('Length + breadth + height must not exceed '
                                 + MAX_TOTAL + ' cm. This package totals ' + (l + b + h) + ' cm.');
                         }
-                        var asParcel = articleType() === 'BP' || grams > PARCEL_THRESHOLD_G;
                         var productName = articleType() === 'BP' ? 'Business Parcel' : 'Speed Post parcel';
-                        if (asParcel) {
-                            if (l < MIN_L || b < MIN_B) {
-                                found.push((articleType() === 'BP'
-                                    ? 'Business Parcel (normal parcel) must measure at least '
-                                    : 'An article of ' + PARCEL_THRESHOLD_G + ' g or more travels as a Speed Post parcel, and parcels must measure at least ')
-                                    + MIN_L + ' cm x ' + MIN_B + ' cm. Repack this item in a box of at '
-                                    + 'least ' + MIN_L + ' x ' + MIN_B + ' x 1 cm.');
-                            }
-                            if (l > MAX_SIDE || b > MAX_SIDE || h > MAX_SIDE) {
-                                found.push('No side of a ' + productName + ' may exceed ' + MAX_SIDE + ' cm.');
-                            }
+                        if (l < MIN_L || b < MIN_B) {
+                            found.push(productName + ' must measure at least '
+                                + MIN_L + ' cm x ' + MIN_B + ' cm at every weight. Repack this item in a box of at '
+                                + 'least ' + MIN_L + ' x ' + MIN_B + ' x 1 cm.');
+                        }
+                        if (l > MAX_SIDE || b > MAX_SIDE || h > MAX_SIDE) {
+                            found.push('No side of a ' + productName + ' may exceed ' + MAX_SIDE + ' cm.');
                         }
                         return found;
                     }
@@ -1072,8 +1064,9 @@
                                         <div class="alert alert-info py-2" role="alert" id="kx_calc_help_sp">
                                             <i class="fa fa-info-circle me-1"/>
                                             Speed Post prices on whichever is greater: the actual
-                                            weight or length x breadth x height / 5. Parcels of
-                                            500 g and above must measure at least 14 x 9 x 1 cm, and
+                                            weight or length x breadth x height / 5. Items below
+                                            501 g are quoted as inland parcels, not documents.
+                                            Parcels must measure at least 14 x 9 x 1 cm, and
                                             length + breadth + height must not exceed 300 cm.
                                         </div>
                                         <div class="alert alert-info py-2 d-none" role="alert" id="kx_calc_help_bp">

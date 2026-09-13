@@ -329,7 +329,6 @@ class LogisticsPortal(CustomerPortal):
             # mirrored server-side by logistics.shipment._check_indiapost_package.
             'parcel_min_length_cm': 14,
             'parcel_min_breadth_cm': 9,
-            'parcel_weight_threshold_g': 500,
             'max_total_dimension_cm': 300,
         }
 
@@ -615,10 +614,10 @@ class LogisticsPortal(CustomerPortal):
         if uses_indiapost:
             writer.writerow([])
             writer.writerow([
-                'India Post prices on size as well as weight. Parcels over 500 g '
-                'must measure at least 14 cm x 9 cm, and length + breadth + '
-                'height must not exceed 300 cm. Pad small heavy items out to at '
-                'least 14 x 9 x 1 cm or they cannot be shipped at all.'
+                'India Post prices on size as well as weight. Parcels must '
+                'measure at least 14 cm x 9 cm at every weight, and length + '
+                'breadth + height must not exceed 300 cm. Pad small items out '
+                'to at least 14 x 9 x 1 cm or they cannot be shipped at all.'
             ])
 
         csv_content = output.getvalue()

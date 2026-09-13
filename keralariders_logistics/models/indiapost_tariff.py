@@ -6,10 +6,12 @@ Post. Quotes are therefore cached on
 (environment, article type, source pincode, destination pincode, weight band,
 dimensions, VAS flags) for a configurable number of minutes.
 
-Speed Post is priced on ``/v1/speed-post/tariffs``. Business Parcel is a
+Speed Post is priced on ``/v1/speed-post/tariffs`` with
+``product-code=SP_INLAND_PARCEL`` (including articles below 501 g, so India
+Post does not auto-classify them as documents). Business Parcel is a
 different table: production answers on ``/v1/business-parcel-tariff/calculate``
-and the Speed Post path still returns HTTP 422 "No matching domestic speed
-post tariff found … product: BUSINESS_PARCEL".
+with ``product-code=BP``, and the Speed Post path still returns HTTP 422
+"No matching domestic speed post tariff found … product: BUSINESS_PARCEL".
 """
 
 from odoo import api, fields, models, _
@@ -106,7 +108,9 @@ class IndiapostTariff(models.AbstractModel):
                       length_cm, breadth_cm, height_cm, vas_key, environment,
                       article_type=ipc.ARTICLE_TYPE_SPEED_POST):
         raw = '|'.join(str(part) for part in (
-            environment, article_type, source_pincode, destination_pincode,
+            environment, article_type,
+            self._ip_tariff_product_code(article_type),
+            source_pincode, destination_pincode,
             weight_g, length_cm, breadth_cm, height_cm, vas_key,
         ))
         return hashlib.sha256(raw.encode('utf-8')).hexdigest()
@@ -117,6 +121,21 @@ class IndiapostTariff(models.AbstractModel):
         if article_type == ipc.ARTICLE_TYPE_BUSINESS_PARCEL:
             return BUSINESS_PARCEL_TARIFF_PATH
         return SPEED_POST_TARIFF_PATH
+
+    @api.model
+    def _ip_tariff_product_code(self, article_type=ipc.ARTICLE_TYPE_SPEED_POST):
+        """``product-code`` query value for the tariff GET.
+
+        Speed Post: request inland parcel even below 501 g so India Post does
+        not auto-classify the article as ``SP_INLAND_DOC``. Booking still
+        sends ``article_type=SP`` (the only Speed Post article type the
+        booking API accepts) with ``shape_of_article=NROL``.
+
+        Business Parcel stays ``BP`` on ``/v1/business-parcel-tariff/calculate``.
+        """
+        if article_type == ipc.ARTICLE_TYPE_BUSINESS_PARCEL:
+            return ipc.ARTICLE_TYPE_BUSINESS_PARCEL
+        return ipc.PRODUCT_PARCEL
 
     @api.model
     def _ip_normalize_tariff_payload(self, payload):
@@ -146,7 +165,7 @@ class IndiapostTariff(models.AbstractModel):
                           insurance_value=0.0,
                           article_type=ipc.ARTICLE_TYPE_SPEED_POST, **flags):
         params = {
-            'product-code': article_type,
+            'product-code': self._ip_tariff_product_code(article_type),
             'weight': int(weight_g),
             'source-pincode': source_pincode,
             'destination-pincode': destination_pincode,

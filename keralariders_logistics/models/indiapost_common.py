@@ -53,14 +53,17 @@ CONTRACT_SETTING_BY_ARTICLE_TYPE = {
 BOOKING_WEBHOOK_PATH = '/indiapost/bookingeventwebhook'
 OTHER_WEBHOOK_PATH = '/indiapost/othereventwebhook'
 
-# Within Speed Post the API picks one of these two concrete products from the
-# weight and returns the name in the tariff response.
+# Within Speed Post the tariff response names one of these two concrete
+# products. Sending product-code=SP lets India Post auto-classify ≤500 g as
+# SP_INLAND_DOC. KeralaXpress instead requests SP_INLAND_PARCEL at every
+# weight (cheaper parcel slab; confirmed allowed) and books with
+# shape_of_article=NROL so quote and booking stay on the same product.
 PRODUCT_DOC = 'SP_INLAND_DOC'
 PRODUCT_PARCEL = 'SP_INLAND_PARCEL'
 
-# The API picks the product purely from the physical weight. 500 g exactly is
-# still billed as a document (verified live: 500 g at 14 x 9 x 1 came back as
-# SP_INLAND_DOC), so the parcel rules only start above 500 g.
+# India Post's default classifier still treats 500 g exactly as a document
+# when we send product-code=SP. We no longer use that cut-over for quoting
+# or booking; the constant remains as the documented API default.
 DOC_WEIGHT_MAX_G = 500
 
 # shape_of_article: DOC for documents, ROLL for cylindrical parcels and NROL
@@ -266,11 +269,11 @@ def volumetric_weight_g(length_cm, breadth_cm, height_cm):
 def chargeable_weight_g(actual_g, length_cm, breadth_cm, height_cm):
     """The weight India Post bills.
 
-    Volumetric weight applies to parcels only. Verified against the live tariff
-    endpoint: a 250 g document measuring 40 x 29 x 2 cm has a volumetric weight
-    of 464 g but was quoted a chargeable weight of 250 g, and the same held at
-    100 g and 499 g. Cross the 500 g line and the volumetric rule kicks in, as
-    it did for 600 g at 30 x 20 x 15 cm (chargeable 1800 g).
+    Volumetric weight (L x B x H / 5) applies to parcels. KeralaXpress quotes
+    and books Speed Post as inland parcel at every weight, so a 250 g article
+    at 40 x 29 x 2 cm is charged on 464 g, not on the old document-only 250 g.
+    Documents (the API default below 501 g if we sent product-code=SP) skip
+    volumetric weight; we no longer classify Speed Post that way.
     """
     actual = int(actual_g or 0)
     if resolve_product_code(actual) == PRODUCT_DOC:
@@ -279,12 +282,22 @@ def chargeable_weight_g(actual_g, length_cm, breadth_cm, height_cm):
 
 
 def resolve_product_code(grams):
-    """The concrete Speed Post product the API will bill this weight as."""
-    return PRODUCT_PARCEL if int(grams or 0) > DOC_WEIGHT_MAX_G else PRODUCT_DOC
+    """The concrete Speed Post product we quote and book this article as.
+
+    Always inland parcel, including weights at or below 500 g. ``grams`` is
+    accepted so existing callers can pass the physical weight; it does not
+    change the product.
+    """
+    return PRODUCT_PARCEL
 
 
 def resolve_shape(grams, cylindrical=False):
-    """shape_of_article for a weight, given whether the package is a cylinder."""
+    """shape_of_article matching the Speed Post product we quote.
+
+    Booking only accepts SP/BP as ``article_type``. Parcel vs document is the
+    shape: NROL (or ROLL) for inland parcel, DOC for the document product we
+    no longer request.
+    """
     if resolve_product_code(grams) == PRODUCT_DOC:
         return SHAPE_DOC
     return SHAPE_CYLINDRICAL if cylindrical else SHAPE_RECTANGULAR
@@ -341,15 +354,14 @@ def validate_package(grams, length_cm, breadth_cm, height_cm):
         min_l, max_l = limits['length']
         min_b, max_b = limits['breadth']
         min_h, max_h = limits['height']
-        # The one that bites sellers: a small dense article at or above 500 g
-        # simply cannot travel by Speed Post.
+        # Speed Post is inland parcel at every weight, so a small dense
+        # article still has to meet the 14 x 9 cm parcel floor.
         if length < min_l or breadth < min_b:
             errors.append(
-                'An article over %.0f g is billed as a Speed Post parcel, and '
-                'parcels must measure at least %d cm x %d cm. This package is '
-                '%d cm x %d cm, so India Post cannot carry it. Repack it in a '
-                'box of at least %d x %d x 1 cm and re-measure.'
-                % (DOC_WEIGHT_MAX_G, min_l, min_b, length, breadth, min_l, min_b)
+                'India Post parcels must measure at least %d cm x %d cm. This '
+                'package is %d cm x %d cm, so India Post cannot carry it. '
+                'Repack it in a box of at least %d x %d x 1 cm and re-measure.'
+                % (min_l, min_b, length, breadth, min_l, min_b)
             )
         if length > max_l or breadth > max_b or height > max_h:
             errors.append(

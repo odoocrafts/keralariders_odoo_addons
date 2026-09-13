@@ -128,7 +128,32 @@ class TestIndiapostTariff(IndiapostHermeticMixin, TransactionCase):
 
         self.assertEqual(captured[0]['path'], SPEED_POST_TARIFF_PATH)
         self.assertEqual(captured[0]['params']['product-code'],
-                         ipc.ARTICLE_TYPE_SPEED_POST)
+                         ipc.PRODUCT_PARCEL)
         self.assertEqual(quote['article_type'], ipc.ARTICLE_TYPE_SPEED_POST)
         self.assertEqual(quote['vas_charges'], 68)
         self.assertEqual(quote['final_amount'], 304)
+
+    def test_quote_requests_inland_parcel_below_501_g(self):
+        """Light Speed Post must not be sent as product-code=SP (document slab)."""
+        captured = []
+
+        def fake_call(this, method, path, params=None, **kwargs):
+            captured.append({'method': method, 'path': path, 'params': params})
+            return _response(SP_PAYLOAD)
+
+        with patch.object(self.registry['logistics.indiapost.client'],
+                          'call', fake_call):
+            quote = self.Tariff.quote(
+                '676552', '683544', weight_g=500, length_cm=14,
+                breadth_cm=9, height_cm=1, use_cache=False,
+            )
+
+        self.assertEqual(captured[0]['method'], 'GET')
+        self.assertEqual(captured[0]['path'], SPEED_POST_TARIFF_PATH)
+        self.assertEqual(captured[0]['params']['product-code'],
+                         ipc.PRODUCT_PARCEL)
+        self.assertNotEqual(captured[0]['params']['product-code'],
+                            ipc.ARTICLE_TYPE_SPEED_POST)
+        self.assertEqual(captured[0]['params']['weight'], 500)
+        self.assertFalse(quote['is_document'])
+        self.assertEqual(quote['article_type'], ipc.ARTICLE_TYPE_SPEED_POST)

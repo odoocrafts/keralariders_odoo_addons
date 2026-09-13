@@ -13,7 +13,7 @@ def _ok_quote(**overrides):
         'ok': True,
         'article_type': ipc.ARTICLE_TYPE_SPEED_POST,
         'article_type_label': 'Speed Post',
-        'product_code': 'SP_INLAND_DOC',
+        'product_code': 'SP_INLAND_PARCEL',
         'source_pincode': '680681',
         'destination_pincode': '110001',
         'chargeable_weight_g': 250,
@@ -35,7 +35,7 @@ def _ok_quote(**overrides):
         'total_payable': 91.0,
         'insurance_value': 0.0,
         'warnings': [],
-        'is_document': True,
+        'is_document': False,
     }
     quote.update(overrides)
     return quote
@@ -77,6 +77,8 @@ class TestPortalCalculator(IndiapostHermeticMixin, HttpCase):
         self.assertIn('Business Parcel', page.text)
         self.assertIn('normal parcel', page.text)
         self.assertNotIn('India Post Speed Post', page.text)
+        self.assertIn('quoted as inland parcels, not documents', page.text)
+        self.assertNotIn('500 g and above', page.text)
 
     def test_calculator_posts_business_parcel_to_the_shared_quote_helper(self):
         captured = []

@@ -242,3 +242,72 @@ class TestIndiapostDeliveryCharge(IndiapostHermeticMixin, TransactionCase):
         self.assertIn('out of date', message)
         self.assertIn(IP_NETWORK_BLOCKED, message)
         self.assertFalse(self.shipment.wallet_transaction_id)
+
+
+@tagged('post_install', '-at_install')
+class TestIndiapostSpeedPostParcelMapping(IndiapostHermeticMixin, TransactionCase):
+    """Speed Post below 501 g is inland parcel, not the document slab."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls._ip_make_hermetic(enabled=True)
+        cls.seller = cls.env['logistics.seller'].create({
+            'name': 'India Post Parcel Mapping Seller',
+            'zip': '682001',
+            'phone': '9400662693',
+            'street': 'Kochi Head Office',
+        })
+        cls.seller.write({'fulfilment_method': 'indiapost'})
+
+    def setUp(self):
+        super().setUp()
+        self._ip_enable_stub_credentials()
+        self.settings = self.env['logistics.indiapost.client']._ip_settings()
+
+    def test_resolve_product_code_is_parcel_below_and_above_501_g(self):
+        for grams in (1, 250, 500, 501, 1500):
+            self.assertEqual(
+                ipc.resolve_product_code(grams), ipc.PRODUCT_PARCEL, grams)
+            self.assertNotEqual(
+                ipc.resolve_product_code(grams), ipc.PRODUCT_DOC, grams)
+
+    def test_light_article_uses_parcel_shape_and_volumetric_weight(self):
+        self.assertEqual(ipc.resolve_shape(250), ipc.SHAPE_RECTANGULAR)
+        self.assertEqual(ipc.resolve_shape(500, cylindrical=True),
+                         ipc.SHAPE_CYLINDRICAL)
+        # 40 x 29 x 2 cm / 5 = 464 g; documents used to skip this.
+        self.assertEqual(ipc.chargeable_weight_g(250, 40, 29, 2), 464)
+        self.assertEqual(ipc.chargeable_weight_g(500, 14, 9, 1), 500)
+
+    def test_light_article_must_meet_parcel_minimums_not_document_box(self):
+        errors, warnings = ipc.validate_package(250, 10, 5, 5)
+        self.assertTrue(errors)
+        self.assertTrue(any('14' in error and '9' in error for error in errors))
+        self.assertFalse(any('document' in warning.lower() for warning in warnings))
+
+        errors, warnings = ipc.validate_package(250, 30, 21, 2)
+        self.assertFalse(errors)
+        self.assertFalse(any('document' in warning.lower() for warning in warnings))
+
+    def test_booking_a_light_speed_post_article_sends_parcel_shape(self):
+        shipment = self.env['logistics.shipment'].create({
+            'seller_id': self.seller.id,
+            'shipping_to_name': 'India Post Customer',
+            'shipping_to_address': '12 Test Road, Test Nagar',
+            'shipping_to_zip': '695001',
+            'shipping_to_mobile': '9876543210',
+            'item_description': 'Light article',
+            'total_weight': 0.5,
+            'length_cm': 14,
+            'breadth_cm': 9,
+            'height_cm': 1,
+        })
+        self.assertEqual(shipment.indiapost_product_code, ipc.PRODUCT_PARCEL)
+        self.assertEqual(shipment.indiapost_shape, ipc.SHAPE_RECTANGULAR)
+
+        article = shipment._ip_prepare_article(self.settings, 'ET214330016IN')
+        self.assertEqual(article['article_type'], ipc.ARTICLE_TYPE_SPEED_POST)
+        self.assertEqual(article['shape_of_article'], ipc.SHAPE_RECTANGULAR)
+        self.assertNotEqual(article['shape_of_article'], ipc.SHAPE_DOC)
+        self.assertEqual(article['physical_weight'], 500)

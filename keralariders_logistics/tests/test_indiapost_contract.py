@@ -152,6 +152,12 @@ class TestIndiapostContracts(IndiapostHermeticMixin, TransactionCase):
             article_type=ipc.ARTICLE_TYPE_BUSINESS_PARCEL)
         self.assertEqual(params['product-code'],
                          ipc.ARTICLE_TYPE_BUSINESS_PARCEL)
+        sp_params = Tariff._ip_tariff_params(
+            '682001', '110001', 250, 30, 21, 2,
+            article_type=ipc.ARTICLE_TYPE_SPEED_POST)
+        self.assertEqual(sp_params['product-code'], ipc.PRODUCT_PARCEL)
+        self.assertNotEqual(sp_params['product-code'],
+                            ipc.ARTICLE_TYPE_SPEED_POST)
         # Two products at the same size are two different prices, so they may
         # not share a cache entry.
         args = ('682001', '110001', 250, 30, 21, 2, 'none', 'sandbox')
