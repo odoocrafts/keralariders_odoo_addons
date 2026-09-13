@@ -48,7 +48,10 @@
                                 </span>
                             </td>
                             <td class="text-end">
-                                <a t-attf-href="/my/orders/#{order.id}/print" class="btn btn-sm btn-outline-primary" title="Print All AWBs" target="_blank">
+                                <a t-if="order.state != 'draft'"
+                                   t-attf-href="/my/orders/#{order.id}/print"
+                                   class="btn btn-sm btn-outline-primary"
+                                   title="Print All AWBs" target="_blank">
                                     <i class="fa fa-print"/> Print
                                 </a>
                             </td>
@@ -78,7 +81,9 @@
                            class="btn btn-sm btn-primary me-2">
                             <i class="fa fa-plus me-1"/> Add Shipment
                         </a>
-                        <a t-attf-href="/my/orders/#{order.id}/print" class="btn btn-sm btn-outline-primary me-2" target="_blank">
+                        <a t-if="order.state != 'draft'"
+                           t-attf-href="/my/orders/#{order.id}/print"
+                           class="btn btn-sm btn-outline-primary me-2" target="_blank">
                             <i class="fa fa-print me-1"/> Print AWBs
                         </a>
                         <span class="badge bg-primary fs-6"><t t-esc="dict(order.fields_get(allfields=['state'])['state']['selection'])[order.state]"/></span>

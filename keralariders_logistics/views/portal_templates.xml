@@ -503,7 +503,10 @@
                                 <t t-else="">—</t>
                             </td>
                             <td class="text-end">
-                                <a t-attf-href="/report/pdf/keralariders_logistics.action_report_shipment/#{shipment.id}" class="btn btn-sm btn-outline-primary me-1" title="Print AWB" target="_blank">
+                                <a t-if="shipment.state != 'order_added'"
+                                   t-attf-href="/my/shipments/#{shipment.id}/print"
+                                   class="btn btn-sm btn-outline-primary me-1"
+                                   title="Print AWB" target="_blank">
                                     <i class="fa fa-print"/>
                                 </a>
                                 <a t-if="shipment.indiapost_article_number"

@@ -2997,6 +2997,12 @@ class Shipment(models.Model):
 
     state = fields.Selection(delivery_states, string='Delivery Status', default='order_added', tracking=True)
 
+    def portal_awb_printable(self):
+        """Seller portal may print AWBs only after pickup has been requested."""
+        if not self:
+            return False
+        return all(shipment.state != 'order_added' for shipment in self)
+
     wallet_transaction_id = fields.Many2one("logistics.wallet.transaction", string="Wallet Transaction (Legacy)")
 
     def action_add_wallet_transaction(self):

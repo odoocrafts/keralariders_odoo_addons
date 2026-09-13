@@ -692,6 +692,12 @@ class LogisticsPortal(CustomerPortal):
         }
         return request.render("keralariders_logistics.portal_my_order_detail", values)
 
+    def _portal_print_awb_denied(self, redirect_url):
+        request.session['error'] = _(
+            'AWB labels are available after you request pickup.'
+        )
+        return request.redirect(redirect_url)
+
     @http.route(['/my/orders/<int:order_id>/print'], type='http', auth="user", website=True)
     def portal_my_order_print(self, order_id=None, **kw):
         partner = request.env.user.partner_id
@@ -702,6 +708,9 @@ class LogisticsPortal(CustomerPortal):
         order = request.env['logistics.order'].search([('id', '=', order_id), ('seller_id', '=', seller.id)], limit=1)
         if not order:
             return request.redirect('/my/orders')
+
+        if not order.portal_awb_printable():
+            return self._portal_print_awb_denied(f'/my/orders/{order.id}')
             
         shipment_ids = order.shipment_ids.ids
         if not shipment_ids:
@@ -1081,6 +1090,24 @@ class LogisticsPortal(CustomerPortal):
             request.session['error'] = str(e)
             
         return request.redirect(f'/my/orders/{order.id}')
+
+    @http.route(['/my/shipments/<int:shipment_id>/print'], type='http',
+                auth="user", website=True)
+    def portal_my_shipment_print(self, shipment_id=None, **kw):
+        seller = self._portal_seller()
+        if not seller:
+            return request.redirect('/my')
+        shipment = request.env['logistics.shipment'].search([
+            ('id', '=', shipment_id),
+            ('seller_id', '=', seller.id),
+        ], limit=1)
+        if not shipment:
+            return request.redirect('/my/shipments')
+        if not shipment.portal_awb_printable():
+            return self._portal_print_awb_denied('/my/shipments')
+        return request.redirect(
+            f'/report/pdf/keralariders_logistics.action_report_shipment/{shipment.id}'
+        )
 
     @http.route(['/my/shipments/<int:shipment_id>/indiapost_label'], type='http',
                 auth="user", website=True)

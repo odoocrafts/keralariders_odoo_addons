@@ -317,6 +317,7 @@ class TestAwbPrintLayoutPortal(IndiapostHermeticMixin, HttpCase):
             'indiapost_article_number': ARTICLE,
             'indiapost_booking_state': 'booked',
             'indiapost_sort_code': 'S',
+            'state': 'pickup_requested',
         })
         html = self.env['ir.actions.report']._render_qweb_html(
             'keralariders_logistics.report_shipment_document',

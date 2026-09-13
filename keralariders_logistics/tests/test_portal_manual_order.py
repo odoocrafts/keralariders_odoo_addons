@@ -292,3 +292,92 @@ class TestPortalManualOrder(IndiapostHermeticMixin, HttpCase):
         self.env.invalidate_all()
         self.assertEqual(len(other.shipment_ids), before)
         self.assertFalse(self._orders_of(self.seller))
+
+    def _print_redirect(self, path):
+        return self.url_open(path, allow_redirects=False)
+
+    def _create_own_network_order(self):
+        form = self.url_open('/my/orders/manual')
+        self.url_open('/my/orders/create', data=self._shipment_post(
+            self._csrf(form.text),
+        ))
+        self.env.invalidate_all()
+        order = self._orders_of(self.seller)
+        self.assertEqual(len(order), 1)
+        return order
+
+    def test_draft_order_hides_print_and_rejects_print_url(self):
+        self.authenticate(self.portal_login, self.portal_login)
+        order = self._create_own_network_order()
+        shipment = order.shipment_ids
+        self.assertEqual(order.state, 'draft')
+        self.assertEqual(shipment.state, 'order_added')
+        self.assertFalse(order.portal_awb_printable())
+        self.assertFalse(shipment.portal_awb_printable())
+
+        listing = self.url_open('/my/orders')
+        self.assertNotIn('/my/orders/%s/print' % order.id, listing.text)
+
+        detail = self.url_open('/my/orders/%s' % order.id)
+        self.assertNotIn('Print AWBs', detail.text)
+        self.assertNotIn('/my/orders/%s/print' % order.id, detail.text)
+
+        shipments = self.url_open('/my/shipments')
+        self.assertNotIn('/my/shipments/%s/print' % shipment.id, shipments.text)
+
+        denied = self._print_redirect('/my/orders/%s/print' % order.id)
+        self.assertIn(denied.status_code, (301, 302, 303, 307))
+        self.assertIn('/my/orders/%s' % order.id, denied.headers.get('Location', ''))
+        self.assertNotIn('/report/pdf', denied.headers.get('Location', ''))
+
+        follow = self.url_open('/my/orders/%s/print' % order.id)
+        self.assertIn('after you request pickup', follow.text)
+        self.assertNotIn(
+            'application/pdf', follow.headers.get('Content-Type', ''))
+
+        ship_denied = self._print_redirect(
+            '/my/shipments/%s/print' % shipment.id)
+        self.assertIn(ship_denied.status_code, (301, 302, 303, 307))
+        self.assertIn('/my/shipments', ship_denied.headers.get('Location', ''))
+        self.assertNotIn('/report/pdf', ship_denied.headers.get('Location', ''))
+
+    def test_print_is_allowed_after_request_pickup(self):
+        self.authenticate(self.portal_login, self.portal_login)
+        order = self._create_own_network_order()
+        shipment = order.shipment_ids
+
+        detail = self.url_open('/my/orders/%s' % order.id)
+        pickup = self.url_open('/my/orders/request_pickup', data={
+            'csrf_token': self._csrf(detail.text),
+            'order_id': str(order.id),
+        })
+        self.assertEqual(pickup.status_code, 200)
+        self.env.invalidate_all()
+        self.assertEqual(order.state, 'pickup_requested')
+        self.assertEqual(shipment.state, 'pickup_requested')
+        self.assertTrue(order.portal_awb_printable())
+        self.assertTrue(shipment.portal_awb_printable())
+
+        listing = self.url_open('/my/orders')
+        self.assertIn('/my/orders/%s/print' % order.id, listing.text)
+        self.assertIn('Print', listing.text)
+
+        detail = self.url_open('/my/orders/%s' % order.id)
+        self.assertIn('Print AWBs', detail.text)
+        self.assertIn('/my/orders/%s/print' % order.id, detail.text)
+
+        allowed = self._print_redirect('/my/orders/%s/print' % order.id)
+        self.assertIn(allowed.status_code, (301, 302, 303, 307))
+        self.assertIn(
+            '/report/pdf/keralariders_logistics.action_report_shipment',
+            allowed.headers.get('Location', ''),
+        )
+
+        ship_allowed = self._print_redirect(
+            '/my/shipments/%s/print' % shipment.id)
+        self.assertIn(ship_allowed.status_code, (301, 302, 303, 307))
+        self.assertIn(
+            '/report/pdf/keralariders_logistics.action_report_shipment/%s'
+            % shipment.id,
+            ship_allowed.headers.get('Location', ''),
+        )

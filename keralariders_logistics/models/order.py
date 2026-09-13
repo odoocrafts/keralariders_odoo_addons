@@ -110,3 +110,12 @@ class Order(models.Model):
 
     def action_print_awb_delivery_slips(self):
         return self.env.ref('keralariders_logistics.action_report_shipment').report_action(self.shipment_ids)
+
+    def portal_awb_printable(self):
+        """Seller portal may print AWBs only after pickup has been requested."""
+        if not self:
+            return False
+        self.ensure_one()
+        if self.state == 'draft':
+            return False
+        return bool(self.shipment_ids) and self.shipment_ids.portal_awb_printable()
