@@ -22,6 +22,26 @@ _COD_SETTLEMENT_SELLER_TYPE_LABELS = {
 
 class LogisticsPortal(CustomerPortal):
 
+    _BULK_UPLOAD_TOKEN_KEY = 'bulk_upload_token'
+    _PICKUP_CONFIRM_TOKEN_PREFIX = 'pickup_confirm_token_'
+
+    @staticmethod
+    def _issue_oneshot_token(session_key):
+        """Put a fresh one-shot token in the session and return it for the form."""
+        token = uuid.uuid4().hex
+        request.session[session_key] = token
+        return token
+
+    @staticmethod
+    def _consume_oneshot_token(session_key, posted_token):
+        """Return True once; a replay (double-click, back-button) is False."""
+        session_token = request.session.pop(session_key, None)
+        return bool(posted_token and session_token and posted_token == session_token)
+
+    @staticmethod
+    def _pickup_confirm_token_key(order_id):
+        return '%s%s' % (LogisticsPortal._PICKUP_CONFIRM_TOKEN_PREFIX, order_id)
+
     @staticmethod
     def _cod_settlement_seller_type_label(transfer_type):
         """Map logistics.account.transfer transfer_type to a seller-friendly portal label."""
@@ -691,6 +711,10 @@ class LogisticsPortal(CustomerPortal):
             'error': request.session.pop('error', None),
             'success': request.session.pop('success', None),
         }
+        if order.state == 'draft':
+            values['pickup_confirm_token'] = self._issue_oneshot_token(
+                self._pickup_confirm_token_key(order.id),
+            )
         return request.render("keralariders_logistics.portal_my_order_detail", values)
 
     def _portal_print_awb_denied(self, redirect_url):
@@ -732,6 +756,9 @@ class LogisticsPortal(CustomerPortal):
             'page_name': 'order_new',
             'seller': seller,
             'error': request.session.pop('error', None),
+            'bulk_upload_token': self._issue_oneshot_token(
+                self._BULK_UPLOAD_TOKEN_KEY,
+            ),
             **self._shipment_form_indiapost_values(seller),
         }
         return request.render("keralariders_logistics.portal_my_order_new", values)
@@ -851,6 +878,15 @@ class LogisticsPortal(CustomerPortal):
         if not seller:
             return request.redirect('/my')
             
+        if not self._consume_oneshot_token(
+            self._BULK_UPLOAD_TOKEN_KEY, post.get('bulk_upload_token'),
+        ):
+            request.session['error'] = (
+                "This upload was already submitted. Open your orders list "
+                "to continue, or start a new upload."
+            )
+            return request.redirect('/my/orders')
+
         csv_file = post.get('csv_file')
         pickup_date = post.get('pickup_date')
         if not csv_file or not pickup_date:
@@ -1062,15 +1098,28 @@ class LogisticsPortal(CustomerPortal):
         seller = request.env['logistics.seller'].search([('partner_id', '=', partner.id)], limit=1)
         
         order = request.env['logistics.order'].search([
-            ('id', '=', order_id), 
+            ('id', '=', order_id),
             ('seller_id', '=', seller.id),
-            ('state', '=', 'draft')
         ], limit=1)
-        
+
         if not order:
-            request.session['error'] = "Order not found or not in Draft state."
+            request.session['error'] = "Order not found."
             return request.redirect('/my/orders')
-            
+        if order.state != 'draft':
+            request.session['success'] = (
+                "Pickup was already requested for Order %s." % order.name
+            )
+            return request.redirect(f'/my/orders/{order.id}')
+
+        if not self._consume_oneshot_token(
+            self._pickup_confirm_token_key(order.id),
+            post.get('pickup_confirm_token'),
+        ):
+            request.session['error'] = (
+                "This pickup request was already submitted."
+            )
+            return request.redirect(f'/my/orders/{order.id}')
+
         try:
             order.sudo().action_request_pickup()
             request.session['success'] = (

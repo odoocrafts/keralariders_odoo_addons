@@ -81,6 +81,12 @@ class TestPortalBulkUpload(IndiapostHermeticMixin, HttpCase):
         self.assertTrue(match, 'no csrf_token in the rendered page')
         return match.group(1)
 
+    def _hidden_value(self, html, name):
+        match = re.search(
+            r'name="%s"[^>]*\bvalue="([^"]*)"' % re.escape(name), html)
+        self.assertTrue(match, 'no %s in the rendered page' % name)
+        return match.group(1)
+
     def _csv_file(self):
         return ('bulk.csv', io.BytesIO(
             (CSV_HEADERS + '\n' + CSV_ROWS).encode('utf-8')
@@ -89,10 +95,26 @@ class TestPortalBulkUpload(IndiapostHermeticMixin, HttpCase):
     def _orders_of(self, seller):
         return self.env['logistics.order'].search([('seller_id', '=', seller.id)])
 
-    def _upload(self, csrf, **post):
+    def _wallet_of(self, seller):
+        return self.env['logistics.wallet'].search(
+            [('seller_id', '=', seller.id)], limit=1)
+
+    def _credit_wallet(self, seller, amount=5000.0):
+        wallet = self._wallet_of(seller)
+        self.env['logistics.wallet.transaction'].create({
+            'wallet_id': wallet.id,
+            'amount': amount,
+            'reference': 'Test top-up',
+        })
+        wallet.invalidate_recordset(['balance'])
+        return wallet
+
+    def _upload(self, form_html, **post):
         data = {
-            'csrf_token': csrf,
+            'csrf_token': self._csrf(form_html),
             'pickup_date': fields.Date.context_today(self.env.user).isoformat(),
+            'bulk_upload_token': self._hidden_value(
+                form_html, 'bulk_upload_token'),
         }
         data.update(post)
         return self.url_open(
@@ -100,6 +122,18 @@ class TestPortalBulkUpload(IndiapostHermeticMixin, HttpCase):
             data=data,
             files={'csv_file': self._csv_file()},
         )
+
+    def _confirm_pickup(self, order, detail_html=None):
+        if detail_html is None:
+            detail = self.url_open('/my/orders/%s' % order.id)
+            self.assertEqual(detail.status_code, 200)
+            detail_html = detail.text
+        return self.url_open('/my/orders/request_pickup', data={
+            'csrf_token': self._csrf(detail_html),
+            'order_id': str(order.id),
+            'pickup_confirm_token': self._hidden_value(
+                detail_html, 'pickup_confirm_token'),
+        })
 
     def _mock_tariff_client(self, captured):
         def fake_call(this, method, path, params=None, **kwargs):
@@ -124,6 +158,7 @@ class TestPortalBulkUpload(IndiapostHermeticMixin, HttpCase):
         self.assertIn('normal parcel', page.text)
         self.assertIn('kx_bulk_article_SP', page.text)
         self.assertIn('This choice applies to every row', page.text)
+        self.assertIn('name="bulk_upload_token"', page.text)
 
     def test_own_network_bulk_form_hides_india_post_service(self):
         self.authenticate(self.hub_login, self.hub_login)
@@ -137,9 +172,7 @@ class TestPortalBulkUpload(IndiapostHermeticMixin, HttpCase):
         self.authenticate(self.ip_login, self.ip_login)
         form = self.url_open('/my/orders/new')
         with self._mock_tariff_client(captured):
-            result = self._upload(
-                self._csrf(form.text), indiapost_article_type='BP',
-            )
+            result = self._upload(form.text, indiapost_article_type='BP')
         self.assertEqual(result.status_code, 200)
 
         self.env.invalidate_all()
@@ -166,7 +199,7 @@ class TestPortalBulkUpload(IndiapostHermeticMixin, HttpCase):
         self.authenticate(self.ip_login, self.ip_login)
         form = self.url_open('/my/orders/new')
         with self._mock_tariff_client(captured):
-            self._upload(self._csrf(form.text))
+            self._upload(form.text)
         self.env.invalidate_all()
         order = self._orders_of(self.ip_seller)
         self.assertEqual(len(order), 1)
@@ -183,7 +216,7 @@ class TestPortalBulkUpload(IndiapostHermeticMixin, HttpCase):
         self.authenticate(self.hub_login, self.hub_login)
         form = self.url_open('/my/orders/new')
         with self._mock_tariff_client(captured):
-            self._upload(self._csrf(form.text), indiapost_article_type='BP')
+            self._upload(form.text, indiapost_article_type='BP')
         self.env.invalidate_all()
         order = self._orders_of(self.hub_seller)
         self.assertEqual(len(order), 1)
@@ -201,7 +234,7 @@ class TestPortalBulkUpload(IndiapostHermeticMixin, HttpCase):
         self.authenticate(self.hub_login, self.hub_login)
         form = self.url_open('/my/orders/new')
         self._upload(
-            self._csrf(form.text),
+            form.text,
             fulfilment_method='indiapost',
             delivery_charges_total='1.0',
         )
@@ -215,3 +248,88 @@ class TestPortalBulkUpload(IndiapostHermeticMixin, HttpCase):
             self.assertNotAlmostEqual(
                 shipment.delivery_charges_total, 1.0, places=2,
             )
+
+    def test_preview_then_confirm_creates_one_order_and_debits_once(self):
+        """Preview persists the draft; Confirm only requests pickup on it."""
+        self.authenticate(self.hub_login, self.hub_login)
+        wallet = self._credit_wallet(self.hub_seller)
+        opening = wallet.balance
+
+        form = self.url_open('/my/orders/new')
+        preview = self._upload(form.text)
+        self.assertEqual(preview.status_code, 200)
+        self.env.invalidate_all()
+        order = self._orders_of(self.hub_seller)
+        self.assertEqual(len(order), 1)
+        self.assertEqual(order.state, 'draft')
+        self.assertEqual(len(order.shipment_ids), 2)
+        charge = order.total_charges
+        self.assertGreater(charge, 0.0)
+        wallet.invalidate_recordset(['balance'])
+        self.assertAlmostEqual(wallet.balance, opening, places=2)
+
+        confirm = self._confirm_pickup(order)
+        self.assertEqual(confirm.status_code, 200)
+        self.env.invalidate_all()
+        order = self._orders_of(self.hub_seller)
+        self.assertEqual(len(order), 1)
+        self.assertEqual(order.state, 'pickup_requested')
+        wallet.invalidate_recordset(['balance'])
+        self.assertAlmostEqual(wallet.balance, opening - charge, places=2)
+        self.assertEqual(
+            len(self.env['logistics.wallet.transaction'].search([
+                ('wallet_id', '=', wallet.id),
+                ('shipment_id', 'in', order.shipment_ids.ids),
+            ])),
+            2,
+        )
+
+    def test_double_preview_submit_creates_one_order(self):
+        """The one-shot token is the double-click guard on Preview."""
+        self.authenticate(self.hub_login, self.hub_login)
+        form = self.url_open('/my/orders/new')
+        token = self._hidden_value(form.text, 'bulk_upload_token')
+        first = self._upload(form.text)
+        self.assertEqual(first.status_code, 200)
+        second = self._upload(form.text, bulk_upload_token=token)
+        self.assertEqual(second.status_code, 200)
+        self.env.invalidate_all()
+        orders = self._orders_of(self.hub_seller)
+        self.assertEqual(len(orders), 1)
+        self.assertIn('already submitted', second.text)
+
+    def test_double_confirm_does_not_debit_twice(self):
+        self.authenticate(self.hub_login, self.hub_login)
+        wallet = self._credit_wallet(self.hub_seller)
+        opening = wallet.balance
+
+        form = self.url_open('/my/orders/new')
+        self._upload(form.text)
+        self.env.invalidate_all()
+        order = self._orders_of(self.hub_seller)
+        self.assertEqual(len(order), 1)
+        charge = order.total_charges
+
+        detail = self.url_open('/my/orders/%s' % order.id)
+        token = self._hidden_value(detail.text, 'pickup_confirm_token')
+        first = self._confirm_pickup(order, detail.text)
+        self.assertEqual(first.status_code, 200)
+        second = self.url_open('/my/orders/request_pickup', data={
+            'csrf_token': self._csrf(detail.text),
+            'order_id': str(order.id),
+            'pickup_confirm_token': token,
+        })
+        self.assertEqual(second.status_code, 200)
+        self.env.invalidate_all()
+        orders = self._orders_of(self.hub_seller)
+        self.assertEqual(len(orders), 1)
+        self.assertEqual(orders.state, 'pickup_requested')
+        wallet.invalidate_recordset(['balance'])
+        self.assertAlmostEqual(wallet.balance, opening - charge, places=2)
+        self.assertEqual(
+            len(self.env['logistics.wallet.transaction'].search([
+                ('wallet_id', '=', wallet.id),
+                ('amount', '<', 0),
+            ])),
+            2,
+        )

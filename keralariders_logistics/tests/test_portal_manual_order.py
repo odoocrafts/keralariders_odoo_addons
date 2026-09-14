@@ -65,6 +65,12 @@ class TestPortalManualOrder(IndiapostHermeticMixin, HttpCase):
         self.assertTrue(match, 'no csrf_token in the rendered page')
         return match.group(1)
 
+    def _hidden_value(self, html, name):
+        match = re.search(
+            r'name="%s"[^>]*\bvalue="([^"]*)"' % re.escape(name), html)
+        self.assertTrue(match, 'no %s in the rendered page' % name)
+        return match.group(1)
+
     def _shipment_post(self, csrf, **overrides):
         data = {
             'csrf_token': csrf,
@@ -350,6 +356,8 @@ class TestPortalManualOrder(IndiapostHermeticMixin, HttpCase):
         pickup = self.url_open('/my/orders/request_pickup', data={
             'csrf_token': self._csrf(detail.text),
             'order_id': str(order.id),
+            'pickup_confirm_token': self._hidden_value(
+                detail.text, 'pickup_confirm_token'),
         })
         self.assertEqual(pickup.status_code, 200)
         self.env.invalidate_all()

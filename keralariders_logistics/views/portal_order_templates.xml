@@ -122,9 +122,11 @@
                                     <a href="/my/wallet" class="btn btn-warning">Recharge Wallet</a>
                                 </t>
                                 <t t-else="">
-                                    <form action="/my/orders/request_pickup" method="post">
+                                    <form action="/my/orders/request_pickup" method="post"
+                                          onsubmit="var b=this.querySelector('button[type=submit]'); if(b){b.disabled=true;}">
                                         <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
                                         <input type="hidden" name="order_id" t-att-value="order.id"/>
+                                        <input type="hidden" name="pickup_confirm_token" t-att-value="pickup_confirm_token"/>
                                         <button type="submit" class="btn btn-success"><i class="fa fa-truck me-1"/> Confirm &amp; Request Pickup</button>
                                     </form>
                                 </t>
@@ -257,8 +259,10 @@
                 <div class="card-body">
                     <div class="row">
                         <div class="col-md-8">
-                            <form action="/my/orders/bulk_upload" method="post" enctype="multipart/form-data">
+                            <form action="/my/orders/bulk_upload" method="post" enctype="multipart/form-data"
+                                  onsubmit="var b=this.querySelector('button[type=submit]'); if(b){b.disabled=true;}">
                                 <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                                <input type="hidden" name="bulk_upload_token" t-att-value="bulk_upload_token"/>
                                 
                                 <div class="mb-4">
                                     <label for="pickup_date" class="form-label fw-bold">Pickup Date</label>
