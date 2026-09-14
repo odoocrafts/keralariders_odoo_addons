@@ -16,6 +16,12 @@ class ResConfigSettings(models.TransientModel):
         string="Logistics UPI ID",
         config_parameter='keralariders_logistics.logistics_upi_id',
     )
+    ops_notification_email = fields.Char(
+        string="Operations notification email",
+        config_parameter='keralariders_logistics.ops_notification_email',
+        help="Team inbox for seller recharge requests. If empty, logistics "
+             "administrators are emailed, then the company email.",
+    )
     company_cod_account_id = fields.Many2one(
         'logistics.account',
         string="Company COD Settlement Account",

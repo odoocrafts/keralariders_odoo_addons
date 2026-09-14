@@ -1,5 +1,11 @@
+import logging
+
+from markupsafe import Markup
 from odoo import models, fields, api, _
 from odoo.exceptions import AccessError
+from odoo.tools import html_escape
+
+_logger = logging.getLogger(__name__)
 
 FULFILMENT_METHODS = [
     ('indiapost', 'India Post (Speed Post)'),
@@ -91,7 +97,73 @@ class Seller(models.Model):
                     'seller_id': rec.id,
                     'reference': 'Auto-created seller COD settlement account',
                 }).id
+            rec._kx_notify_seller_welcome()
         return recs
+
+    def _kx_notify_seller_welcome(self):
+        """Queued welcome mail on seller create (signup, admin, portal user)."""
+        Mail = self.env['logistics.mail.notify'].sudo()
+        for rec in self:
+            email = (rec.email or rec.partner_id.email or '').strip()
+            if not email or '@' not in email:
+                continue
+            try:
+                base = Mail._kx_base_url()
+                login_url = '%s/web/login' % base if base else '/web/login'
+                portal_url = '%s/my' % base if base else '/my'
+                seller_name = rec.name or rec.partner_id.name or ''
+                support_email = Mail._kx_support_email()
+                support_phone = Mail._kx_support_phone()
+                support_bits = []
+                if support_email:
+                    support_bits.append(
+                        'email %s' % support_email)
+                if support_phone:
+                    support_bits.append('phone %s' % support_phone)
+                if support_bits:
+                    support_line = 'Reach KeralaXpress support at %s.' % (
+                        ' or '.join(support_bits),
+                    )
+                else:
+                    support_line = (
+                        'Reach KeralaXpress support from your seller portal '
+                        'or reply to this email.'
+                    )
+                inner = Markup(
+                    '<p>Hello %s,</p>'
+                    '<p>Your KeralaXpress seller account is ready. Sign in to '
+                    'request pickups, track shipments and manage your wallet.</p>'
+                    '<ul>'
+                    '<li><strong>Seller name:</strong> %s</li>'
+                    '<li><strong>Seller ID:</strong> %s</li>'
+                    '<li><strong>Login:</strong> <a href="%s">%s</a></li>'
+                    '<li><strong>Seller portal:</strong> <a href="%s">%s</a></li>'
+                    '</ul>'
+                    '<p>%s</p>'
+                ) % (
+                    html_escape(seller_name),
+                    html_escape(seller_name),
+                    html_escape(str(rec.id)),
+                    html_escape(login_url),
+                    html_escape(login_url),
+                    html_escape(portal_url),
+                    html_escape(portal_url),
+                    html_escape(support_line),
+                )
+                Mail._kx_queue_mail(
+                    email_to=email,
+                    subject=_('Welcome to KeralaXpress — your seller account is ready'),
+                    body_html=Mail._kx_wrap_body(
+                        _('Welcome to KeralaXpress'), inner),
+                    reply_to=support_email or False,
+                    res_model=self._name,
+                    res_id=rec.id,
+                )
+            except Exception:
+                _logger.exception(
+                    'Failed to queue KeralaXpress welcome email for seller %s',
+                    rec.id,
+                )
 
     def action_clear_cod_to_seller(self):
         """Admin helper: clear banked COD payments from company → this seller."""

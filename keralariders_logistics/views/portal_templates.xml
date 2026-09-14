@@ -1225,7 +1225,7 @@
                                             </div>
                                         </t>
                                         
-                                        <form action="/seller/signup/submit" method="post" class="oe_signup_form">
+                                        <form action="/seller/signup/submit" method="post" class="oe_signup_form" id="seller_signup_form">
                                             <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
                                             
                                             <!-- Avatar Upload with Cropper -->
@@ -1367,13 +1367,50 @@
                                             </div>
                                             
                                             <div class="d-grid gap-2 mt-4">
-                                                <button type="submit" class="btn btn-primary btn-lg rounded-pill fw-bold shadow-sm">
-                                                    Create Account
+                                                <button type="submit" class="btn btn-primary btn-lg rounded-pill fw-bold shadow-sm" id="seller_signup_submit_btn">
+                                                    <span class="o_recharge_paid_label">Create Account</span>
+                                                    <span class="o_recharge_paid_loading d-none">
+                                                        <i class="fa fa-spinner fa-spin me-1"/> Processing...
+                                                    </span>
                                                 </button>
-                                                <a href="/web/login" class="btn btn-link text-decoration-none mt-2 text-muted text-center">
+                                                <a href="/web/login" class="btn btn-link text-decoration-none mt-2 text-muted text-center" id="seller_signup_login_link">
                                                     Already have an account? <span class="fw-bold text-primary">Log in here</span>
                                                 </a>
                                             </div>
+                                            <script>
+                                                (function () {
+                                                    var form = document.getElementById('seller_signup_form');
+                                                    if (!form) {
+                                                        return;
+                                                    }
+                                                    form.addEventListener('submit', function (ev) {
+                                                        if (form.dataset.submitted === '1') {
+                                                            ev.preventDefault();
+                                                            return false;
+                                                        }
+                                                        form.dataset.submitted = '1';
+                                                        var submitBtn = document.getElementById('seller_signup_submit_btn');
+                                                        var loginLink = document.getElementById('seller_signup_login_link');
+                                                        if (submitBtn) {
+                                                            submitBtn.disabled = true;
+                                                            submitBtn.setAttribute('aria-busy', 'true');
+                                                            var label = submitBtn.querySelector('.o_recharge_paid_label');
+                                                            var loading = submitBtn.querySelector('.o_recharge_paid_loading');
+                                                            if (label) {
+                                                                label.classList.add('d-none');
+                                                            }
+                                                            if (loading) {
+                                                                loading.classList.remove('d-none');
+                                                            }
+                                                        }
+                                                        if (loginLink) {
+                                                            loginLink.classList.add('disabled', 'pe-none');
+                                                            loginLink.setAttribute('aria-disabled', 'true');
+                                                            loginLink.setAttribute('tabindex', '-1');
+                                                        }
+                                                    });
+                                                })();
+                                            </script>
                                         </form>
                                     </div>
                                 </div>

@@ -1,5 +1,6 @@
 from . import pincode_district
 from . import hub
+from . import mail_notify
 from . import seller
 from . import seller_api
 from . import wallet

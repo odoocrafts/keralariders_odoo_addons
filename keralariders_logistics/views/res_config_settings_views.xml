@@ -16,6 +16,10 @@
                                  help="Receives hub banking deposits and is the source for seller COD clearance">
                             <field name="company_cod_account_id" options="{'no_create': False}"/>
                         </setting>
+                        <setting id="ops_notification_email" string="Operations notification email"
+                                 help="Team inbox for seller recharge requests. If empty, logistics administrators are emailed instead.">
+                            <field name="ops_notification_email" placeholder="ops@example.com"/>
+                        </setting>
                     </block>
 
                     <block title="India Post (Department of Posts)"

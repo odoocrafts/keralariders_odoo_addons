@@ -1,7 +1,9 @@
 import logging
 
+from markupsafe import Markup
 from odoo import models, fields, api, _
 from odoo.exceptions import AccessError, UserError
+from odoo.tools import html_escape
 
 _logger = logging.getLogger(__name__)
 
@@ -342,40 +344,131 @@ class WalletRechargeRequest(models.Model):
         return activities
 
     def _notify_admins_recharge_request(self):
-        """Email / inbox notify logistics admins about a new wallet recharge request."""
-        try:
-            admin_users = self._get_logistics_admin_users()
-        except AccessError:
+        """Queue a team email for a new wallet recharge request (non-blocking)."""
+        Mail = self.env['logistics.mail.notify'].sudo()
+        email_to = Mail._kx_team_email_to()
+        if not email_to:
             _logger.warning(
-                "Could not resolve logistics admin users for recharge email "
-                "(insufficient rights for %s); skipping mail.",
-                self.env.user.login,
-                exc_info=True,
+                'Skipping recharge team email: no ops/admin/company recipient.'
             )
             return
-        partners = admin_users.mapped('partner_id').filtered(lambda p: p.email)
-        if not partners:
-            return
+        base = Mail._kx_base_url()
+        action = Mail.env.ref(
+            'keralariders_logistics.action_logistics_wallet_recharge_request',
+            raise_if_not_found=False,
+        )
+        list_url = '%s/web#model=logistics.wallet.recharge.request&view_type=list' % base
+        if action and base:
+            list_url = '%s/web#action=%s&model=logistics.wallet.recharge.request&view_type=list' % (
+                base, action.id,
+            )
         for request in self:
-            amount = request.currency_id.format(request.requested_amount) if request.currency_id else request.requested_amount
-            body = _(
-                "<p>A seller submitted a wallet recharge request.</p>"
-                "<ul>"
-                "<li><strong>Seller:</strong> %(seller)s</li>"
-                "<li><strong>Amount:</strong> %(amount)s</li>"
-                "<li><strong>Reference:</strong> %(reference)s</li>"
-                "</ul>"
-                "<p>Please verify the payment and approve or cancel the request.</p>",
-                seller=request.seller_id.display_name or '',
-                amount=amount,
-                reference=request.name or '',
-            )
-            request.sudo().message_notify(
-                partner_ids=partners.ids,
-                subject=_('Wallet recharge pending approval — %s') % (request.name or ''),
-                body=body,
-                email_layout_xmlid='mail.mail_notification_light',
-            )
+            try:
+                amount = (
+                    request.currency_id.format(request.requested_amount)
+                    if request.currency_id else request.requested_amount
+                )
+                form_url = list_url
+                if base and request.id:
+                    form_url = (
+                        '%s/web#id=%s&model=logistics.wallet.recharge.request&view_type=form'
+                        % (base, request.id)
+                    )
+                inner = Markup(
+                    '<p>A seller submitted a wallet recharge request and is waiting '
+                    'for KeralaXpress to verify the payment.</p>'
+                    '<ul>'
+                    '<li><strong>Seller:</strong> %s</li>'
+                    '<li><strong>Amount:</strong> %s</li>'
+                    '<li><strong>Request ref:</strong> %s</li>'
+                    '</ul>'
+                    '<p>Open the request: <a href="%s">%s</a><br/>'
+                    'Or review the recharge list: <a href="%s">%s</a></p>'
+                    '<p>Please verify the payment and approve or cancel the request.</p>'
+                ) % (
+                    html_escape(request.seller_id.display_name or ''),
+                    html_escape(str(amount)),
+                    html_escape(request.name or ''),
+                    html_escape(form_url),
+                    html_escape(form_url),
+                    html_escape(list_url),
+                    html_escape(list_url),
+                )
+                seller_email = (
+                    request.seller_id.email or request.seller_id.partner_id.email or ''
+                ).strip()
+                Mail._kx_queue_mail(
+                    email_to=email_to,
+                    subject=_('Wallet recharge pending approval — %s') % (
+                        request.name or ''),
+                    body_html=Mail._kx_wrap_body(
+                        _('Wallet recharge pending approval'), inner),
+                    reply_to=seller_email or False,
+                    res_model=self._name,
+                    res_id=request.id,
+                )
+            except Exception:
+                _logger.exception(
+                    'Failed to queue recharge team email for %s',
+                    request.name,
+                )
+
+    def _notify_seller_recharge_approved(self):
+        """Queue a seller confirmation after a recharge is credited."""
+        Mail = self.env['logistics.mail.notify'].sudo()
+        for request in self:
+            email = (
+                request.seller_id.email
+                or request.seller_id.partner_id.email
+                or ''
+            ).strip()
+            if not email or '@' not in email:
+                continue
+            try:
+                amount = (
+                    request.currency_id.format(request.recharged_amount)
+                    if request.currency_id else request.recharged_amount
+                )
+                wallet = request.wallet_id
+                wallet.invalidate_recordset(['balance'])
+                balance = (
+                    wallet.currency_id.format(wallet.balance)
+                    if wallet and wallet.currency_id else (
+                        wallet.balance if wallet else ''
+                    )
+                )
+                inner = Markup(
+                    '<p>Hello %s,</p>'
+                    '<p>Your wallet recharge has been approved and the amount '
+                    'has been credited.</p>'
+                    '<ul>'
+                    '<li><strong>Request ref:</strong> %s</li>'
+                    '<li><strong>Amount credited:</strong> %s</li>'
+                    '<li><strong>Wallet balance:</strong> %s</li>'
+                    '</ul>'
+                    '<p>You can use the balance from your seller portal to '
+                    'request pickups.</p>'
+                ) % (
+                    html_escape(request.seller_id.display_name or ''),
+                    html_escape(request.name or ''),
+                    html_escape(str(amount)),
+                    html_escape(str(balance)),
+                )
+                Mail._kx_queue_mail(
+                    email_to=email,
+                    subject=_('Wallet recharge approved — %s') % (
+                        request.name or ''),
+                    body_html=Mail._kx_wrap_body(
+                        _('Your recharge has been approved'), inner),
+                    reply_to=Mail._kx_support_email() or False,
+                    res_model=self._name,
+                    res_id=request.id,
+                )
+            except Exception:
+                _logger.exception(
+                    'Failed to queue recharge approval email for %s',
+                    request.name,
+                )
 
     def _complete_admin_approval_activities(self, feedback):
         """Mark open automated To-Do activities on these requests as done."""
@@ -415,6 +508,7 @@ class WalletRechargeRequest(models.Model):
                 'state': 'approved',
             })
             self._complete_admin_approval_activities(_('Approved'))
+            self._notify_seller_recharge_approved()
 
     def action_cancel(self):
         for request in self:
