@@ -265,6 +265,32 @@
                                     <input type="date" name="pickup_date" id="pickup_date" class="form-control" required="1" t-att-value="datetime.date.today().strftime('%Y-%m-%d')"/>
                                 </div>
 
+                                <div t-if="uses_indiapost" class="mb-4">
+                                    <label class="form-label fw-bold">India Post service</label>
+                                    <div class="d-flex flex-wrap gap-4">
+                                        <t t-foreach="indiapost_article_types" t-as="product">
+                                            <div class="form-check">
+                                                <input class="form-check-input" type="radio"
+                                                       t-att-id="'kx_bulk_article_%s' % product['code']"
+                                                       name="indiapost_article_type"
+                                                       t-att-value="product['code']"
+                                                       t-att-checked="'checked' if product['code'] == 'SP' else None"/>
+                                                <label class="form-check-label"
+                                                       t-att-for="'kx_bulk_article_%s' % product['code']">
+                                                    <t t-esc="product['label']"/>
+                                                    <span t-if="product['code'] == 'BP'" class="text-muted small">
+                                                        (normal parcel)
+                                                    </span>
+                                                </label>
+                                            </div>
+                                        </t>
+                                    </div>
+                                    <p class="text-muted small mb-0 mt-2">
+                                        This choice applies to every row in the CSV. Speed Post and
+                                        Business Parcel are priced and booked separately.
+                                    </p>
+                                </div>
+
                                 <div class="mb-4">
                                     <label class="form-label fw-bold">1. Download Template</label>
                                     <p class="text-muted small">
@@ -294,6 +320,15 @@
                                 <ol class="small ps-3 mb-0">
                                     <li class="mb-2">Download the CSV template.</li>
                                     <li class="mb-2">Fill in your shipments' details carefully. Do not change the headers. <strong>Phone, Address, and Pincode are mandatory</strong> for every row.</li>
+                                    <li t-if="uses_indiapost" class="mb-2">
+                                        Choose <strong>Speed Post</strong> or
+                                        <strong>Business Parcel</strong> above.
+                                        The selected service is used for every
+                                        row: charges, booking, and barcodes
+                                        (EY for Speed Post, CX for Business Parcel).
+                                        Length, breadth and height are required
+                                        because India Post prices on package size.
+                                    </li>
                                     <li class="mb-2">Upload the file here.</li>
                                     <li class="mb-2">We will parse the file and calculate the total delivery charges. Rows missing required fields are skipped with an error summary.</li>
                                     <li class="mb-0">You can then review the charges, recharge your wallet if needed, and confirm the pickup request!</li>

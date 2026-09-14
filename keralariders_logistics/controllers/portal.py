@@ -617,7 +617,9 @@ class LogisticsPortal(CustomerPortal):
                 'India Post prices on size as well as weight. Parcels must '
                 'measure at least 14 cm x 9 cm at every weight, and length + '
                 'breadth + height must not exceed 300 cm. Pad small items out '
-                'to at least 14 x 9 x 1 cm or they cannot be shipped at all.'
+                'to at least 14 x 9 x 1 cm or they cannot be shipped at all. '
+                'Speed Post vs Business Parcel is chosen on the upload form, '
+                'not in this CSV: that choice applies to every row.'
             ])
 
         csv_content = output.getvalue()
@@ -722,15 +724,15 @@ class LogisticsPortal(CustomerPortal):
 
     @http.route(['/my/orders/new'], type='http', auth="user", website=True)
     def portal_my_orders_new(self, **kw):
-        partner = request.env.user.partner_id
-        seller = request.env['logistics.seller'].search([('partner_id', '=', partner.id)], limit=1)
+        seller = self._portal_seller()
         if not seller:
             return request.redirect('/my')
-            
+
         values = {
             'page_name': 'order_new',
             'seller': seller,
             'error': request.session.pop('error', None),
+            **self._shipment_form_indiapost_values(seller),
         }
         return request.render("keralariders_logistics.portal_my_order_new", values)
 
@@ -953,11 +955,17 @@ class LogisticsPortal(CustomerPortal):
                     payment_type = 'prepaid'
 
                 try:
+                    # India Post product is order-level, like pickup date: the
+                    # radios on this form apply to every row. Hub sellers never
+                    # receive the field, and _shipment_package_vals ignores it
+                    # unless the seller actually uses India Post.
                     package_vals = self._shipment_package_vals({
                         'length_cm': _csv_cell(row, 'Length (cm)*', 'Length (cm)'),
                         'breadth_cm': _csv_cell(row, 'Breadth (cm)*', 'Breadth (cm)'),
                         'height_cm': _csv_cell(row, 'Height (cm)*', 'Height (cm)'),
                         'indiapost_pickup_date': pickup_date,
+                        'indiapost_article_type': post.get(
+                            'indiapost_article_type'),
                     }, seller)
                 except UserError as exc:
                     failed_count += 1

@@ -6,6 +6,7 @@ from . import test_indiapost_settings
 from . import test_indiapost_tariff
 from . import test_wallet_recharge_integrity
 from . import test_portal_manual_order
+from . import test_portal_bulk_upload
 from . import test_portal_calculator
 from . import test_indiapost_webhook
 from . import test_indiapost_autobook
