@@ -6,11 +6,17 @@
             <t t-set="breadcrumbs_searchbar" t-value="True"/>
             <t t-call="portal.portal_searchbar">
                 <t t-set="title">Orders</t>
-                <div class="form-inline ms-auto">
-                    <a href="/my/orders/manual" class="btn btn-primary me-2"><i class="fa fa-plus me-1"/> Add Order</a>
-                    <a href="/my/orders/new" class="btn btn-primary"><i class="fa fa-upload me-1"/> Bulk Upload Order</a>
-                </div>
             </t>
+            <!-- Outside portal_searchbar so the buttons are not folded into
+                 the mobile hamburger (#o_portal_navbar_content). -->
+            <div class="kx-portal-order-actions d-grid d-md-flex flex-wrap gap-2 mb-3">
+                <a href="/my/orders/manual" class="btn btn-primary">
+                    <i class="fa fa-plus me-1"/> Add Order
+                </a>
+                <a href="/my/orders/new" class="btn btn-outline-primary">
+                    <i class="fa fa-upload me-1"/> Bulk Upload Order
+                </a>
+            </div>
             
             <t t-if="error">
                 <div class="alert alert-danger" role="alert"><t t-esc="error"/></div>

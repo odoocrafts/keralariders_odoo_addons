@@ -104,6 +104,17 @@ class TestPortalManualOrder(IndiapostHermeticMixin, HttpCase):
         self.assertIn('Add Order', page.text)
         self.assertIn('/my/orders/new', page.text)
         self.assertIn('Bulk Upload Order', page.text)
+        actions = re.search(
+            r'<div class="kx-portal-order-actions[^"]*"[^>]*>(.*?)</div>',
+            page.text,
+            re.DOTALL,
+        )
+        self.assertTrue(
+            actions,
+            'Add/Bulk buttons must sit in kx-portal-order-actions, not the hamburger',
+        )
+        self.assertIn('/my/orders/manual', actions.group(1))
+        self.assertIn('/my/orders/new', actions.group(1))
 
     def test_own_network_seller_creates_an_order_and_shipment_without_excel(self):
         self.authenticate(self.portal_login, self.portal_login)
