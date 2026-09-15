@@ -91,6 +91,9 @@ class LogisticsPortal(CustomerPortal):
                 default_package = request.env['logistics.delivery.package'].sudo().search([('is_default', '=', True)], limit=1)
                 values['delivery_package_name'] = default_package.name if default_package else "Default"
 
+            acct = (seller.bank_account_number or '').strip()
+            values['seller_bank_hint'] = ('•••• %s' % acct[-4:]) if acct else ' '
+
         delivery_executive = request.env['logistics.delivery.executive'].sudo().search([('user_id', '=', request.env.user.id)], limit=1)
         values['is_delivery_executive'] = bool(delivery_executive)
         
@@ -2330,9 +2333,7 @@ class LogisticsPortal(CustomerPortal):
             ('state', '=', 'posted'),
         ], order='transfer_date desc, id desc', limit=5)
 
-        has_bank_details = bool(
-            seller.bank_account_name and seller.bank_account_number and seller.bank_ifsc
-        )
+        has_bank_details = seller.has_cod_bank_details()
         
         values.update({
             'transfers': transfers,
@@ -2375,6 +2376,38 @@ class LogisticsPortal(CustomerPortal):
         except (UserError, AccessError, ValueError) as e:
             request.session['error'] = str(e)
         return request.redirect('/my/cod_settlements')
+
+    # -------------------------------------------------------------------------
+    # Seller bank details for COD settlements
+    # -------------------------------------------------------------------------
+    @http.route(['/my/bank'], type='http', auth='user', website=True)
+    def portal_my_bank(self, **kw):
+        seller = self._portal_seller()
+        if not seller:
+            return request.redirect('/my')
+        values = self._prepare_portal_layout_values()
+        values.update({
+            'page_name': 'bank',
+            'seller': seller,
+            'error': request.session.pop('error', None),
+            'success': request.session.pop('success', None),
+        })
+        return request.render('keralariders_logistics.portal_my_bank', values)
+
+    @http.route(['/my/bank/update'], type='http', auth='user', website=True, methods=['POST'])
+    def portal_my_bank_update(self, **post):
+        seller = self._portal_seller()
+        if not seller:
+            return request.redirect('/my')
+        try:
+            vals = request.env['logistics.seller'].prepare_cod_bank_vals(post)
+            seller.sudo().write(vals)
+            request.session['success'] = _(
+                'Bank details updated. COD settlements will use this account.'
+            )
+        except (UserError, AccessError, ValidationError) as e:
+            request.session['error'] = str(e)
+        return request.redirect('/my/bank')
 
     # -------------------------------------------------------------------------
     # Seller REST API keys and documentation

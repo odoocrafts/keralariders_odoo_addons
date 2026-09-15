@@ -14,5 +14,6 @@ from . import test_indiapost_pickup_address
 from . import test_awb_print_layout
 from . import test_public_tracking
 from . import test_seller_api
+from . import test_portal_bank_details
 from . import test_kx_mail_notifications
 from . import test_staff_access

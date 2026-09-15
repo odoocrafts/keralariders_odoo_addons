@@ -48,6 +48,13 @@
                     <t t-set="text">View COD payments and settlements</t>
                 </t>
                 <t t-call="keralariders_logistics.logistics_portal_card">
+                    <t t-set="title">Bank Account</t>
+                    <t t-set="url" t-value="'/my/bank'"/>
+                    <t t-set="count_text" t-value="seller_bank_hint if seller_bank_hint else ' '"/>
+                    <t t-set="icon" t-value="'/keralariders_logistics/static/src/img/bank.svg'"/>
+                    <t t-set="text">Update account used for COD settlements</t>
+                </t>
+                <t t-call="keralariders_logistics.logistics_portal_card">
                     <t t-set="title">Charge Calculator</t>
                     <t t-set="url" t-value="'/my/calculator'"/>
                     <t t-set="count_text" t-value="' '"/>
@@ -73,6 +80,9 @@
             </li>
             <li t-if="page_name == 'cod_settlements'" class="breadcrumb-item">
                 COD Settlements
+            </li>
+            <li t-if="page_name == 'bank'" class="breadcrumb-item">
+                Bank Account
             </li>
             <li t-if="page_name in ('order', 'order_new', 'order_manual', 'order_shipment_new')" t-attf-class="breadcrumb-item #{'active ' if not order else ''}">
                 <a t-if="page_name in ('order_new', 'order_manual', 'order_shipment_new')" t-attf-href="/my/orders?{{ keep_query() }}">Orders</a>
@@ -305,7 +315,10 @@
                                 </button>
                             </t>
                             <t t-elif="not has_bank_details">
-                                <p class="mb-0 mt-3 small">Update your bank details to request a withdrawal.</p>
+                                <p class="mb-0 mt-3 small">
+                                    <a href="/my/bank" class="text-white text-decoration-underline">Update your bank details</a>
+                                    to request a withdrawal.
+                                </p>
                             </t>
                             <t t-elif="draft_withdrawals">
                                 <p class="mb-0 mt-3 small">A withdrawal request is pending admin approval.</p>
@@ -341,6 +354,7 @@
                                             <t t-esc="seller.bank_account_name"/> /
                                             <t t-esc="seller.bank_account_number"/> /
                                             <t t-esc="seller.bank_ifsc"/>.
+                                            <a href="/my/bank">Change account</a>.
                                             The request stays in draft until an admin approves it.
                                         </p>
                                     </div>
@@ -434,6 +448,129 @@
                             </t>
                         </tbody>
                     </t>
+                </div>
+            </div>
+        </t>
+    </template>
+
+    <!-- Seller bank details for COD settlements -->
+    <template id="portal_my_bank" name="Bank Account">
+        <t t-call="portal.portal_layout">
+            <t t-set="breadcrumbs_searchbar" t-value="True"/>
+
+            <t t-if="error">
+                <div class="alert alert-danger" role="alert"><t t-esc="error"/></div>
+            </t>
+            <t t-if="success">
+                <div class="alert alert-success" role="alert"><t t-esc="success"/></div>
+            </t>
+
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-white py-3">
+                    <h4 class="mb-0">COD Bank Details</h4>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted">
+                        KeralaXpress pays COD settlements to this account.
+                        Use the same details finance already has on file.
+                    </p>
+                    <form action="/my/bank/update" method="post" id="seller_bank_form">
+                        <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+
+                        <h6 class="text-muted mb-3 mt-2"><i class="fa fa-university me-1"/> Bank Details (for COD settlement)</h6>
+                        <div class="form-floating mb-3">
+                            <input type="text" name="bank_account_name" id="bank_account_name"
+                                   class="form-control" placeholder="Account Holder Name"
+                                   required="required" autocomplete="name"
+                                   t-att-value="seller.bank_account_name or ''"/>
+                            <label for="bank_account_name" class="text-muted"><i class="fa fa-user me-1"/> Account Holder Name</label>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-floating mb-3">
+                                    <input type="text" name="bank_account_number" id="bank_account_number"
+                                           class="form-control" placeholder="Account Number"
+                                           required="required" autocomplete="off" inputmode="numeric"
+                                           t-att-value="seller.bank_account_number or ''"/>
+                                    <label for="bank_account_number" class="text-muted"><i class="fa fa-credit-card me-1"/> Account Number</label>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-floating mb-3">
+                                    <input type="text" name="bank_ifsc" id="bank_ifsc"
+                                           class="form-control text-uppercase" placeholder="IFSC"
+                                           required="required" maxlength="11" autocomplete="off"
+                                           t-att-pattern="'[A-Za-z]{4}0[A-Za-z0-9]{6}'"
+                                           title="11-character IFSC, e.g. SBIN0001234"
+                                           t-att-value="seller.bank_ifsc or ''"/>
+                                    <label for="bank_ifsc" class="text-muted"><i class="fa fa-code me-1"/> IFSC Code</label>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-floating mb-3">
+                                    <input type="text" name="bank_name" id="bank_name"
+                                           class="form-control" placeholder="Bank Name"
+                                           autocomplete="organization"
+                                           t-att-value="seller.bank_name or ''"/>
+                                    <label for="bank_name" class="text-muted"><i class="fa fa-university me-1"/> Bank Name</label>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-floating mb-4">
+                                    <input type="text" name="bank_branch" id="bank_branch"
+                                           class="form-control" placeholder="Branch"
+                                           t-att-value="seller.bank_branch or ''"/>
+                                    <label for="bank_branch" class="text-muted"><i class="fa fa-map-marker me-1"/> Branch (Optional)</label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="d-flex align-items-center gap-2">
+                            <button type="submit" class="btn btn-primary" id="seller_bank_submit_btn">
+                                <span class="o_recharge_paid_label">Save Bank Details</span>
+                                <span class="o_recharge_paid_loading d-none">
+                                    <i class="fa fa-spinner fa-spin me-1"/> Processing...
+                                </span>
+                            </button>
+                            <a href="/my" class="btn btn-outline-secondary" id="seller_bank_cancel_btn">Back to My account</a>
+                        </div>
+                    </form>
+                    <script>
+                        (function () {
+                            var form = document.getElementById('seller_bank_form');
+                            if (!form) {
+                                return;
+                            }
+                            form.addEventListener('submit', function (ev) {
+                                if (form.dataset.submitted === '1') {
+                                    ev.preventDefault();
+                                    return false;
+                                }
+                                form.dataset.submitted = '1';
+                                var submitBtn = document.getElementById('seller_bank_submit_btn');
+                                var cancelBtn = document.getElementById('seller_bank_cancel_btn');
+                                if (submitBtn) {
+                                    submitBtn.disabled = true;
+                                    submitBtn.setAttribute('aria-busy', 'true');
+                                    var label = submitBtn.querySelector('.o_recharge_paid_label');
+                                    var loading = submitBtn.querySelector('.o_recharge_paid_loading');
+                                    if (label) {
+                                        label.classList.add('d-none');
+                                    }
+                                    if (loading) {
+                                        loading.classList.remove('d-none');
+                                    }
+                                }
+                                if (cancelBtn) {
+                                    cancelBtn.classList.add('disabled', 'pe-none');
+                                    cancelBtn.setAttribute('aria-disabled', 'true');
+                                    cancelBtn.setAttribute('tabindex', '-1');
+                                }
+                            });
+                        })();
+                    </script>
                 </div>
             </div>
         </t>

@@ -1,8 +1,9 @@
 import logging
+import re
 
 from markupsafe import Markup
 from odoo import models, fields, api, _
-from odoo.exceptions import AccessError
+from odoo.exceptions import AccessError, UserError
 from odoo.tools import html_escape
 
 _logger = logging.getLogger(__name__)
@@ -14,6 +15,19 @@ FULFILMENT_METHODS = [
 
 # Only a Logistics Administrator may decide how a seller's parcels travel.
 FULFILMENT_ADMIN_GROUP = 'keralariders_logistics.group_logistics_admin'
+
+# Indian IFSC: 4 letters, a 0, then 6 alphanumeric (e.g. SBIN0001234).
+_IFSC_RE = re.compile(r'^[A-Z]{4}0[A-Z0-9]{6}$')
+# Same three fields COD withdrawal already requires on logistics.seller.
+COD_BANK_REQUIRED_FIELDS = (
+    'bank_account_name',
+    'bank_account_number',
+    'bank_ifsc',
+)
+COD_BANK_FIELDS = COD_BANK_REQUIRED_FIELDS + (
+    'bank_name',
+    'bank_branch',
+)
 
 
 class Seller(models.Model):
@@ -239,6 +253,51 @@ class Seller(models.Model):
     bank_ifsc = fields.Char(string='IFSC Code', tracking=True)
     bank_name = fields.Char(string='Bank Name', tracking=True)
     bank_branch = fields.Char(string='Bank Branch', tracking=True)
+
+    def has_cod_bank_details(self):
+        """Whether COD withdrawal would accept this seller's bank details."""
+        self.ensure_one()
+        return all(self[field] for field in COD_BANK_REQUIRED_FIELDS)
+
+    @api.model
+    def prepare_cod_bank_vals(self, post):
+        """Normalise and validate the five COD bank fields from a portal POST.
+
+        Required fields match ``action_create_cod_withdrawal`` (holder name,
+        account number, IFSC). Bank name and branch are optional. IFSC is
+        checked against the standard 11-character Indian format.
+        """
+        name = (post.get('bank_account_name') or '').strip()
+        number = (post.get('bank_account_number') or '').strip().replace(' ', '')
+        ifsc = (post.get('bank_ifsc') or '').strip().upper().replace(' ', '')
+        bank_name = (post.get('bank_name') or '').strip()
+        branch = (post.get('bank_branch') or '').strip()
+
+        missing = []
+        if not name:
+            missing.append(_('account holder name'))
+        if not number:
+            missing.append(_('account number'))
+        if not ifsc:
+            missing.append(_('IFSC'))
+        if missing:
+            raise UserError(_(
+                "Please fill in %(fields)s. These are required for COD settlements.",
+                fields=', '.join(missing),
+            ))
+        if not _IFSC_RE.match(ifsc):
+            raise UserError(_(
+                "IFSC must be 11 characters (e.g. SBIN0001234): "
+                "four letters, a zero, then six letters or digits."
+            ))
+        vals = {
+            'bank_account_name': name,
+            'bank_account_number': number,
+            'bank_ifsc': ifsc,
+            'bank_name': bank_name,
+            'bank_branch': branch,
+        }
+        return {field: vals[field] for field in COD_BANK_FIELDS}
 
     seller_account_id = fields.Many2one(
         'logistics.account',
