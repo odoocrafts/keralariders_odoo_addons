@@ -310,7 +310,11 @@ class WalletRechargeRequest(models.Model):
         )
 
     def _schedule_admin_approval_activities(self):
-        """Create one To-Do activity per logistics admin for pending recharge requests."""
+        """Create one To-Do per logistics admin. Assignment email is suppressed.
+
+        ``mail.activity.action_notify`` would send '"… assigned to you"' from
+        the current user (the seller). Team mail is ``_notify_admins_recharge_request``.
+        """
         try:
             admin_users = self._get_logistics_admin_users()
         except AccessError:
@@ -344,7 +348,7 @@ class WalletRechargeRequest(models.Model):
         return activities
 
     def _notify_admins_recharge_request(self):
-        """Queue a team email for a new wallet recharge request (non-blocking)."""
+        """Queue a team email from the KeralaXpress mailbox (non-blocking)."""
         Mail = self.env['logistics.mail.notify'].sudo()
         email_to = Mail._kx_team_email_to()
         if not email_to:

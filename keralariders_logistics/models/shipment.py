@@ -2239,7 +2239,7 @@ class Shipment(models.Model):
         )
 
     def _notify_delivery_failed(self):
-        """Activity + email to admins; email seller and destination/current hub managers."""
+        """To-Do for admins plus queued KeralaXpress mail (seller/hub/ops)."""
         try:
             admin_users = self._get_logistics_admin_users()
         except AccessError:
@@ -2324,15 +2324,21 @@ class Shipment(models.Model):
             partners = partners.filtered(lambda p: p.email)
             if partners:
                 try:
-                    shipment.sudo().message_notify(
-                        partner_ids=partners.ids,
-                        subject=subject,
-                        body=body,
-                        email_layout_xmlid='mail.mail_notification_light',
-                    )
+                    Mail = self.env['logistics.mail.notify'].sudo()
+                    email_to = Mail._kx_emails_from_partners(partners)
+                    if email_to:
+                        Mail._kx_queue_mail(
+                            email_to=email_to,
+                            subject=subject,
+                            body_html=Mail._kx_wrap_body(
+                                _('Delivery failed'), Markup(body)),
+                            reply_to=Mail._kx_support_email() or False,
+                            res_model=self._name,
+                            res_id=shipment.id,
+                        )
                 except Exception:
                     _logger.warning(
-                        "Failed to email delivery-failed notify for %s",
+                        "Failed to queue delivery-failed notify for %s",
                         shipment.name, exc_info=True,
                     )
 

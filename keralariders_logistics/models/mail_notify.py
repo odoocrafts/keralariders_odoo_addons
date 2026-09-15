@@ -9,6 +9,10 @@ from odoo.tools import html_escape
 _logger = logging.getLogger(__name__)
 
 OPS_NOTIFICATION_PARAM = 'keralariders_logistics.ops_notification_email'
+FROM_NOTIFICATION_PARAM = 'keralariders_logistics.notification_email_from'
+KX_FROM_DOMAIN = 'keralaxpress.com'
+KX_FROM_FALLBACK = 'notifications@keralaxpress.com'
+KX_FROM_DISPLAY = 'KERALA XPRESS LOGISTICS'
 
 
 def _send_queued_mail_ids(dbname, mail_ids, context):
@@ -46,18 +50,60 @@ class LogisticsMailNotify(models.AbstractModel):
         ).rstrip('/')
 
     @api.model
+    def _kx_bare_email(self, value):
+        """Return the address portion of a From header or raw mailbox."""
+        text = (value or '').strip()
+        if not text:
+            return ''
+        if '<' in text and '>' in text:
+            text = text[text.rfind('<') + 1:text.rfind('>')].strip()
+        return text.split()[0].strip('<>,"\'').lower()
+
+    @api.model
+    def _kx_email_domain(self, value):
+        email = self._kx_bare_email(value)
+        if '@' not in email:
+            return ''
+        return email.rsplit('@', 1)[-1].lower()
+
+    @api.model
+    def _kx_format_from(self, address, display_name=False):
+        email = self._kx_bare_email(address) or KX_FROM_FALLBACK
+        name = (display_name or self.env.company.sudo().name or KX_FROM_DISPLAY).strip()
+        name = name.replace('<', '').replace('>', '') or KX_FROM_DISPLAY
+        return '%s <%s>' % (name, email)
+
+    @api.model
     def _kx_email_from(self):
-        """Follow company email / mail.default.from — never a hardcoded inbox."""
+        """From must be a keralaxpress.com mailbox — never the current user.
+
+        Prefer notifications@ when that is mail.default.from, the company
+        mailbox, or a dedicated config. Otherwise use mail.default.from or
+        company email_formatted only if the domain is keralaxpress.com.
+        """
         company = self.env.company.sudo()
-        partner = company.partner_id
-        formatted = getattr(partner, 'email_formatted', False) or False
-        if formatted:
-            return formatted
-        if company.email:
-            name = company.name or 'KeralaXpress'
-            return '%s <%s>' % (name, company.email)
-        return self.env['ir.config_parameter'].sudo().get_param(
-            'mail.default.from') or ''
+        icp = self.env['ir.config_parameter'].sudo()
+        display = (company.name or KX_FROM_DISPLAY).strip() or KX_FROM_DISPLAY
+        dedicated = (icp.get_param(FROM_NOTIFICATION_PARAM) or '').strip()
+        default_from = (icp.get_param('mail.default.from') or '').strip()
+        company_email = (company.email or '').strip()
+        formatted = (
+            getattr(company.partner_id, 'email_formatted', None) or ''
+        ).strip()
+
+        sources = (dedicated, default_from, company_email, formatted)
+        if any(self._kx_bare_email(raw) == KX_FROM_FALLBACK for raw in sources):
+            return self._kx_format_from(KX_FROM_FALLBACK, display)
+
+        if self._kx_email_domain(default_from) == KX_FROM_DOMAIN:
+            return self._kx_format_from(default_from, display)
+        if self._kx_email_domain(formatted) == KX_FROM_DOMAIN:
+            return self._kx_format_from(formatted, display)
+        if self._kx_email_domain(company_email) == KX_FROM_DOMAIN:
+            return self._kx_format_from(company_email, display)
+        if self._kx_email_domain(dedicated) == KX_FROM_DOMAIN:
+            return self._kx_format_from(dedicated, display)
+        return self._kx_format_from(KX_FROM_FALLBACK, display)
 
     @api.model
     def _kx_support_email(self):
@@ -124,6 +170,15 @@ class LogisticsMailNotify(models.AbstractModel):
         return ''
 
     @api.model
+    def _kx_emails_from_partners(self, partners):
+        emails = []
+        for partner in partners:
+            email = (partner.email or '').strip()
+            if email and '@' in email and email not in emails:
+                emails.append(email)
+        return ','.join(emails)
+
+    @api.model
     def _kx_wrap_body(self, title, inner_html):
         title_html = html_escape(title)
         inner = inner_html if isinstance(inner_html, Markup) else Markup(inner_html)
@@ -153,17 +208,22 @@ class LogisticsMailNotify(models.AbstractModel):
         if not email_to or not subject:
             return self.env['mail.mail']
 
-        from_addr = email_from or self._kx_email_from()
+        from_addr = self._kx_email_from()
+        if email_from and self._kx_email_domain(email_from) == KX_FROM_DOMAIN:
+            from_addr = self._kx_format_from(email_from)
         html = body_html if isinstance(body_html, Markup) else Markup(body_html or '')
         vals = {
             'subject': subject,
             'body_html': html,
             'body': html,
             'email_to': email_to,
-            'email_from': from_addr or False,
+            'email_from': from_addr,
             'auto_delete': True,
             'state': 'outgoing',
         }
+        root_partner = self.env.ref('base.partner_root', raise_if_not_found=False)
+        if root_partner:
+            vals['author_id'] = root_partner.id
         if reply_to:
             vals['reply_to'] = reply_to
         if res_model:
@@ -173,6 +233,7 @@ class LogisticsMailNotify(models.AbstractModel):
 
         mail = self.env['mail.mail'].sudo().with_context(
             default_type=None,
+            default_author_id=vals.get('author_id') or False,
             default_state='outgoing',
             mail_notify_force_send=False,
         ).create(vals)
@@ -213,3 +274,23 @@ class LogisticsMailNotify(models.AbstractModel):
             )
             # Last resort: still do not block this request on SMTP.
             _spawn_thread()
+
+
+class MailActivityKx(models.Model):
+    """Keep logistics To-Dos, but never email '"… assigned to you"' as the actor.
+
+    A seller submitting a recharge schedules admin activities. Odoo 19 then
+    ``message_notify``s each assignee from the current user, so From becomes
+    the seller Gmail and Titan rejects it. Team mail goes through
+    ``logistics.mail.notify`` instead.
+    """
+
+    _inherit = 'mail.activity'
+
+    def action_notify(self):
+        sendable = self.filtered(
+            lambda act: not (act.res_model or '').startswith('logistics.')
+        )
+        if not sendable:
+            return True
+        return super(MailActivityKx, sendable).action_notify()

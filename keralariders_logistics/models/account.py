@@ -1,7 +1,9 @@
 import logging
 
+from markupsafe import Markup
 from odoo import models, fields, api, _
 from odoo.exceptions import AccessError, UserError
+from odoo.tools import html_escape
 
 _logger = logging.getLogger(__name__)
 
@@ -584,7 +586,7 @@ class BankCashAccountTransfer(models.Model):
         )
 
     def _schedule_admin_approval_activities(self):
-        """Create one To-Do activity per logistics admin for draft COD withdrawals."""
+        """Create one To-Do per logistics admin. Assignment email is suppressed."""
         try:
             admin_users = self._get_logistics_admin_users()
         except AccessError:
@@ -631,40 +633,53 @@ class BankCashAccountTransfer(models.Model):
         )
 
     def _notify_admins_cod_withdrawal_request(self):
-        """Email / inbox notify logistics admins about a new COD withdrawal request."""
-        try:
-            admin_users = self._get_logistics_admin_users()
-        except AccessError:
+        """Queue a team email for a new COD withdrawal (company From, not seller)."""
+        Mail = self.env['logistics.mail.notify'].sudo()
+        email_to = Mail._kx_team_email_to()
+        if not email_to:
             _logger.warning(
-                "Could not resolve logistics admin users for COD withdrawal email "
-                "(insufficient rights for %s); skipping mail.",
-                self.env.user.login,
-                exc_info=True,
+                'Skipping COD withdrawal team email: no ops/admin/company recipient.'
             )
-            return
-        partners = admin_users.mapped('partner_id').filtered(lambda p: p.email)
-        if not partners:
             return
         for transfer in self:
-            amount = transfer.currency_id.format(transfer.amount) if transfer.currency_id else transfer.amount
-            body = _(
-                "<p>A seller requested a COD withdrawal.</p>"
-                "<ul>"
-                "<li><strong>Seller:</strong> %(seller)s</li>"
-                "<li><strong>Amount:</strong> %(amount)s</li>"
-                "<li><strong>Reference:</strong> %(reference)s</li>"
-                "</ul>"
-                "<p>Please review and approve or cancel the draft transfer.</p>",
-                seller=transfer.related_seller_id.display_name or '',
-                amount=amount,
-                reference=transfer.name or '',
-            )
-            transfer.sudo().message_notify(
-                partner_ids=partners.ids,
-                subject=_('COD withdrawal pending approval — %s') % (transfer.name or ''),
-                body=body,
-                email_layout_xmlid='mail.mail_notification_light',
-            )
+            try:
+                amount = (
+                    transfer.currency_id.format(transfer.amount)
+                    if transfer.currency_id else transfer.amount
+                )
+                seller_email = (
+                    transfer.related_seller_id.email
+                    or transfer.related_seller_id.partner_id.email
+                    or ''
+                ).strip()
+                inner = Markup(
+                    '<p>A seller requested a COD withdrawal.</p>'
+                    '<ul>'
+                    '<li><strong>Seller:</strong> %s</li>'
+                    '<li><strong>Amount:</strong> %s</li>'
+                    '<li><strong>Reference:</strong> %s</li>'
+                    '</ul>'
+                    '<p>Please review and approve or cancel the draft transfer.</p>'
+                ) % (
+                    html_escape(transfer.related_seller_id.display_name or ''),
+                    html_escape(str(amount)),
+                    html_escape(transfer.name or ''),
+                )
+                Mail._kx_queue_mail(
+                    email_to=email_to,
+                    subject=_('COD withdrawal pending approval — %s') % (
+                        transfer.name or ''),
+                    body_html=Mail._kx_wrap_body(
+                        _('COD withdrawal pending approval'), inner),
+                    reply_to=seller_email or False,
+                    res_model=self._name,
+                    res_id=transfer.id,
+                )
+            except Exception:
+                _logger.exception(
+                    'Failed to queue COD withdrawal team email for %s',
+                    transfer.name,
+                )
 
     def action_approve(self):
         """Approve draft transfer: post ledger transactions and complete activities."""

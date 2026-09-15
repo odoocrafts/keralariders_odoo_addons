@@ -59,6 +59,20 @@ class TestKxMailNotifications(TransactionCase):
         mock_send.assert_not_called()
         mock_after.assert_not_called()
 
+    def _assert_kx_from(self, mail, forbidden_email=None):
+        from_addr = (mail.email_from or '').lower()
+        self.assertIn(
+            'keralaxpress.com', from_addr,
+            'From must stay on the KeralaXpress domain: %s' % mail.email_from,
+        )
+        self.assertIn(
+            'notifications@', from_addr,
+            'From should be the notifications mailbox: %s' % mail.email_from,
+        )
+        if forbidden_email:
+            self.assertNotIn(forbidden_email.lower(), from_addr)
+        self.assertNotIn('assigned to you', (mail.subject or '').lower())
+
     def test_welcome_email_on_admin_seller_create(self):
         """Admin backend create of a seller with an email queues a welcome."""
         with patch.object(type(self.Mail), 'send') as mock_send, \
@@ -72,6 +86,7 @@ class TestKxMailNotifications(TransactionCase):
 
         mails = self._outgoing('Welcome to KeralaXpress', 'welcome.admin@example.com')
         self.assertEqual(len(mails), 1, mails.mapped('subject'))
+        self._assert_kx_from(mails)
         body = self._body(mails)
         self.assertIn('Welcome Admin Seller', body)
         self.assertIn(str(seller.id), body)
@@ -103,6 +118,7 @@ class TestKxMailNotifications(TransactionCase):
 
         mails = self._outgoing('Welcome to KeralaXpress', 'welcome.signup@example.com')
         self.assertEqual(len(mails), 1)
+        self._assert_kx_from(mails, forbidden_email='welcome.signup@example.com')
         self.assertIn(str(seller.id), self._body(mails))
 
     def test_no_welcome_when_seller_has_no_email(self):
@@ -134,6 +150,12 @@ class TestKxMailNotifications(TransactionCase):
 
         mails = self._outgoing('Wallet recharge pending approval', 'kx.ops.team@example.com')
         self.assertEqual(len(mails), 1, mails.mapped('email_to'))
+        self._assert_kx_from(mails, forbidden_email='recharge.seller@example.com')
+        self.assertIn(
+            'recharge.seller@example.com',
+            (mails.reply_to or '').lower(),
+            'Reply-To may be the seller; From must not',
+        )
         body = self._body(mails)
         self.assertIn('Recharge Mail Seller', body)
         self.assertIn(recharge.name, body)
@@ -181,6 +203,7 @@ class TestKxMailNotifications(TransactionCase):
 
         mails = self._outgoing('Wallet recharge approved', 'approval.seller@example.com')
         self.assertEqual(len(mails), 1)
+        self._assert_kx_from(mails, forbidden_email='approval.seller@example.com')
         body = self._body(mails)
         self.assertIn(recharge.name, body)
         self.assertIn('100', body)
@@ -206,3 +229,72 @@ class TestKxMailNotifications(TransactionCase):
         self.assertTrue(mail)
         self.assertEqual(mail.state, 'outgoing')
         self.assertEqual(mail.email_to, 'queued@example.com')
+        self._assert_kx_from(mail)
+
+    def test_queue_helper_ignores_gmail_from_override(self):
+        mail = self.Notify._kx_queue_mail(
+            email_to='queued@example.com',
+            subject='KX from override',
+            body_html='<p>queued</p>',
+            email_from='User cargo <techzy111@gmail.com>',
+        )
+        self._assert_kx_from(mail, forbidden_email='techzy111@gmail.com')
+
+    def test_email_from_prefers_notifications_mailbox(self):
+        self.env.company.sudo().write({'email': 'notifications@keralaxpress.com'})
+        from_addr = self.Notify._kx_email_from().lower()
+        self.assertIn('notifications@keralaxpress.com', from_addr)
+
+    def test_email_from_ignores_personal_company_mailbox(self):
+        self.env.company.sudo().write({'email': 'office@gmail.com'})
+        self.env.company.partner_id.sudo().write({'email': 'office@gmail.com'})
+        self.env['ir.config_parameter'].sudo().set_param('mail.default.from', '')
+        from_addr = self.Notify._kx_email_from().lower()
+        self.assertIn('notifications@keralaxpress.com', from_addr)
+        self.assertNotIn('gmail.com', from_addr)
+
+    def test_email_from_uses_default_from_on_keralaxpress_domain(self):
+        self.env.company.sudo().write({'email': 'office@gmail.com'})
+        self.env.company.partner_id.sudo().write({'email': 'office@gmail.com'})
+        self.env['ir.config_parameter'].sudo().set_param(
+            'mail.default.from', 'ops@keralaxpress.com')
+        from_addr = self.Notify._kx_email_from().lower()
+        self.assertIn('ops@keralaxpress.com', from_addr)
+        self.assertNotIn('gmail.com', from_addr)
+
+    def test_seller_recharge_does_not_send_assigned_to_you_from_gmail(self):
+        """Portal seller I-Have-Paid must not mail From their Gmail."""
+        self.env['ir.config_parameter'].sudo().set_param(
+            OPS_PARAM, 'kx.ops.team@example.com')
+        seller = self.env['logistics.seller'].create({
+            'name': 'User cargo',
+            'email': 'techzy111@gmail.com',
+            'zip': '682001',
+        })
+        portal_user = self.env['res.users'].create({
+            'name': 'User cargo',
+            'login': 'kx_mail_seller_cargo',
+            'email': 'techzy111@gmail.com',
+            'partner_id': seller.partner_id.id,
+            'group_ids': [(6, 0, [self.env.ref('base.group_portal').id])],
+        })
+        recharge = self.env['logistics.wallet.recharge.request'].with_user(
+            portal_user
+        ).sudo().create({
+            'seller_id': seller.id,
+            'wallet_id': seller.wallet_ids[0].id,
+            'requested_amount': 250.0,
+        })
+        assigned = self.Mail.sudo().search([
+            ('subject', 'ilike', 'assigned to you'),
+        ])
+        self.assertFalse(
+            assigned,
+            'activity assignment must not send SMTP mail: %s' % assigned.mapped('subject'),
+        )
+        mails = self._outgoing('Wallet recharge pending approval', 'kx.ops.team@example.com')
+        mails = mails.filtered(lambda m: recharge.name in (m.subject or ''))
+        self.assertEqual(len(mails), 1, mails.mapped('subject'))
+        self._assert_kx_from(mails, forbidden_email='techzy111@gmail.com')
+        self.assertIn(self.admin_user, recharge.activity_ids.mapped('user_id'))
+
