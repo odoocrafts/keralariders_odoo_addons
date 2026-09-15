@@ -12,6 +12,7 @@ from . import shipment_event
 from . import shipment_estimated_route
 from . import res_config_settings
 from . import account
+from . import staff_access
 
 # India Post integration. Loaded after the core models because these extend
 # logistics.shipment, logistics.order and logistics.seller.

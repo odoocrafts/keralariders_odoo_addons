@@ -7,7 +7,8 @@
         <field name="inherit_id" ref="base.res_config_settings_view_form"/>
         <field name="arch" type="xml">
             <xpath expr="//form" position="inside">
-                <app data-string="Logistics" string="Logistics" name="keralariders_logistics" groups="base.group_user">
+                <app data-string="Logistics" string="Logistics" name="keralariders_logistics"
+                     groups="keralariders_logistics.group_logistics_admin,keralariders_logistics.group_staff_administration">
                     <block title="Payment Settings" name="payment_settings_setting_container">
                         <setting id="logistics_upi" string="Logistics UPI ID" help="UPI ID for seller wallet recharges">
                             <field name="logistics_upi_id"/>
@@ -244,6 +245,13 @@
         <field name="view_mode">form</field>
         <field name="context">{'module' : 'keralariders_logistics', 'bin_size': False}</field>
     </record>
+
+    <menuitem id="menu_logistics_config_settings"
+              name="Settings"
+              parent="menu_logistics_configuration"
+              action="action_logistics_config_settings"
+              sequence="90"
+              groups="keralariders_logistics.group_logistics_admin,keralariders_logistics.group_staff_administration"/>
 
 
 </odoo>

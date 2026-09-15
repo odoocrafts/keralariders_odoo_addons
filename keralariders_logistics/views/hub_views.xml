@@ -242,10 +242,15 @@
         </field>
     </record>
 
-    <menuitem id="menu_logistics_hub_root" parent="menu_logistics_root" sequence="20" name="Network"/>
-    <menuitem id="menu_logistics_hub" parent="menu_logistics_hub_root" sequence="1" name="Hubs" action="action_logistics_hub"/>
-    <menuitem id="menu_logistics_pincode" parent="menu_logistics_hub_root" sequence="2" name="Pincodes" action="action_logistics_pincode"/>
-    <menuitem id="menu_hub_inventory" parent="menu_logistics_hub_root" sequence="3" name="Hub Inventory" action="action_hub_inventory"/>
-    <menuitem id="menu_shipment_events" parent="menu_logistics_hub_root" sequence="4" name="Custody Events" action="action_shipment_events"/>
+    <menuitem id="menu_logistics_hub_root" parent="menu_logistics_root" sequence="20" name="Network"
+              groups="keralariders_logistics.group_logistics_admin,keralariders_logistics.group_staff_network"/>
+    <menuitem id="menu_logistics_hub" parent="menu_logistics_hub_root" sequence="1" name="Hubs" action="action_logistics_hub"
+              groups="keralariders_logistics.group_logistics_admin,keralariders_logistics.group_staff_network"/>
+    <menuitem id="menu_logistics_pincode" parent="menu_logistics_hub_root" sequence="2" name="Pincodes" action="action_logistics_pincode"
+              groups="keralariders_logistics.group_logistics_admin,keralariders_logistics.group_staff_network"/>
+    <menuitem id="menu_hub_inventory" parent="menu_logistics_hub_root" sequence="3" name="Hub Inventory" action="action_hub_inventory"
+              groups="keralariders_logistics.group_logistics_admin,keralariders_logistics.group_staff_network"/>
+    <menuitem id="menu_shipment_events" parent="menu_logistics_hub_root" sequence="4" name="Custody Events" action="action_shipment_events"
+              groups="keralariders_logistics.group_logistics_admin,keralariders_logistics.group_staff_network"/>
 
 </odoo>

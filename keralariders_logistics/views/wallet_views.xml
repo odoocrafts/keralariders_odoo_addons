@@ -6,7 +6,7 @@
         <field name="arch" type="xml">
             <list string="Wallets">
                 <field name="name"/>
-                <field name="seller_id"/>
+                <field name="seller_id" groups="keralariders_logistics.group_logistics_admin,keralariders_logistics.group_staff_sellers"/>
                 <field name="balance" widget="monetary" options="{'currency_field': 'currency_id', 'fg_color': 'red: balance &lt; 0; green: balance >= 0'}"/>
                 <field name="currency_id" column_invisible="1"/>
             </list>
@@ -44,7 +44,8 @@
                         </button>
                     </div>
                     <group string="Wallet Information">
-                        <field name="seller_id" options="{'no_create': True}"/>
+                        <field name="seller_id" options="{'no_create': True}"
+                               groups="keralariders_logistics.group_logistics_admin,keralariders_logistics.group_staff_sellers"/>
                         <field name="name"/>
                         <field name="balance" widget="monetary" decoration-success="balance > 0" decoration-danger="balance &lt; 0"/>
                     </group>
@@ -61,7 +62,7 @@
             <kanban class="o_kanban_mobile" records_draggable="0" quick_create="0">
 
                 <field name="name"/>
-                <field name="seller_id"/>
+                <field name="seller_id" groups="keralariders_logistics.group_logistics_admin,keralariders_logistics.group_staff_sellers"/>
                 <field name="balance"/>
                 <field name="currency_id"/>
                 <field name="total_credit"/>
@@ -78,7 +79,7 @@
                                 </strong>
                             </div>
 
-                            <div class="text-muted mt-1">
+                            <div class="text-muted mt-1" groups="keralariders_logistics.group_logistics_admin,keralariders_logistics.group_staff_sellers">
                                 <i class="fa fa-user me-1"/>
                                 <field name="seller_id"/>
                             </div>
@@ -166,13 +167,10 @@
                 <!-- Global Search -->
                 <field name="name"
                     string="Wallet"
-                    filter_domain="[
-                        '|',
-                        ('name', 'ilike', self),
-                        ('seller_id.name', 'ilike', self)
-                    ]"/>
+                    filter_domain="[('name', 'ilike', self)]"/>
 
-                <field name="seller_id"/>
+                <field name="seller_id"
+                       groups="keralariders_logistics.group_logistics_admin,keralariders_logistics.group_staff_sellers"/>
 
                 <separator/>
 
@@ -193,7 +191,8 @@
 
                     <filter string="Seller"
                             name="group_seller"
-                            context="{'group_by': 'seller_id'}"/>
+                            context="{'group_by': 'seller_id'}"
+                            groups="keralariders_logistics.group_logistics_admin,keralariders_logistics.group_staff_sellers"/>
 
                 </group>
 
@@ -340,18 +339,21 @@
                 name="Wallets"
                 parent="menu_logistics_finance"
                 sequence="10"
+                groups="keralariders_logistics.group_logistics_admin,keralariders_logistics.group_staff_wallet"
     />
     <menuitem id="menu_logistics_wallet_wallet"
                 name="Wallets"
                 parent="menu_logistics_wallet"
                 action="action_logistics_wallet"
                 sequence="10"
+                groups="keralariders_logistics.group_logistics_admin,keralariders_logistics.group_staff_wallet"
     />
     <menuitem id="menu_wallet_transactions"
               name="Wallet Transactions"
               parent="menu_logistics_wallet"
               action="action_logistics_wallet_transaction"
-              sequence="20"/>
+              sequence="20"
+              groups="keralariders_logistics.group_logistics_admin,keralariders_logistics.group_staff_wallet"/>
 
 
 </odoo>

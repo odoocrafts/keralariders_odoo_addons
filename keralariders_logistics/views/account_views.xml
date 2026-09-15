@@ -705,29 +705,34 @@
                 name="Bank/Cash Accounts"
                 parent="menu_logistics_finance"
                 sequence="20"
+                groups="keralariders_logistics.group_logistics_admin,keralariders_logistics.group_staff_finance"
     />
     <menuitem id="menu_logistics_account_account"
                 name="Accounts"
                 parent="menu_logistics_account"
                 action="action_logistics_account"
                 sequence="10"
+                groups="keralariders_logistics.group_logistics_admin,keralariders_logistics.group_staff_finance"
     />
     <menuitem id="menu_logistics_account_transfers"
                 name="Account Transfers"
                 parent="menu_logistics_finance"
                 sequence="30"
+                groups="keralariders_logistics.group_logistics_admin,keralariders_logistics.group_staff_finance"
     />
     <menuitem id="menu_logistics_account_transfer_cod_payment"
                 name="COD Payment Transfers"
                 parent="menu_logistics_account_transfers"
                 sequence="10"
                 action="action_logistics_account_transfer_cod_payment"
+                groups="keralariders_logistics.group_logistics_admin,keralariders_logistics.group_staff_finance"
     />
     <menuitem id="menu_logistics_account_transfer_cod_clearance"
                 name="COD Clearance Transfers"
                 parent="menu_logistics_account_transfers"
                 sequence="20"
                 action="action_logistics_account_transfer_cod_clearance"
+                groups="keralariders_logistics.group_logistics_admin,keralariders_logistics.group_staff_finance"
     />
     <!-- Menu (hidden: hub deposit/banking still work via portal; use other transfer menus) -->
     <menuitem id="menu_logistics_account_transfer_hub_deposit"
@@ -735,6 +740,7 @@
                 parent="menu_logistics_account_transfers"
                 sequence="25"
                 action="action_logistics_account_transfer_hub_deposit"
+                groups="keralariders_logistics.group_logistics_admin,keralariders_logistics.group_staff_finance"
                 active="False"
     />
     <menuitem id="menu_logistics_account_transfer_hub_banking"
@@ -742,6 +748,7 @@
                 parent="menu_logistics_account_transfers"
                 sequence="26"
                 action="action_logistics_account_transfer_hub_banking"
+                groups="keralariders_logistics.group_logistics_admin,keralariders_logistics.group_staff_finance"
                 active="False"
     />
     <menuitem id="menu_logistics_account_transfer_other"
@@ -749,12 +756,14 @@
                 parent="menu_logistics_account_transfers"
                 sequence="30"
                 action="action_logistics_account_transfer_other"
+                groups="keralariders_logistics.group_logistics_admin,keralariders_logistics.group_staff_finance"
     />
     <menuitem id="menu_logistics_account_transaction"
                 name="All Transactions"
                 parent="menu_logistics_account"
                 action="action_logistics_account_transaction"
                 sequence="30"
+                groups="keralariders_logistics.group_logistics_admin,keralariders_logistics.group_staff_finance"
     />
 
 </odoo>

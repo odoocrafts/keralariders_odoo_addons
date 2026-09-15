@@ -31,5 +31,169 @@
             <field name="user_ids" eval="[(4, ref('base.user_root')), (4, ref('base.user_admin'))]"/>
             <field name="comment">Full access to all logistics management features.</field>
         </record>
+
+        <!-- Office staff: independent access packs (multi-select). Each pack is
+             its own privilege so the user form can grant several at once.
+             group_staff_base has no privilege (debug Extra Rights only) and is
+             implied by every pack so the Logistics app icon can be gated. -->
+        <record model="ir.module.category" id="module_category_kx_staff">
+            <field name="name">KeralaXpress Staff</field>
+            <field name="sequence">61</field>
+        </record>
+
+        <record id="group_staff_base" model="res.groups">
+            <field name="name">KeralaXpress Office Staff</field>
+            <field name="comment">Implied by every office access area. Shows the Logistics app; individual menus still require a pack.</field>
+        </record>
+
+        <record model="res.groups.privilege" id="privilege_staff_operations">
+            <field name="name">Operations</field>
+            <field name="sequence">10</field>
+            <field name="category_id" ref="module_category_kx_staff"/>
+            <field name="placeholder">No access</field>
+            <field name="description">Orders and shipments in the backend.</field>
+        </record>
+        <record id="group_staff_operations" model="res.groups">
+            <field name="name">Staff</field>
+            <field name="sequence">10</field>
+            <field name="privilege_id" ref="privilege_staff_operations"/>
+            <field name="implied_ids" eval="[(4, ref('group_staff_base'))]"/>
+            <field name="comment">Orders and shipments.</field>
+        </record>
+
+        <record model="res.groups.privilege" id="privilege_staff_network">
+            <field name="name">Network</field>
+            <field name="sequence">20</field>
+            <field name="category_id" ref="module_category_kx_staff"/>
+            <field name="placeholder">No access</field>
+            <field name="description">Hubs, pincodes, hub inventory and custody events.</field>
+        </record>
+        <record id="group_staff_network" model="res.groups">
+            <field name="name">Staff</field>
+            <field name="sequence">10</field>
+            <field name="privilege_id" ref="privilege_staff_network"/>
+            <field name="implied_ids" eval="[(4, ref('group_staff_base'))]"/>
+            <field name="comment">Hubs, pincodes, inventory and custody events.</field>
+        </record>
+
+        <record model="res.groups.privilege" id="privilege_staff_sellers">
+            <field name="name">Sellers</field>
+            <field name="sequence">30</field>
+            <field name="category_id" ref="module_category_kx_staff"/>
+            <field name="placeholder">No access</field>
+            <field name="description">Seller list and seller records.</field>
+        </record>
+        <record id="group_staff_sellers" model="res.groups">
+            <field name="name">Staff</field>
+            <field name="sequence">10</field>
+            <field name="privilege_id" ref="privilege_staff_sellers"/>
+            <field name="implied_ids" eval="[(4, ref('group_staff_base'))]"/>
+            <field name="comment">Seller list.</field>
+        </record>
+
+        <record model="res.groups.privilege" id="privilege_staff_delivery">
+            <field name="name">Delivery Executives</field>
+            <field name="sequence">40</field>
+            <field name="category_id" ref="module_category_kx_staff"/>
+            <field name="placeholder">No access</field>
+            <field name="description">Delivery executive records.</field>
+        </record>
+        <record id="group_staff_delivery" model="res.groups">
+            <field name="name">Staff</field>
+            <field name="sequence">10</field>
+            <field name="privilege_id" ref="privilege_staff_delivery"/>
+            <field name="implied_ids" eval="[(4, ref('group_staff_base'))]"/>
+            <field name="comment">Delivery executive list.</field>
+        </record>
+
+        <record model="res.groups.privilege" id="privilege_staff_wallet">
+            <field name="name">Wallet</field>
+            <field name="sequence">50</field>
+            <field name="category_id" ref="module_category_kx_staff"/>
+            <field name="placeholder">No access</field>
+            <field name="description">Seller wallets, transactions and recharge requests.</field>
+        </record>
+        <record id="group_staff_wallet" model="res.groups">
+            <field name="name">Staff</field>
+            <field name="sequence">10</field>
+            <field name="privilege_id" ref="privilege_staff_wallet"/>
+            <field name="implied_ids" eval="[(4, ref('group_staff_base'))]"/>
+            <field name="comment">Wallets, transactions and recharge requests.</field>
+        </record>
+
+        <record model="res.groups.privilege" id="privilege_staff_finance">
+            <field name="name">Finance</field>
+            <field name="sequence">60</field>
+            <field name="category_id" ref="module_category_kx_staff"/>
+            <field name="placeholder">No access</field>
+            <field name="description">Bank/cash accounts, COD transfers and account transactions.</field>
+        </record>
+        <record id="group_staff_finance" model="res.groups">
+            <field name="name">Staff</field>
+            <field name="sequence">10</field>
+            <field name="privilege_id" ref="privilege_staff_finance"/>
+            <field name="implied_ids" eval="[(4, ref('group_staff_base'))]"/>
+            <field name="comment">Accounts, COD transfers and cash movements.</field>
+        </record>
+
+        <record model="res.groups.privilege" id="privilege_staff_indiapost">
+            <field name="name">India Post</field>
+            <field name="sequence">70</field>
+            <field name="category_id" ref="module_category_kx_staff"/>
+            <field name="placeholder">No access</field>
+            <field name="description">India Post barcodes, offices, cached rates and API log.</field>
+        </record>
+        <record id="group_staff_indiapost" model="res.groups">
+            <field name="name">Staff</field>
+            <field name="sequence">10</field>
+            <field name="privilege_id" ref="privilege_staff_indiapost"/>
+            <field name="implied_ids" eval="[(4, ref('group_staff_base'))]"/>
+            <field name="comment">India Post fulfilment menus.</field>
+        </record>
+
+        <record model="res.groups.privilege" id="privilege_staff_api">
+            <field name="name">API Keys</field>
+            <field name="sequence">80</field>
+            <field name="category_id" ref="module_category_kx_staff"/>
+            <field name="placeholder">No access</field>
+            <field name="description">Seller REST API keys and request log.</field>
+        </record>
+        <record id="group_staff_api" model="res.groups">
+            <field name="name">Staff</field>
+            <field name="sequence">10</field>
+            <field name="privilege_id" ref="privilege_staff_api"/>
+            <field name="implied_ids" eval="[(4, ref('group_staff_base'))]"/>
+            <field name="comment">Seller API keys and request log.</field>
+        </record>
+
+        <record model="res.groups.privilege" id="privilege_staff_configuration">
+            <field name="name">Configuration</field>
+            <field name="sequence">90</field>
+            <field name="category_id" ref="module_category_kx_staff"/>
+            <field name="placeholder">No access</field>
+            <field name="description">Delivery packages and rate cards.</field>
+        </record>
+        <record id="group_staff_configuration" model="res.groups">
+            <field name="name">Staff</field>
+            <field name="sequence">10</field>
+            <field name="privilege_id" ref="privilege_staff_configuration"/>
+            <field name="implied_ids" eval="[(4, ref('group_staff_base'))]"/>
+            <field name="comment">Delivery packages and rate cards.</field>
+        </record>
+
+        <record model="res.groups.privilege" id="privilege_staff_administration">
+            <field name="name">Administration</field>
+            <field name="sequence">100</field>
+            <field name="category_id" ref="module_category_kx_staff"/>
+            <field name="placeholder">No access</field>
+            <field name="description">Create staff logins, logistics settings, and Odoo Settings/Apps.</field>
+        </record>
+        <record id="group_staff_administration" model="res.groups">
+            <field name="name">Staff</field>
+            <field name="sequence">10</field>
+            <field name="privilege_id" ref="privilege_staff_administration"/>
+            <field name="implied_ids" eval="[(4, ref('group_staff_base')), (4, ref('base.group_system'))]"/>
+            <field name="comment">Staff access, logistics settings, Settings and Apps.</field>
+        </record>
     </data>
 </odoo>

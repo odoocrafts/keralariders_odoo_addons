@@ -67,11 +67,11 @@ class SellerApiCredential(models.Model):
     )
     secret_salt = fields.Char(
         required=True, copy=False,
-        groups='keralariders_logistics.group_logistics_admin',
+        groups='keralariders_logistics.group_logistics_admin,keralariders_logistics.group_staff_api',
     )
     secret_hash = fields.Char(
         required=True, copy=False,
-        groups='keralariders_logistics.group_logistics_admin',
+        groups='keralariders_logistics.group_logistics_admin,keralariders_logistics.group_staff_api',
     )
     state = fields.Selection(
         [
@@ -334,8 +334,11 @@ class Seller(models.Model):
     def action_generate_api_credentials(self):
         """Admin helper: mint a new key. The secret is not shown in the backend."""
         self.ensure_one()
-        if not self.env.user.has_group('keralariders_logistics.group_logistics_admin'):
-            raise AccessError(_("Only a Logistics Administrator can generate keys here."))
+        if not (
+            self.env.user.has_group('keralariders_logistics.group_logistics_admin')
+            or self.env.user.has_group('keralariders_logistics.group_staff_api')
+        ):
+            raise AccessError(_("Only logistics staff with API Keys access can generate keys here."))
         credential, _secret = self.env['logistics.seller.api.credential'].generate_for_seller(self)
         return {
             'type': 'ir.actions.client',

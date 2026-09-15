@@ -372,7 +372,7 @@
     <!-- ================================================================ -->
     <menuitem id="menu_indiapost_root" name="India Post"
               parent="menu_logistics_root" sequence="25"
-              groups="keralariders_logistics.group_logistics_admin"/>
+              groups="keralariders_logistics.group_logistics_admin,keralariders_logistics.group_staff_indiapost"/>
     <menuitem id="menu_indiapost_barcode_range" name="Barcode Ranges"
               parent="menu_indiapost_root" sequence="1"
               action="action_indiapost_barcode_range"/>

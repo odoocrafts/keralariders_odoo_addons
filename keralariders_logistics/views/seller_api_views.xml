@@ -122,7 +122,7 @@
 
     <menuitem id="menu_seller_api_root" name="Seller API"
               parent="menu_logistics_configuration" sequence="40"
-              groups="keralariders_logistics.group_logistics_admin"/>
+              groups="keralariders_logistics.group_logistics_admin,keralariders_logistics.group_staff_api"/>
     <menuitem id="menu_seller_api_credential" name="API Keys"
               parent="menu_seller_api_root" sequence="1"
               action="action_seller_api_credential"/>

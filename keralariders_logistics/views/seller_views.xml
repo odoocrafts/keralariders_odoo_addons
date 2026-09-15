@@ -289,13 +289,19 @@
         <field name="search_view_id" ref="view_logistics_seller_search"/>
     </record>
 
-    <menuitem id="menu_logistics_root" name="Logistics Management" web_icon="keralariders_logistics,static/description/icon.png" sequence="0"/>
+    <menuitem id="menu_logistics_root" name="Logistics Management" web_icon="keralariders_logistics,static/description/icon.png" sequence="0"
+              groups="keralariders_logistics.group_logistics_admin,keralariders_logistics.group_staff_base"/>
 
     <!-- Top-level menu groups -->
-    <menuitem id="menu_logistics_operations" name="Operations" parent="menu_logistics_root" sequence="10"/>
-    <menuitem id="menu_logistics_partners" name="Partners" parent="menu_logistics_root" sequence="30"/>
-    <menuitem id="menu_logistics_finance" name="Finance" parent="menu_logistics_root" sequence="40"/>
-    <menuitem id="menu_logistics_configuration" name="Configuration" parent="menu_logistics_root" sequence="50"/>
+    <menuitem id="menu_logistics_operations" name="Operations" parent="menu_logistics_root" sequence="10"
+              groups="keralariders_logistics.group_logistics_admin,keralariders_logistics.group_staff_operations"/>
+    <menuitem id="menu_logistics_partners" name="Partners" parent="menu_logistics_root" sequence="30"
+              groups="keralariders_logistics.group_logistics_admin,keralariders_logistics.group_staff_sellers,keralariders_logistics.group_staff_delivery"/>
+    <menuitem id="menu_logistics_finance" name="Finance" parent="menu_logistics_root" sequence="40"
+              groups="keralariders_logistics.group_logistics_admin,keralariders_logistics.group_staff_finance,keralariders_logistics.group_staff_wallet"/>
+    <menuitem id="menu_logistics_configuration" name="Configuration" parent="menu_logistics_root" sequence="50"
+              groups="keralariders_logistics.group_logistics_admin,keralariders_logistics.group_staff_configuration,keralariders_logistics.group_staff_api,keralariders_logistics.group_staff_administration"/>
 
-    <menuitem id="menu_logistics_seller_root" parent="menu_logistics_partners" name="Sellers" action="action_logistics_seller" sequence="1"/>
+    <menuitem id="menu_logistics_seller_root" parent="menu_logistics_partners" name="Sellers" action="action_logistics_seller" sequence="1"
+              groups="keralariders_logistics.group_logistics_admin,keralariders_logistics.group_staff_sellers"/>
 </odoo>

@@ -315,5 +315,6 @@
         <field name="view_mode">kanban,list,form</field>
     </record>
 
-    <menuitem id="menu_logistics_order" name="Orders" parent="menu_logistics_operations" action="action_logistics_order" sequence="1"/>
+    <menuitem id="menu_logistics_order" name="Orders" parent="menu_logistics_operations" action="action_logistics_order" sequence="1"
+              groups="keralariders_logistics.group_logistics_admin,keralariders_logistics.group_staff_operations"/>
 </odoo>

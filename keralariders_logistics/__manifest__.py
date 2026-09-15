@@ -1,6 +1,6 @@
 {
     'name': 'Kerala Riders Logistics',
-    'version': '1.6.5',
+    'version': '1.6.6',
     'category': 'Operations/Logistics',
     'summary': 'Last-mile delivery management platform for Kerala Riders',
     'description': """
@@ -52,6 +52,7 @@ Features:
         "views/account_views.xml",
         "wizard/cod_payment_views.xml",
         "wizard/create_hub_manager_wizard_views.xml",
+        "wizard/create_staff_user_wizard_views.xml",
         "views/hub_views.xml",
         'views/res_config_settings_views.xml',
         'views/tracking_template.xml',
@@ -64,6 +65,8 @@ Features:
         'views/brand_overrides.xml',
         'views/indiapost_views.xml',
         'views/seller_api_views.xml',
+        'views/staff_access_views.xml',
+        'data/staff_access_pack_data.xml',
         # Loaded last: the crons reference model_* ids and the office seed
         # calls a method on logistics.indiapost.office.
         'data/indiapost_data.xml',

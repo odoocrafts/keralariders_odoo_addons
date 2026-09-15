@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_kx_staff_user_tree" model="ir.ui.view">
+        <field name="name">res.users.kx.staff.list</field>
+        <field name="model">res.users</field>
+        <field name="priority">200</field>
+        <field name="arch" type="xml">
+            <list string="Office Staff" create="0" delete="0">
+                <field name="name"/>
+                <field name="login"/>
+                <field name="email"/>
+                <field name="kx_staff_pack_summary"/>
+                <field name="active"/>
+                <button name="action_open_kx_staff_access_wizard"
+                        type="object"
+                        string="Edit Areas"
+                        icon="fa-pencil"
+                        display="always"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_kx_staff_user_form" model="ir.ui.view">
+        <field name="name">res.users.kx.staff.form</field>
+        <field name="model">res.users</field>
+        <field name="priority">200</field>
+        <field name="arch" type="xml">
+            <form string="Office Staff" create="0" delete="0">
+                <header>
+                    <button name="action_open_kx_staff_access_wizard"
+                            type="object"
+                            string="Edit Access Areas"
+                            class="btn-primary"/>
+                </header>
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="name" readonly="1"/>
+                            <field name="login" readonly="1"/>
+                            <field name="email" readonly="1"/>
+                        </group>
+                        <group>
+                            <field name="kx_is_office_staff" readonly="1"/>
+                            <field name="kx_staff_pack_summary" readonly="1"/>
+                            <field name="active" readonly="1"/>
+                        </group>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_kx_staff_users" model="ir.actions.act_window">
+        <field name="name">Staff Access</field>
+        <field name="res_model">res.users</field>
+        <field name="view_mode">list,form</field>
+        <field name="domain">[('kx_is_office_staff', '=', True)]</field>
+        <field name="context">{}</field>
+        <field name="view_ids" eval="[(5, 0, 0),
+            (0, 0, {'view_mode': 'list', 'view_id': ref('view_kx_staff_user_tree')}),
+            (0, 0, {'view_mode': 'form', 'view_id': ref('view_kx_staff_user_form')})]"/>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Create an office staff login
+            </p>
+            <p>
+                Use Create Staff User to pick the menus this person can open
+                (finance, wallet, seller list, and so on).
+            </p>
+        </field>
+    </record>
+
+    <menuitem id="menu_kx_staff_access"
+              name="Staff Access"
+              parent="menu_logistics_configuration"
+              action="action_kx_staff_users"
+              sequence="50"
+              groups="keralariders_logistics.group_logistics_admin,keralariders_logistics.group_staff_administration"/>
+    <menuitem id="menu_kx_create_staff_user"
+              name="Create Staff User"
+              parent="menu_logistics_configuration"
+              action="action_create_staff_user_wizard"
+              sequence="51"
+              groups="keralariders_logistics.group_logistics_admin,keralariders_logistics.group_staff_administration"/>
+</odoo>

@@ -653,6 +653,7 @@
     </record>
 
     <!-- Menu Item -->
-    <menuitem id="menu_shipment" name="Shipments" action="action_shipment" parent="menu_logistics_operations" sequence="2"/>
+    <menuitem id="menu_shipment" name="Shipments" action="action_shipment" parent="menu_logistics_operations" sequence="2"
+              groups="keralariders_logistics.group_logistics_admin,keralariders_logistics.group_staff_operations"/>
 
 </odoo>
