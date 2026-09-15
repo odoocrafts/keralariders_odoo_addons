@@ -3003,6 +3003,19 @@ class Shipment(models.Model):
 
     state = fields.Selection(delivery_states, string='Delivery Status', default='order_added', tracking=True)
 
+    @api.model
+    def _domain_not_unbooked(self):
+        """Booked shipments only. ``order_added`` is the draft/unbooked equivalent,
+        and a shipment that exists only because its order is still draft is omitted
+        from seller badges even if state was written ahead of the order.
+        """
+        return [
+            ('state', '!=', 'order_added'),
+            '|',
+            ('order_id', '=', False),
+            ('order_id.state', '!=', 'draft'),
+        ]
+
     def portal_awb_printable(self):
         """Seller portal may print AWBs only after pickup has been requested."""
         if not self:

@@ -412,10 +412,30 @@ class Seller(models.Model):
     shipment_ids = fields.One2many('logistics.shipment', 'seller_id', string="Shipments")
     shipments_count = fields.Integer(compute="_compute_orders_shipment_count")
 
+    @api.depends('order_ids.state', 'shipment_ids.state', 'shipment_ids.order_id.state')
     def _compute_orders_shipment_count(self):
+        Order = self.env['logistics.order']
+        Shipment = self.env['logistics.shipment']
+        order_map = dict.fromkeys(self.ids, 0)
+        shipment_map = dict.fromkeys(self.ids, 0)
+        if self.ids:
+            for seller, count in Order._read_group(
+                [('seller_id', 'in', self.ids)] + Order._domain_not_draft(),
+                ['seller_id'],
+                ['__count'],
+            ):
+                if seller:
+                    order_map[seller.id] = count
+            for seller, count in Shipment._read_group(
+                [('seller_id', 'in', self.ids)] + Shipment._domain_not_unbooked(),
+                ['seller_id'],
+                ['__count'],
+            ):
+                if seller:
+                    shipment_map[seller.id] = count
         for rec in self:
-            rec.orders_count = len(rec.order_ids)
-            rec.shipments_count = len(rec.shipment_ids)
+            rec.orders_count = order_map.get(rec.id, 0)
+            rec.shipments_count = shipment_map.get(rec.id, 0)
 
     def action_view_orders(self):
         self.ensure_one()
@@ -425,7 +445,10 @@ class Seller(models.Model):
             'res_model': 'logistics.order',
             'view_mode': 'kanban,list,form',
             'domain': [('seller_id', '=', self.id)],
-            'context': {'default_seller_id': self.id},
+            'context': {
+                'default_seller_id': self.id,
+                'search_default_hide_draft': 1,
+            },
         }
 
     def action_view_shipments(self):
@@ -436,7 +459,10 @@ class Seller(models.Model):
             'res_model': 'logistics.shipment',
             'view_mode': 'list,form',
             'domain': [('seller_id', '=', self.id)],
-            'context': {'default_seller_id': self.id},
+            'context': {
+                'default_seller_id': self.id,
+                'search_default_hide_unbooked': 1,
+            },
         }
 
     

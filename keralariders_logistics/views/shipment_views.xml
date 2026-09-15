@@ -67,6 +67,12 @@
 
                 <separator/>
 
+                <filter name="hide_unbooked"
+                        string="Hide Unbooked"
+                        domain="[('state', '!=', 'order_added'), '|', ('order_id', '=', False), ('order_id.state', '!=', 'draft')]"/>
+
+                <separator/>
+
                 <!-- Delivery Status -->
                 <filter name="order_added"
                         string="Order Added"
@@ -644,7 +650,7 @@
         <field name="res_model">logistics.shipment</field>
         <field name="view_mode">list,form</field>
         <field name="search_view_id" ref="view_logistics_shipment_search"/>
-        <field name="context">{'search_default_this_week': 1}</field>
+        <field name="context">{'search_default_this_week': 1, 'search_default_hide_unbooked': 1}</field>
         <field name="help" type="html">
             <p class="o_view_nocontent_smiling_face">
                 Create a new shipment

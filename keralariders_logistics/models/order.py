@@ -31,6 +31,11 @@ class Order(models.Model):
         ('cancelled', 'Cancelled')
     ], string='Status', default='draft', compute='_compute_state', store=True, tracking=True)
 
+    @api.model
+    def _domain_not_draft(self):
+        """Booked orders only: draft is unfinished and omitted from seller badges."""
+        return [('state', '!=', 'draft')]
+
     @api.model_create_multi
     def create(self, vals_list):
         for vals in vals_list:

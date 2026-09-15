@@ -235,6 +235,12 @@
 
                 <separator/>
 
+                <filter name="hide_draft"
+                        string="Hide Draft"
+                        domain="[('state','!=','draft')]"/>
+
+                <separator/>
+
                 <!-- Status -->
 
                 <filter name="draft"
@@ -313,6 +319,8 @@
         <field name="name">Orders</field>
         <field name="res_model">logistics.order</field>
         <field name="view_mode">kanban,list,form</field>
+        <field name="search_view_id" ref="view_logistics_order_search"/>
+        <field name="context">{'search_default_hide_draft': 1}</field>
     </record>
 
     <menuitem id="menu_logistics_order" name="Orders" parent="menu_logistics_operations" action="action_logistics_order" sequence="1"

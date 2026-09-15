@@ -66,10 +66,16 @@ class LogisticsPortal(CustomerPortal):
         values['is_seller'] = bool(seller)
         
         if seller:
-            order_count = request.env['logistics.order'].search_count([('seller_id', '=', seller.id)])
+            Order = request.env['logistics.order']
+            Shipment = request.env['logistics.shipment']
+            order_count = Order.search_count(
+                [('seller_id', '=', seller.id)] + Order._domain_not_draft()
+            )
             values['order_count'] = str(order_count) if order_count > 0 else '0 '
-            
-            shipment_count = request.env['logistics.shipment'].search_count([('seller_id', '=', seller.id)])
+
+            shipment_count = Shipment.search_count(
+                [('seller_id', '=', seller.id)] + Shipment._domain_not_unbooked()
+            )
             values['shipment_count'] = str(shipment_count) if shipment_count > 0 else '0 '
             
             wallet = request.env['logistics.wallet'].search([('seller_id', '=', seller.id)], limit=1)
