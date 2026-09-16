@@ -282,6 +282,19 @@ class Shipment(models.Model):
         string='India Post Article Number', copy=False, index=True, readonly=True,
         help='The 13-character Speed Post barcode carried on the label.',
     )
+
+    def portal_indiapost_arn(self):
+        """Allocated India Post article (ARN) for seller-portal AWB cells.
+
+        Empty unless this shipment is India Post fulfilment *and* booking has
+        stored an article number. Hub/DE rows must not render a blank ARN
+        line, including a leftover barcode after a divert to the hub network.
+        """
+        self.ensure_one()
+        if self.fulfilment_method != 'indiapost':
+            return False
+        return (self.indiapost_article_number or '').strip() or False
+
     indiapost_barcode_id = fields.Many2one(
         'logistics.indiapost.barcode', string='Allocated Barcode', copy=False,
         readonly=True, ondelete='set null',

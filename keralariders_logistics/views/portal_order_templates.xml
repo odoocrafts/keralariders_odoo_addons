@@ -158,7 +158,11 @@
                             <tbody>
                                 <t t-foreach="order.shipment_ids" t-as="ship">
                                     <tr>
-                                        <td><a t-attf-href="/track/#{ship.tracking_token}"><span t-field="ship.name"/></a></td>
+                                        <td>
+                                            <t t-call="keralariders_logistics.portal_shipment_awb_ref">
+                                                <t t-set="shipment" t-value="ship"/>
+                                            </t>
+                                        </td>
                                         <td><span t-field="ship.shipping_to_name"/></td>
                                         <td><span t-field="ship.shipping_to_mobile"/></td>
                                         <td><span t-field="ship.total_weight"/></td>

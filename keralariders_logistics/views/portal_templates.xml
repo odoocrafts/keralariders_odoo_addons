@@ -576,6 +576,15 @@
         </t>
     </template>
 
+    <!-- AWB stays the main number; ARN is a second line so the column
+         does not explode on mobile. Only India Post rows with an allocated
+         article number show it. -->
+    <template id="portal_shipment_awb_ref" name="Portal AWB / Ref with ARN">
+        <a t-attf-href="/track/#{shipment.tracking_token}"><span t-field="shipment.name"/></a>
+        <t t-set="arn" t-value="shipment.portal_indiapost_arn()"/>
+        <div t-if="arn" class="small text-muted text-break">ARN: <t t-esc="arn"/></div>
+    </template>
+
     <!-- Shipments List -->
     <template id="portal_my_shipments" name="My Shipments">
         <t t-call="portal.portal_layout">
@@ -613,15 +622,7 @@
                     <t t-foreach="shipments" t-as="shipment">
                         <tr>
                             <td>
-                                <a t-attf-href="/track/#{shipment.tracking_token}"><span t-field="shipment.name"/></a>
-                                <!-- The India Post article number is what the
-                                     customer can look up on indiapost.gov.in. -->
-                                <div t-if="shipment.indiapost_article_number">
-                                    <small class="text-muted">
-                                        India Post
-                                        <span t-field="shipment.indiapost_article_number"/>
-                                    </small>
-                                </div>
+                                <t t-call="keralariders_logistics.portal_shipment_awb_ref"/>
                             </td>
                             <td><span t-field="shipment.order_date"/></td>
                             <td><span t-field="shipment.shipping_to_name"/><br/><small class="text-muted"><span t-field="shipment.shipping_to_mobile"/></small></td>
