@@ -4,6 +4,8 @@ Hermetic: no India Post HTTP. The article number is written as booking would
 store it; these tests never allocate a live barcode.
 """
 
+import base64
+
 from odoo.tests import HttpCase, TransactionCase, tagged
 
 from odoo.addons.keralariders_logistics.tests.common import IndiapostHermeticMixin
@@ -105,9 +107,14 @@ class TestPortalIndiapostArnPages(PortalIndiapostArnMixin, HttpCase):
             'group_ids': [(6, 0, [cls.env.ref('base.group_portal').id])],
         })
         cls.ip_booked = cls._new_shipment(cls.ip_seller)
-        cls.ip_booked.sudo().write({
+        cls.ip_booked.sudo().with_context(
+            allow_shipment_state_write=True,
+        ).write({
             'indiapost_article_number': ARTICLE,
             'indiapost_booking_state': 'booked',
+            'state': 'pickup_requested',
+            'indiapost_label_pdf': base64.b64encode(cls._ip_blank_pdf_bytes()),
+            'indiapost_label_filename': '%s.pdf' % ARTICLE,
         })
         cls.ip_pending = cls._new_shipment(cls.ip_seller)
 
@@ -125,6 +132,9 @@ class TestPortalIndiapostArnPages(PortalIndiapostArnMixin, HttpCase):
             'group_ids': [(6, 0, [cls.env.ref('base.group_portal').id])],
         })
         cls.hub_shipment = cls._new_shipment(cls.hub_seller)
+        cls.hub_shipment.sudo().with_context(
+            allow_shipment_state_write=True,
+        ).write({'state': 'pickup_requested'})
         cls.hub_leftover = cls._new_shipment(cls.hub_seller)
         cls.hub_leftover.sudo().write({'indiapost_article_number': ARTICLE})
 
@@ -169,3 +179,63 @@ class TestPortalIndiapostArnPages(PortalIndiapostArnMixin, HttpCase):
         self.assertEqual(page.status_code, 200)
         self._assert_arn_hidden(page.text, self.hub_leftover)
         self.assertNotIn(ARTICLE, page.text)
+
+    def _print_redirect(self, path):
+        return self.url_open(path, allow_redirects=False)
+
+    def test_seller_hides_indiapost_label_print_but_keeps_awb(self):
+        self.authenticate(self.ip_login, self.ip_login)
+        page = self.url_open('/my/shipments')
+        self.assertEqual(page.status_code, 200)
+        self.assertNotIn(
+            '/my/shipments/%s/indiapost_label' % self.ip_booked.id, page.text)
+        self.assertNotIn('India Post address label', page.text)
+        self.assertIn(
+            '/my/shipments/%s/print' % self.ip_booked.id, page.text)
+
+        detail = self.url_open('/my/orders/%s' % self.ip_booked.order_id.id)
+        self.assertEqual(detail.status_code, 200)
+        self.assertNotIn('/indiapost_label', detail.text)
+        self.assertIn(
+            '/my/orders/%s/print' % self.ip_booked.order_id.id, detail.text)
+
+    def test_seller_indiapost_label_url_is_denied(self):
+        self.authenticate(self.ip_login, self.ip_login)
+        path = '/my/shipments/%s/indiapost_label' % self.ip_booked.id
+        denied = self._print_redirect(path)
+        self.assertIn(denied.status_code, (301, 302, 303, 307))
+        self.assertIn('/my/shipments', denied.headers.get('Location', ''))
+        self.assertNotIn('application/pdf', denied.headers.get('Content-Type', ''))
+
+        follow = self.url_open(path)
+        self.assertIn(
+            'printed by KeralaXpress staff', follow.text)
+        self.assertNotIn(
+            'application/pdf', follow.headers.get('Content-Type', ''))
+        self.assertNotIn('%PDF', follow.content[:8].decode('latin-1'))
+
+        binary = self._print_redirect(
+            '/web/content/logistics.shipment/%s/indiapost_label_pdf/%s.pdf'
+            % (self.ip_booked.id, ARTICLE))
+        self.assertNotIn(
+            'application/pdf', binary.headers.get('Content-Type', ''))
+        body = binary.content[:16] if binary.content else b''
+        self.assertFalse(body.startswith(b'%PDF'))
+
+    def test_hub_fulfilment_awb_print_when_printable(self):
+        self.authenticate(self.hub_login, self.hub_login)
+        self.assertTrue(self.hub_shipment.portal_awb_printable())
+        page = self.url_open('/my/shipments')
+        self.assertEqual(page.status_code, 200)
+        self.assertIn(
+            '/my/shipments/%s/print' % self.hub_shipment.id, page.text)
+        self.assertNotIn('/indiapost_label', page.text)
+
+        allowed = self._print_redirect(
+            '/my/shipments/%s/print' % self.hub_shipment.id)
+        self.assertIn(allowed.status_code, (301, 302, 303, 307))
+        self.assertIn(
+            '/report/pdf/keralariders_logistics.action_report_shipment/%s'
+            % self.hub_shipment.id,
+            allowed.headers.get('Location', ''),
+        )

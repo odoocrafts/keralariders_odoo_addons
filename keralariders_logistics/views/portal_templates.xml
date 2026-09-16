@@ -647,12 +647,6 @@
                                    title="Print AWB" target="_blank">
                                     <i class="fa fa-print"/>
                                 </a>
-                                <a t-if="shipment.indiapost_article_number"
-                                   t-attf-href="/my/shipments/#{shipment.id}/indiapost_label"
-                                   class="btn btn-sm btn-outline-dark me-1"
-                                   title="India Post address label" target="_blank">
-                                    <i class="fa fa-tag"/>
-                                </a>
                                 <t t-if="shipment.state == 'order_added'">
                                     <form action="/my/shipments/request_pickup" method="post" style="display:inline;">
                                         <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>

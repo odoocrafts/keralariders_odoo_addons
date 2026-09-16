@@ -475,8 +475,10 @@ class Shipment(models.Model):
     # ------------------------------------------------------------------
     # Label
     # ------------------------------------------------------------------
-    indiapost_label_pdf = fields.Binary(string='India Post Label', attachment=True,
-                                        copy=False, readonly=True)
+    indiapost_label_pdf = fields.Binary(
+        string='India Post Label', attachment=True,
+        copy=False, readonly=True, groups='base.group_user',
+    )
     indiapost_label_filename = fields.Char(string='Label Filename', copy=False,
                                            readonly=True)
     indiapost_label_size = fields.Selection(

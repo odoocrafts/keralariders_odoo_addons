@@ -1,4 +1,3 @@
-import base64
 import logging
 import time
 import uuid
@@ -732,6 +731,12 @@ class LogisticsPortal(CustomerPortal):
         )
         return request.redirect(redirect_url)
 
+    def _portal_print_indiapost_label_denied(self, redirect_url):
+        request.session['error'] = _(
+            'India Post address labels are printed by KeralaXpress staff.'
+        )
+        return request.redirect(redirect_url)
+
     @http.route(['/my/orders/<int:order_id>/print'], type='http', auth="user", website=True)
     def portal_my_order_print(self, order_id=None, **kw):
         partner = request.env.user.partner_id
@@ -1177,48 +1182,15 @@ class LogisticsPortal(CustomerPortal):
     @http.route(['/my/shipments/<int:shipment_id>/indiapost_label'], type='http',
                 auth="user", website=True)
     def portal_my_shipment_indiapost_label(self, shipment_id=None, **kw):
-        """Serve the stored India Post label PDF to the owning seller.
+        """Sellers cannot download India Post address labels from the portal.
 
-        Fetched on demand the first time, because a label is only useful once
-        the article has been booked and most sellers never open it at all.
+        Staff print the CEPT sticker from the backend shipment form. The
+        route is kept so an old bookmark cannot become a secret download.
         """
-        seller = request.env['logistics.seller'].sudo().search(
-            [('partner_id', '=', request.env.user.partner_id.id)], limit=1)
+        seller = self._portal_seller()
         if not seller:
             return request.redirect('/my')
-        shipment = request.env['logistics.shipment'].sudo().search([
-            ('id', '=', shipment_id),
-            ('seller_id', '=', seller.id),
-            ('indiapost_article_number', '!=', False),
-        ], limit=1)
-        if not shipment:
-            request.session['error'] = _(
-                'That shipment has not been booked with India Post yet, so it '
-                'has no address label.'
-            )
-            return request.redirect('/my/shipments')
-
-        if not shipment.indiapost_label_pdf:
-            try:
-                shipment.action_indiapost_fetch_label()
-            except Exception:
-                _logger.warning('India Post label fetch failed for %s',
-                                shipment.name, exc_info=True)
-        if not shipment.indiapost_label_pdf:
-            request.session['error'] = _(
-                'The India Post label for %s could not be downloaded. Please '
-                'try again shortly.'
-            ) % shipment.name
-            return request.redirect('/my/shipments')
-
-        pdf = base64.b64decode(shipment.indiapost_label_pdf)
-        filename = shipment.indiapost_label_filename or (
-            '%s.pdf' % shipment.indiapost_article_number)
-        return request.make_response(pdf, headers=[
-            ('Content-Type', 'application/pdf'),
-            ('Content-Length', len(pdf)),
-            ('Content-Disposition', f'inline; filename="{filename}"'),
-        ])
+        return self._portal_print_indiapost_label_denied('/my/shipments')
 
     @http.route(['/my/shipments/request_return'], type='http', auth="user", website=True, methods=['POST'])
     def portal_my_shipments_request_return(self, **post):
