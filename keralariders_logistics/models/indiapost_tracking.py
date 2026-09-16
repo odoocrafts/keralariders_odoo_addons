@@ -24,6 +24,7 @@ import datetime
 import logging
 import re
 
+from . import indiapost_common as ipc
 from .indiapost_client import IndiapostApiError
 
 _logger = logging.getLogger(__name__)
@@ -295,17 +296,18 @@ class IndiapostTracking(models.AbstractModel):
 
     @api.model
     def _ip_scan_datetime(self, scan):
-        """Combine the scan's ISO date with its separate time field.
+        """Combine the scan's date and time, then store naive UTC.
 
         Bulk tracking ``date`` looks like 2026-02-19T00:00:00Z and carries no
         useful time; the real clock time is in ``time`` as HH:MM:SS. Webhook
-        payloads may send a single ISO datetime instead.
+        payloads may send a single ISO datetime instead. Naive clocks are
+        Asia/Kolkata; timezone-aware values keep their own offset.
         """
         for key in ('eventDateTime', 'event_date_time', 'datetime',
                     'timestamp', 'dateTime'):
             parsed = self._ip_parse_iso_datetime(scan.get(key))
             if parsed:
-                return parsed
+                return ipc.to_odoo_utc(parsed)
         raw_date = str(scan.get('date') or scan.get('eventDate')
                        or scan.get('event_date') or '')
         raw_time = str(scan.get('time') or scan.get('eventTime')
@@ -313,36 +315,54 @@ class IndiapostTracking(models.AbstractModel):
         if 'T' in raw_date and not raw_time:
             parsed = self._ip_parse_iso_datetime(raw_date)
             if parsed:
-                return parsed
-        try:
-            day = datetime.datetime.strptime(raw_date[:10], '%Y-%m-%d').date()
-        except ValueError:
-            return self._ip_parse_iso_datetime(raw_date)
+                return ipc.to_odoo_utc(parsed)
+        day = self._ip_parse_scan_date(raw_date)
+        if day is None:
+            return ipc.to_odoo_utc(self._ip_parse_iso_datetime(raw_date))
+        clock = datetime.time()
         for fmt in ('%H:%M:%S', '%H:%M'):
             try:
                 clock = datetime.datetime.strptime(raw_time, fmt).time()
                 break
             except ValueError:
-                clock = datetime.time()
-        return datetime.datetime.combine(day, clock)
+                continue
+        return ipc.to_odoo_utc(datetime.datetime.combine(day, clock))
+
+    @staticmethod
+    def _ip_parse_scan_date(raw_date):
+        """Calendar date from bulk ``date`` or webhook ``eventDate``."""
+        text = str(raw_date or '').strip()
+        if not text:
+            return None
+        head = text[:10]
+        for fmt in ('%Y-%m-%d', '%d-%m-%Y', '%d/%m/%Y'):
+            try:
+                return datetime.datetime.strptime(head, fmt).date()
+            except ValueError:
+                continue
+        return None
 
     @staticmethod
     def _ip_parse_iso_datetime(raw):
+        """Parse an India Post datetime, keeping tzinfo when the string has one."""
         text = str(raw or '').strip()
         if not text:
             return None
         text = text.replace('Z', '+00:00')
         try:
-            parsed = datetime.datetime.fromisoformat(text)
-            return parsed.replace(tzinfo=None)
+            return datetime.datetime.fromisoformat(text)
         except ValueError:
             pass
         for fmt, size in (
             ('%Y-%m-%d %H:%M:%S', 19),
             ('%Y-%m-%d %H:%M', 16),
             ('%d-%m-%Y %H:%M:%S', 19),
+            ('%d-%m-%Y %H:%M', 16),
             ('%d/%m/%Y %H:%M:%S', 19),
+            ('%d/%m/%Y %H:%M', 16),
             ('%Y-%m-%d', 10),
+            ('%d-%m-%Y', 10),
+            ('%d/%m/%Y', 10),
         ):
             try:
                 return datetime.datetime.strptime(text[:size], fmt)
@@ -393,12 +413,24 @@ class IndiapostTracking(models.AbstractModel):
 
     @staticmethod
     def _ip_event_key(item):
-        """Stable identity for a scan, so repeated polls do not duplicate it."""
+        """Stable identity for a scan, so repeated polls do not duplicate it.
+
+        The timestamp in the key is the India Post IST wall clock, not the
+        UTC storage value. Older events were keyed from naive IST stored as
+        if it were UTC; using that same clock means a re-poll after the
+        timezone fix will not duplicate them. Those public history rows stay
+        shifted until a genuinely new scan arrives.
+        """
         event_id = str(item.get('event_id') or '').strip()
         if event_id:
             return ('id|%s' % event_id)[:255]
-        moment = item['moment'].strftime('%Y%m%d%H%M%S') if item['moment'] else '-'
-        return '%s|%s|%s' % (moment, item['office_id'] or item['office'],
+        moment = item['moment']
+        if moment:
+            wall = ipc.odoo_utc_as_ist(moment)
+            stamp = wall.strftime('%Y%m%d%H%M%S')
+        else:
+            stamp = '-'
+        return '%s|%s|%s' % (stamp, item['office_id'] or item['office'],
                              item['raw'])[:255]
 
     @api.model
@@ -568,18 +600,19 @@ class IndiapostTracking(models.AbstractModel):
         office = self._ip_first_str(item, self._WEBHOOK_OFFICE_KEYS)
         officeid = self._ip_first_str(item, self._WEBHOOK_OFFICE_ID_KEYS)
         event_id = self._ip_first_str(item, self._WEBHOOK_EVENT_ID_KEYS)
-        date = item.get('date') or ''
-        time = item.get('time') or ''
+        date = item.get('date') or item.get('eventDate') or item.get('event_date') or ''
+        time = item.get('time') or item.get('eventTime') or item.get('event_time') or ''
         combined = self._ip_first_str(item, (
-            'eventDateTime', 'event_date_time', 'eventDate', 'event_date',
-            'dateTime', 'datetime', 'timestamp',
+            'eventDateTime', 'event_date_time', 'dateTime', 'datetime',
+            'timestamp',
         ))
-        if combined:
-            parsed = self._ip_parse_iso_datetime(combined)
-            if parsed:
-                date = parsed.strftime('%Y-%m-%dT00:00:00Z')
-                time = parsed.strftime('%H:%M:%S')
-        return {
+        if not combined:
+            maybe_date = str(
+                item.get('eventDate') or item.get('event_date') or '')
+            if 'T' in maybe_date or (
+                    len(maybe_date.strip()) > 10 and ' ' in maybe_date):
+                combined = maybe_date.strip()
+        scan = {
             'event': event,
             'date': date,
             'time': time,
@@ -587,6 +620,11 @@ class IndiapostTracking(models.AbstractModel):
             'officeid': officeid,
             'event_id': event_id,
         }
+        if combined:
+            # Keep the original string so ``_ip_scan_datetime`` can see a UTC
+            # offset and avoid treating an aware timestamp as naive IST.
+            scan['eventDateTime'] = combined
+        return scan
 
     @api.model
     def _ip_scans_from(self, payload):

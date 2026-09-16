@@ -8,6 +8,7 @@ never let a payload rewrite delivery charges.
 
 import json
 
+from odoo import fields
 from odoo.tests import HttpCase, tagged
 
 from odoo.addons.keralariders_logistics.models import indiapost_common as ipc
@@ -123,6 +124,10 @@ class TestIndiapostWebhook(IndiapostHermeticMixin, HttpCase):
             ('indiapost_event_key', '!=', False),
         ])
         self.assertEqual(events.event_type, 'indiapost_booked')
+        self.assertEqual(
+            fields.Datetime.to_string(events.event_time),
+            '2026-04-28 04:45:00',
+        )
 
     def test_other_webhook_updates_tracking_like_the_poller(self):
         shipment = self._new_shipment(
@@ -144,12 +149,14 @@ class TestIndiapostWebhook(IndiapostHermeticMixin, HttpCase):
         shipment.invalidate_recordset()
         self.assertEqual(shipment.state, 'delivered')
         self.assertEqual(self._event_count(shipment), 1)
+        delivered = self.env['logistics.shipment.event'].search([
+            ('shipment_id', '=', shipment.id),
+            ('indiapost_event_key', '!=', False),
+        ])
+        self.assertEqual(delivered.event_type, 'delivered')
         self.assertEqual(
-            self.env['logistics.shipment.event'].search([
-                ('shipment_id', '=', shipment.id),
-                ('indiapost_event_key', '!=', False),
-            ]).event_type,
-            'delivered',
+            fields.Datetime.to_string(delivered.event_time),
+            '2026-04-28 11:10:00',
         )
 
         duplicate = self._post_json(OTHER_PATH, payload)
@@ -157,6 +164,28 @@ class TestIndiapostWebhook(IndiapostHermeticMixin, HttpCase):
         self.env.invalidate_all()
         self.assertEqual(self._event_count(shipment), 1)
         self.assertEqual(shipment.state, 'delivered')
+
+    def test_webhook_naive_ist_event_date_is_stored_utc(self):
+        shipment = self._new_shipment('ETWHIST000001IN', state='in_transit')
+        response = self._post_json(OTHER_PATH, {
+            'article_number': 'ETWHIST000001IN',
+            'event': 'Out for delivery',
+            'eventId': 'ofd-ist-1',
+            'eventDate': '16-09-2026',
+            'eventTime': '10:06',
+            'office': 'Pontianam BO',
+        })
+        self._assert_generic_ok(response)
+        self.env.invalidate_all()
+        event = self.env['logistics.shipment.event'].search([
+            ('shipment_id', '=', shipment.id),
+            ('indiapost_event_key', '!=', False),
+        ])
+        self.assertEqual(len(event), 1)
+        self.assertEqual(
+            fields.Datetime.to_string(event.event_time),
+            '2026-09-16 04:36:00',
+        )
 
     def test_unknown_article_is_acknowledged_without_error(self):
         response = self._post_json(OTHER_PATH, {

@@ -12,6 +12,11 @@ import datetime
 import math
 import re
 
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:  # pragma: no cover
+    ZoneInfo = None
+
 # ---------------------------------------------------------------------------
 # Products
 # ---------------------------------------------------------------------------
@@ -52,6 +57,45 @@ CONTRACT_SETTING_BY_ARTICLE_TYPE = {
 # because they are already live on production.
 BOOKING_WEBHOOK_PATH = '/indiapost/bookingeventwebhook'
 OTHER_WEBHOOK_PATH = '/indiapost/othereventwebhook'
+
+# India Post event clocks are IST. Odoo Datetime fields store naive UTC.
+_INDIAPOST_OFFSET = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
+try:
+    INDIAPOST_TZ = ZoneInfo('Asia/Kolkata') if ZoneInfo else _INDIAPOST_OFFSET
+except Exception:  # pragma: no cover
+    INDIAPOST_TZ = _INDIAPOST_OFFSET
+UTC_TZ = datetime.timezone.utc
+
+
+def to_odoo_utc(value):
+    """Return naive UTC for Odoo storage from an India Post datetime.
+
+    Naive values are Asia/Kolkata. Timezone-aware values are converted from
+    their own offset, so a UTC timestamp is not shifted a second time.
+    """
+    if value in (None, False):
+        return None
+    if not isinstance(value, datetime.datetime):
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=INDIAPOST_TZ)
+    return value.astimezone(UTC_TZ).replace(tzinfo=None)
+
+
+def odoo_utc_as_ist(value):
+    """Naive UTC → naive IST wall clock.
+
+    Scan identity keys use this clock so a re-poll after the timezone fix
+    does not duplicate rows that were originally stored as naive IST.
+    """
+    if value in (None, False):
+        return None
+    if not isinstance(value, datetime.datetime):
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=UTC_TZ)
+    return value.astimezone(INDIAPOST_TZ).replace(tzinfo=None)
+
 
 # Within Speed Post the tariff response names one of these two concrete
 # products. Sending product-code=SP lets India Post auto-classify ≤500 g as
