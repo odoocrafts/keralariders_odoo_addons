@@ -92,6 +92,11 @@ class TestAwbPaperSize(IndiapostHermeticMixin, TransactionCase):
         self.assertEqual(float(paper.page_width), 100.0)
         self.assertEqual(float(paper.page_height), 150.0)
         self.assertEqual(paper.orientation, 'Portrait')
+        self.assertEqual(float(paper.margin_top), 3.0)
+        self.assertEqual(float(paper.margin_bottom), 3.0)
+        self.assertEqual(float(paper.margin_left), 3.0)
+        self.assertEqual(float(paper.margin_right), 3.0)
+        self.assertFalse(paper.css_margins)
         report = self.env.ref(
             'keralariders_logistics.action_report_shipment_100x150')
         self.assertEqual(report.paperformat_id, paper)
@@ -156,6 +161,8 @@ class TestAwbPaperSize(IndiapostHermeticMixin, TransactionCase):
         self.assertIn('kx-label-qr', html)
         self.assertIn('bcid=code128', html)
         self.assertIn('kx-label-kx-logo', html)
+        self.assertIn('width: 94mm', html)
+        self.assertIn('box-sizing: border-box', html)
         self.assertNotIn('awb-indiapost-logo', html)
         self.assertNotIn('alt="India Post"', html)
         self.assertNotIn(ARTICLE, html)
@@ -197,6 +204,12 @@ class TestAwbPaperSize(IndiapostHermeticMixin, TransactionCase):
         source = layout.read_text(encoding='utf-8')
         self.assertIn('page_width">100<', source)
         self.assertIn('page_height">150<', source)
+        self.assertIn('margin_right">3<', source)
+        self.assertIn('width: 94mm', source)
+        self.assertIn('box-sizing: border-box', source)
+        self.assertIn('max-width: 100%', source)
+        self.assertNotIn('width: 96mm', source)
+        self.assertNotIn('overflow: hidden; font-family', source)
 
 
 @tagged('post_install', '-at_install')

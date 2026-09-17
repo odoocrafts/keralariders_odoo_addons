@@ -7,14 +7,15 @@
         <field name="page_width">100</field>
         <field name="page_height">150</field>
         <field name="orientation">Portrait</field>
-        <field name="margin_top">2</field>
-        <field name="margin_bottom">2</field>
-        <field name="margin_left">2</field>
-        <field name="margin_right">2</field>
+        <field name="margin_top">3</field>
+        <field name="margin_bottom">3</field>
+        <field name="margin_left">3</field>
+        <field name="margin_right">3</field>
         <field name="header_line" eval="False"/>
         <field name="header_spacing">0</field>
         <field name="dpi">96</field>
         <field name="disable_shrinking" eval="True"/>
+        <field name="css_margins" eval="False"/>
     </record>
 
     <template id="report_shipment_document_100x150_label">
@@ -22,25 +23,25 @@
         <t t-set="customer_phone" t-value="o._awb_customer_phone()"/>
         <t t-set="is_ip" t-value="o.fulfilment_method == 'indiapost'"/>
         <t t-set="arn" t-value="(o.indiapost_article_number or '') if o.fulfilment_method == 'indiapost' else ''"/>
-        <div class="page kx-label-100x150" style="width: 96mm; height: 146mm; overflow: hidden; font-family: Arial, Helvetica, sans-serif; font-size: 9px; color: #000; background: #fff; page-break-inside: avoid;">
-            <table style="width: 100%; border-collapse: collapse; border: 2px solid #000;">
+        <div class="page kx-label-100x150">
+            <table>
                 <tr>
                     <td class="kx-label-kx-logo" style="width: 50%; border-bottom: 2px solid #000; padding: 2mm 2mm 1.5mm 2mm; vertical-align: middle;">
-                        <img t-if="company.logo" t-att-src="image_data_uri(company.logo)" style="max-width: 38mm; max-height: 10mm;" alt="KeralaXpress"/>
+                        <img t-if="company.logo" t-att-src="image_data_uri(company.logo)" style="max-width: 36mm; max-height: 10mm;" alt="KeralaXpress"/>
                         <span t-else="" class="kx-label-kx-name" style="font-size: 12px; font-weight: 900; letter-spacing: 0.4px;">KERALAXPRESS</span>
                     </td>
                     <td style="width: 50%; border-bottom: 2px solid #000; padding: 2mm 2mm 1.5mm 2mm; text-align: right; vertical-align: middle;">
                         <img t-if="is_ip" t-att-src="o._awb_indiapost_logo_data_uri()"
                              class="awb-indiapost-logo"
-                             style="max-width: 38mm; max-height: 10mm;"
+                             style="max-width: 36mm; max-height: 10mm;"
                              alt="India Post"/>
                     </td>
                 </tr>
             </table>
-            <table style="width: 100%; border-collapse: collapse; border: 2px solid #000; border-top: 0;">
+            <table style="border-top: 0;">
                 <tr>
                     <td class="kx-label-service" style="width: 22%; border-right: 2px solid #000; padding: 2mm; text-align: center; vertical-align: middle;">
-                        <div style="border: 2px solid #000; display: inline-block; min-width: 14mm; padding: 1mm 2mm; font-size: 22px; font-weight: 900; line-height: 1.1; letter-spacing: 1px;">
+                        <div style="border: 2px solid #000; display: inline-block; min-width: 12mm; padding: 1mm 1.5mm; font-size: 22px; font-weight: 900; line-height: 1.1; letter-spacing: 1px;">
                             <t t-esc="o._awb_label_service_code()"/>
                         </div>
                         <div style="font-size: 11px; font-weight: 900; margin-top: 1.5mm;" t-field="o.shipping_to_zip"/>
@@ -49,7 +50,7 @@
                         <t t-if="arn">
                             <img t-att-src="o._awb_indiapost_barcode_img_src()"
                                  class="awb-indiapost-barcode"
-                                 style="width: 100%; max-width: 48mm; height: 12mm; margin: 0 auto; display: block;"
+                                 style="width: 100%; max-width: 44mm; height: 12mm; margin: 0 auto; display: block;"
                                  alt="India Post Article Barcode"/>
                             <div class="awb-indiapost-article" style="font-size: 8px; font-weight: 700; margin-top: 0.5mm; letter-spacing: 0.3px;">
                                 <span t-esc="arn"/>
@@ -60,10 +61,10 @@
                             <div style="font-size: 13px; font-weight: 900; letter-spacing: 0.5px;" t-field="o.name"/>
                         </t>
                     </td>
-                    <td style="width: 25%; padding: 1.5mm; text-align: center; vertical-align: middle;">
+                    <td style="width: 25%; padding: 1.5mm 1mm; text-align: center; vertical-align: middle;">
                         <img t-att-src="o._awb_label_qr_img_src()"
                              class="kx-label-qr"
-                             style="width: 18mm; height: 18mm; margin: 0 auto; display: block;"
+                             style="width: 16mm; height: 16mm; margin: 0 auto; display: block;"
                              alt="Tracking QR"/>
                     </td>
                 </tr>
@@ -129,7 +130,7 @@
                 <tr>
                     <td colspan="3" class="kx-label-awb-barcode" style="border-top: 2px solid #000; padding: 1.5mm 2mm 1mm 2mm; text-align: center;">
                         <img t-att-src="o._awb_kx_barcode_img_src()"
-                             style="width: 100%; max-width: 84mm; height: 12mm; margin: 0 auto; display: block;"
+                             style="width: 100%; max-width: 80mm; height: 12mm; margin: 0 auto; display: block;"
                              alt="AWB Barcode"/>
                         <div style="font-size: 10px; font-weight: 900; letter-spacing: 1px; margin-top: 0.6mm;">
                             AWB <span t-field="o.name"/>
@@ -143,8 +144,61 @@
     <template id="report_shipment_document_100x150">
         <t t-call="web.html_container">
             <style type="text/css">
-                @page { size: 100mm 150mm; margin: 2mm; }
-                .kx-label-100x150 { color: #000; background: #fff; }
+                /* Physical page is 100×150 mm. Paperformat already applies 3 mm
+                   wkhtmltopdf margins; do not add a second @page inset. */
+                @page { size: 100mm 150mm; margin: 0; }
+                html, body.o_body_pdf, body.o_body_html {
+                    margin: 0 !important;
+                    padding: 0 !important;
+                    width: 100% !important;
+                    max-width: 100% !important;
+                    overflow: visible !important;
+                }
+                body.o_body_pdf.container,
+                body.o_body_html.container {
+                    padding: 0 !important;
+                    margin: 0 !important;
+                    max-width: 100% !important;
+                    overflow: visible !important;
+                }
+                .kx-label-100x150,
+                .kx-label-100x150 * {
+                    box-sizing: border-box;
+                }
+                .kx-label-100x150 {
+                    color: #000;
+                    background: #fff;
+                    font-family: Arial, Helvetica, sans-serif;
+                    font-size: 9px;
+                    width: 94mm;
+                    max-width: 100%;
+                    height: auto;
+                    overflow: visible;
+                    page-break-inside: avoid;
+                    page-break-after: always;
+                }
+                .kx-label-100x150:last-child {
+                    page-break-after: auto;
+                }
+                .kx-label-100x150 table {
+                    width: 100%;
+                    max-width: 100%;
+                    border-collapse: collapse;
+                    table-layout: fixed;
+                    border: 2px solid #000;
+                }
+                .kx-label-100x150 img {
+                    max-width: 100%;
+                }
+                .kx-label-100x150 .kx-label-qr {
+                    width: 16mm;
+                    height: 16mm;
+                    max-width: 100%;
+                }
+                .kx-label-100x150 .awb-indiapost-barcode,
+                .kx-label-100x150 .kx-label-awb-barcode img {
+                    height: 12mm;
+                }
             </style>
             <t t-foreach="docs" t-as="o">
                 <t t-set="company" t-value="o.company_id"/>
