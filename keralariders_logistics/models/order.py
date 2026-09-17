@@ -114,7 +114,10 @@ class Order(models.Model):
             order.state = 'cancelled'
 
     def action_print_awb_delivery_slips(self):
-        return self.env.ref('keralariders_logistics.action_report_shipment').report_action(self.shipment_ids)
+        shipments = self.mapped('shipment_ids')
+        if not shipments:
+            raise UserError(_('No shipments to print.'))
+        return self.env['logistics.awb.print.wizard']._action_open(shipments)
 
     def portal_awb_printable(self):
         """Seller portal may print AWBs only after pickup has been requested."""

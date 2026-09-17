@@ -9,6 +9,10 @@ from odoo import api, models, _
 from odoo.exceptions import AccessError
 
 SHIPMENT_AWB_REPORT = 'keralariders_logistics.report_shipment_document'
+SHIPMENT_AWB_REPORTS = frozenset({
+    SHIPMENT_AWB_REPORT,
+    'keralariders_logistics.report_shipment_document_100x150',
+})
 
 
 class IrActionsReport(models.Model):
@@ -22,7 +26,7 @@ class IrActionsReport(models.Model):
             report = self._get_report(report_ref)
         except Exception:
             return
-        if report.report_name != SHIPMENT_AWB_REPORT:
+        if report.report_name not in SHIPMENT_AWB_REPORTS:
             return
         seller = self.env['logistics.seller'].sudo().search(
             [('partner_id', '=', self.env.user.partner_id.id)], limit=1)

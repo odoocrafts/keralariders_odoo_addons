@@ -731,6 +731,12 @@ class LogisticsPortal(CustomerPortal):
         )
         return request.redirect(redirect_url)
 
+    def _portal_awb_pdf_redirect(self, shipment_ids, paper=None):
+        xmlid = request.env['logistics.shipment']._awb_report_xmlid_for_paper(
+            paper)
+        ids_str = ','.join(str(sid) for sid in shipment_ids)
+        return request.redirect(f'/report/pdf/{xmlid}/{ids_str}')
+
     def _portal_print_indiapost_label_denied(self, redirect_url):
         request.session['error'] = _(
             'India Post address labels are printed by KeralaXpress staff.'
@@ -756,9 +762,7 @@ class LogisticsPortal(CustomerPortal):
             request.session['error'] = "No shipments found for this order."
             return request.redirect(f'/my/orders/{order.id}')
             
-        # Create a comma-separated string of shipment IDs
-        shipment_ids_str = ",".join(str(s_id) for s_id in shipment_ids)
-        return request.redirect(f'/report/pdf/keralariders_logistics.action_report_shipment/{shipment_ids_str}')
+        return self._portal_awb_pdf_redirect(shipment_ids, kw.get('paper'))
 
     @http.route(['/my/orders/new'], type='http', auth="user", website=True)
     def portal_my_orders_new(self, **kw):
@@ -1175,9 +1179,7 @@ class LogisticsPortal(CustomerPortal):
             return request.redirect('/my/shipments')
         if not shipment.portal_awb_printable():
             return self._portal_print_awb_denied('/my/shipments')
-        return request.redirect(
-            f'/report/pdf/keralariders_logistics.action_report_shipment/{shipment.id}'
-        )
+        return self._portal_awb_pdf_redirect([shipment.id], kw.get('paper'))
 
     @http.route(['/my/shipments/<int:shipment_id>/indiapost_label'], type='http',
                 auth="user", website=True)

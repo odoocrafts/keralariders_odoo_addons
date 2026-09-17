@@ -56,8 +56,8 @@
                             <td class="text-end">
                                 <a t-if="order.state != 'draft'"
                                    t-attf-href="/my/orders/#{order.id}/print"
-                                   class="btn btn-sm btn-outline-primary"
-                                   title="Print All AWBs" target="_blank">
+                                   class="btn btn-sm btn-outline-primary kx-print-awb"
+                                   title="Print All AWBs">
                                     <i class="fa fa-print"/> Print
                                 </a>
                             </td>
@@ -65,6 +65,7 @@
                     </t>
                 </tbody>
             </t>
+            <t t-call="keralariders_logistics.portal_print_shipping_label_modal"/>
         </t>
     </template>
 
@@ -89,7 +90,7 @@
                         </a>
                         <a t-if="order.state != 'draft'"
                            t-attf-href="/my/orders/#{order.id}/print"
-                           class="btn btn-sm btn-outline-primary me-2" target="_blank">
+                           class="btn btn-sm btn-outline-primary me-2 kx-print-awb">
                             <i class="fa fa-print me-1"/> Print AWBs
                         </a>
                         <span class="badge bg-primary fs-6"><t t-esc="dict(order.fields_get(allfields=['state'])['state']['selection'])[order.state]"/></span>
@@ -186,6 +187,7 @@
                     </div>
                 </div>
             </div>
+            <t t-call="keralariders_logistics.portal_print_shipping_label_modal"/>
         </t>
     </template>
 

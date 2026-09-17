@@ -207,6 +207,70 @@ class Shipment(models.Model):
             encoded = base64.b64encode(handle.read()).decode()
         return 'data:image/png;base64,%s' % encoded
 
+    AWB_REPORT_XMLID_A4 = 'keralariders_logistics.action_report_shipment'
+    AWB_REPORT_XMLID_100x150 = (
+        'keralariders_logistics.action_report_shipment_100x150'
+    )
+
+    @classmethod
+    def _awb_report_xmlid_for_paper(cls, paper=None):
+        """Map a portal/wizard paper choice to the Print AWB report xmlid."""
+        value = (paper or 'a4').strip().lower().replace('×', 'x')
+        value = value.replace(' ', '')
+        if value in ('100x150', '4x6', '4x6in', '4x6"'):
+            return cls.AWB_REPORT_XMLID_100x150
+        return cls.AWB_REPORT_XMLID_A4
+
+    def _awb_kx_barcode_img_src(self):
+        self.ensure_one()
+        return (
+            'https://bwipjs-api.metafloor.com/?bcid=code128&text=%s&scale=2'
+            % quote(self.name or '', safe='')
+        )
+
+    def _awb_kx_qr_img_src(self):
+        self.ensure_one()
+        return (
+            'https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=%s'
+            % quote(self.name or '', safe='')
+        )
+
+    def _awb_label_qr_img_src(self):
+        """QR already used on the A4 AWB: India Post tracking, else KX AWB."""
+        self.ensure_one()
+        if (
+            self.fulfilment_method == 'indiapost'
+            and (self.indiapost_article_number or '').strip()
+        ):
+            return self._awb_indiapost_qr_img_src()
+        return self._awb_kx_qr_img_src()
+
+    def _awb_label_service_code(self):
+        """Large mark on the 100×150 thermal label (sort letter, else KX)."""
+        self.ensure_one()
+        if self.fulfilment_method == 'indiapost':
+            sort = self._awb_indiapost_sort_code()
+            if sort:
+                return sort
+            article = (self.indiapost_article_type or '').strip().upper()
+            if article:
+                return article[0]
+            return 'IP'
+        return 'KX'
+
+    def _awb_label_service_name(self):
+        """Service line under the mark, e.g. SPEED POST or KERALAXPRESS."""
+        self.ensure_one()
+        if self.fulfilment_method == 'indiapost':
+            selection = self._fields['indiapost_article_type'].selection
+            label = dict(selection).get(self.indiapost_article_type) or 'India Post'
+            return (label or 'INDIA POST').upper()
+        return 'KERALAXPRESS'
+
+    def action_print_awb_picker(self):
+        """Backend Print AWB: paper-size wizard, then the matching report."""
+        return self.env['logistics.awb.print.wizard']._action_open(self)
+
     @api.model
     def _shipping_from_vals_for_seller(self, seller):
         """Copy seller origin (pickup) address onto shipment shipping_from_* fields.

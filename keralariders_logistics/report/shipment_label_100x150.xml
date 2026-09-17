@@ -1,0 +1,165 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="paperformat_shipping_label_100x150" model="report.paperformat">
+        <field name="name">KX Shipping Label 100×150 mm</field>
+        <field name="default" eval="False"/>
+        <field name="format">custom</field>
+        <field name="page_width">100</field>
+        <field name="page_height">150</field>
+        <field name="orientation">Portrait</field>
+        <field name="margin_top">2</field>
+        <field name="margin_bottom">2</field>
+        <field name="margin_left">2</field>
+        <field name="margin_right">2</field>
+        <field name="header_line" eval="False"/>
+        <field name="header_spacing">0</field>
+        <field name="dpi">96</field>
+        <field name="disable_shrinking" eval="True"/>
+    </record>
+
+    <template id="report_shipment_document_100x150_label">
+        <t t-set="seller_addr" t-value="o._awb_seller_address()"/>
+        <t t-set="customer_phone" t-value="o._awb_customer_phone()"/>
+        <t t-set="is_ip" t-value="o.fulfilment_method == 'indiapost'"/>
+        <t t-set="arn" t-value="(o.indiapost_article_number or '') if o.fulfilment_method == 'indiapost' else ''"/>
+        <div class="page kx-label-100x150" style="width: 96mm; height: 146mm; overflow: hidden; font-family: Arial, Helvetica, sans-serif; font-size: 9px; color: #000; background: #fff; page-break-inside: avoid;">
+            <table style="width: 100%; border-collapse: collapse; border: 2px solid #000;">
+                <tr>
+                    <td class="kx-label-kx-logo" style="width: 50%; border-bottom: 2px solid #000; padding: 2mm 2mm 1.5mm 2mm; vertical-align: middle;">
+                        <img t-if="company.logo" t-att-src="image_data_uri(company.logo)" style="max-width: 38mm; max-height: 10mm;" alt="KeralaXpress"/>
+                        <span t-else="" class="kx-label-kx-name" style="font-size: 12px; font-weight: 900; letter-spacing: 0.4px;">KERALAXPRESS</span>
+                    </td>
+                    <td style="width: 50%; border-bottom: 2px solid #000; padding: 2mm 2mm 1.5mm 2mm; text-align: right; vertical-align: middle;">
+                        <img t-if="is_ip" t-att-src="o._awb_indiapost_logo_data_uri()"
+                             class="awb-indiapost-logo"
+                             style="max-width: 38mm; max-height: 10mm;"
+                             alt="India Post"/>
+                    </td>
+                </tr>
+            </table>
+            <table style="width: 100%; border-collapse: collapse; border: 2px solid #000; border-top: 0;">
+                <tr>
+                    <td class="kx-label-service" style="width: 22%; border-right: 2px solid #000; padding: 2mm; text-align: center; vertical-align: middle;">
+                        <div style="border: 2px solid #000; display: inline-block; min-width: 14mm; padding: 1mm 2mm; font-size: 22px; font-weight: 900; line-height: 1.1; letter-spacing: 1px;">
+                            <t t-esc="o._awb_label_service_code()"/>
+                        </div>
+                        <div style="font-size: 11px; font-weight: 900; margin-top: 1.5mm;" t-field="o.shipping_to_zip"/>
+                    </td>
+                    <td style="width: 53%; padding: 1.5mm 1mm; text-align: center; vertical-align: middle;">
+                        <t t-if="arn">
+                            <img t-att-src="o._awb_indiapost_barcode_img_src()"
+                                 class="awb-indiapost-barcode"
+                                 style="width: 100%; max-width: 48mm; height: 12mm; margin: 0 auto; display: block;"
+                                 alt="India Post Article Barcode"/>
+                            <div class="awb-indiapost-article" style="font-size: 8px; font-weight: 700; margin-top: 0.5mm; letter-spacing: 0.3px;">
+                                <span t-esc="arn"/>
+                            </div>
+                        </t>
+                        <t t-else="">
+                            <div style="font-size: 8px; font-weight: 700; letter-spacing: 0.4px;">AWB</div>
+                            <div style="font-size: 13px; font-weight: 900; letter-spacing: 0.5px;" t-field="o.name"/>
+                        </t>
+                    </td>
+                    <td style="width: 25%; padding: 1.5mm; text-align: center; vertical-align: middle;">
+                        <img t-att-src="o._awb_label_qr_img_src()"
+                             class="kx-label-qr"
+                             style="width: 18mm; height: 18mm; margin: 0 auto; display: block;"
+                             alt="Tracking QR"/>
+                    </td>
+                </tr>
+                <tr>
+                    <td colspan="3" class="kx-label-service-name" style="border-top: 2px solid #000; padding: 1.2mm 2mm; font-size: 13px; font-weight: 900; letter-spacing: 0.6px; text-transform: uppercase;">
+                        <t t-esc="o._awb_label_service_name()"/>
+                    </td>
+                </tr>
+                <tr>
+                    <td colspan="3" class="kx-label-from" style="border-top: 2px solid #000; padding: 1.5mm 2mm; font-size: 8px; line-height: 1.25; vertical-align: top;">
+                        <div style="font-size: 7px; font-weight: 700; letter-spacing: 0.4px; margin-bottom: 0.4mm;">FROM</div>
+                        <div class="text-uppercase" style="font-weight: 700;"><t t-esc="seller_addr['name']"/></div>
+                        <div>
+                            <t t-esc="seller_addr['street']"/>
+                            <t t-if="seller_addr['district']">, <t t-esc="seller_addr['district']"/></t>
+                            <t t-if="seller_addr['state']">, <t t-esc="seller_addr['state']"/></t>
+                        </div>
+                        <div>
+                            PIN <strong t-esc="seller_addr['zip']"/>
+                            <t t-if="seller_addr['phone']">
+                                · Ph <t t-esc="seller_addr['phone']"/>
+                            </t>
+                        </div>
+                    </td>
+                </tr>
+                <tr>
+                    <td colspan="3" class="kx-label-shipto" style="border-top: 2px solid #000; padding: 2mm; font-size: 11px; line-height: 1.3; vertical-align: top;">
+                        <div style="font-size: 7px; font-weight: 700; letter-spacing: 0.4px; margin-bottom: 0.6mm;">SHIP TO</div>
+                        <div class="text-uppercase" style="font-size: 14px; font-weight: 900;"><span t-field="o.shipping_to_name"/></div>
+                        <div>
+                            <span t-field="o.shipping_to_address"/>
+                            <t t-if="o.shipping_to_district_id">, <span t-field="o.shipping_to_district_id"/></t>
+                            <t t-if="o.shipping_to_state_id">, <span t-field="o.shipping_to_state_id"/></t>
+                        </div>
+                        <div style="font-size: 13px; font-weight: 900; margin-top: 0.8mm;">PIN <span t-field="o.shipping_to_zip"/></div>
+                        <t t-if="customer_phone">
+                            <div style="font-size: 12px; font-weight: 700; margin-top: 0.4mm;">Mob: <t t-esc="customer_phone"/></div>
+                        </t>
+                    </td>
+                </tr>
+                <tr>
+                    <td colspan="2" style="width: 62%; border-top: 2px solid #000; border-right: 2px solid #000; padding: 1.5mm 2mm; text-align: center; vertical-align: middle;">
+                        <t t-if="o.order_payment_type == 'cod'">
+                            <div style="font-size: 16px; font-weight: 900; border: 2px solid #000; display: inline-block; padding: 0.8mm 3mm; letter-spacing: 1px;">COD</div>
+                            <div style="font-size: 12px; font-weight: 900; margin-top: 1mm;">
+                                <span t-field="o.cod_amount"/>
+                            </div>
+                        </t>
+                        <t t-else="">
+                            <div style="font-size: 16px; font-weight: 900; letter-spacing: 1px;">PREPAID</div>
+                        </t>
+                    </td>
+                    <td style="width: 38%; border-top: 2px solid #000; padding: 1.5mm 2mm; font-size: 8px; vertical-align: middle;">
+                        <div><strong>Wt</strong> <span t-field="o.total_weight"/> kg</div>
+                        <div><strong>Date</strong> <span t-field="o.order_date" t-options="{'widget': 'date'}"/></div>
+                    </td>
+                </tr>
+                <tr t-if="o.item_description">
+                    <td colspan="3" class="kx-label-item" style="border-top: 2px solid #000; padding: 1mm 2mm; font-size: 8px; max-height: 8mm; overflow: hidden;">
+                        <span t-field="o.item_description"/>
+                    </td>
+                </tr>
+                <tr>
+                    <td colspan="3" class="kx-label-awb-barcode" style="border-top: 2px solid #000; padding: 1.5mm 2mm 1mm 2mm; text-align: center;">
+                        <img t-att-src="o._awb_kx_barcode_img_src()"
+                             style="width: 100%; max-width: 84mm; height: 12mm; margin: 0 auto; display: block;"
+                             alt="AWB Barcode"/>
+                        <div style="font-size: 10px; font-weight: 900; letter-spacing: 1px; margin-top: 0.6mm;">
+                            AWB <span t-field="o.name"/>
+                        </div>
+                    </td>
+                </tr>
+            </table>
+        </div>
+    </template>
+
+    <template id="report_shipment_document_100x150">
+        <t t-call="web.html_container">
+            <style type="text/css">
+                @page { size: 100mm 150mm; margin: 2mm; }
+                .kx-label-100x150 { color: #000; background: #fff; }
+            </style>
+            <t t-foreach="docs" t-as="o">
+                <t t-set="company" t-value="o.company_id"/>
+                <t t-call="keralariders_logistics.report_shipment_document_100x150_label"/>
+            </t>
+        </t>
+    </template>
+
+    <record id="action_report_shipment_100x150" model="ir.actions.report">
+        <field name="name">AWB 100×150 mm</field>
+        <field name="model">logistics.shipment</field>
+        <field name="report_type">qweb-pdf</field>
+        <field name="report_name">keralariders_logistics.report_shipment_document_100x150</field>
+        <field name="report_file">keralariders_logistics.report_shipment_document_100x150</field>
+        <field name="print_report_name">'AWB 100x150 - %s - %s' % (object.name, object.order_payment_type.upper())</field>
+        <field name="paperformat_id" ref="paperformat_shipping_label_100x150"/>
+    </record>
+</odoo>

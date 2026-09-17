@@ -243,7 +243,7 @@
                 <field name="delivery_charges_total" force_save="1" string="Delivery Charge" width="100" sum="Delivery Charges" options="{'fg_color': 'brown: not wallet_transaction_id; green: wallet_transaction_id;'}"/>
                 <field name="currency_id" column_invisible="1"/>
                 <field name="wallet_transaction_id" column_invisible="1"/>
-                <button name="%(keralariders_logistics.action_report_shipment)d" class="oe_highlight" string="Print AWB" type="action" icon="fa-print" width="100"/>
+                <button name="action_print_awb_picker" class="oe_highlight" string="Print AWB" type="object" icon="fa-print" width="100"/>
             </list>
         </field>
     </record>
@@ -255,7 +255,7 @@
         <field name="arch" type="xml">
             <form string="Shipment">
                 <header>
-                    <button name="%(keralariders_logistics.action_report_shipment)d" string="Print AWB" type="action" class="btn-primary"/>
+                    <button name="action_print_awb_picker" string="Print AWB" type="object" class="btn-primary"/>
                     <!-- India Post actions. All idempotent: booking skips
                          anything that already has an article number. -->
                     <button name="action_indiapost_book" type="object"
