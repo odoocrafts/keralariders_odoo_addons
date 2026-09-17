@@ -400,3 +400,37 @@ class TestPortalManualOrder(IndiapostHermeticMixin, HttpCase):
             % shipment.id,
             ship_allowed.headers.get('Location', ''),
         )
+
+    def test_order_detail_uses_phone_layout_without_hiding_print(self):
+        self.authenticate(self.portal_login, self.portal_login)
+        order = self._create_own_network_order()
+        draft = self.url_open('/my/orders/%s' % order.id)
+        self.assertIn('kx-order-detail-header', draft.text)
+        self.assertIn('kx-order-meta', draft.text)
+        self.assertIn('kx-shipment-card', draft.text)
+        self.assertIn('kx-shipment-table', draft.text)
+        self.assertIn('Add Shipment', draft.text)
+        self.assertNotIn('Print AWBs', draft.text)
+
+        detail = self.url_open('/my/orders/%s' % order.id)
+        self.url_open('/my/orders/request_pickup', data={
+            'csrf_token': self._csrf(detail.text),
+            'order_id': str(order.id),
+            'pickup_confirm_token': self._hidden_value(
+                detail.text, 'pickup_confirm_token'),
+        })
+        printable = self.url_open('/my/orders/%s' % order.id)
+        self.assertIn('Print AWBs', printable.text)
+        self.assertIn('kx-print-awb', printable.text)
+        self.assertIn('kxPrintLabelModal', printable.text)
+        self.assertIn('100 × 150 mm', printable.text)
+        self.assertNotIn('/indiapost_label', printable.text)
+        self.assertIn('d-md-none kx-shipment-cards', printable.text)
+        self.assertIn('d-none d-md-block kx-shipment-table-wrap', printable.text)
+
+        listing = self.url_open('/my/orders')
+        self.assertIn('badge bg-secondary', listing.text)
+        self.assertIn('kx-print-awb', listing.text)
+        self.assertNotIn('kx-order-detail-header', listing.text)
+        self.assertIn('<th>Status</th>', listing.text)
+        self.assertIn('text-end">Actions', listing.text)

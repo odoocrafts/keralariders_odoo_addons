@@ -1,0 +1,50 @@
+/* Seller portal — phone-first order detail (~390px), compact table on md+. */
+
+.kx-portal-order-detail .kx-order-detail-title,
+.kx-portal-order-detail .kx-order-detail-title-row,
+.kx-portal-order-detail .kx-awb-block {
+    min-width: 0;
+}
+
+@media (max-width: 767.98px) {
+    .kx-portal-order-detail .kx-order-detail-title {
+        font-size: 1.15rem;
+        line-height: 1.3;
+    }
+}
+
+.kx-portal-order-detail .kx-status-pill {
+    white-space: nowrap;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+}
+
+.kx-portal-order-detail .kx-order-meta-label {
+    font-size: 0.7rem;
+    letter-spacing: 0.06em;
+}
+
+.kx-portal-order-detail .kx-awb-block a {
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+
+.kx-portal-order-detail .kx-awb-block .small {
+    font-variant-numeric: tabular-nums;
+    overflow-wrap: anywhere;
+}
+
+.kx-shipment-card .kx-awb-block .small {
+    white-space: nowrap;
+}
+
+.kx-shipment-card-grid > [class*="col-"] {
+    min-width: 0;
+}
+
+@media (min-width: 768px) {
+    .kx-portal-order-detail .kx-shipment-table .kx-awb-block a,
+    .kx-portal-order-detail .kx-shipment-table .kx-awb-block .small {
+        white-space: nowrap;
+    }
+}

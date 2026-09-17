@@ -1,6 +1,6 @@
 {
     'name': 'Kerala Riders Logistics',
-    'version': '1.6.13',
+    'version': '1.6.14',
     'category': 'Operations/Logistics',
     'summary': 'Last-mile delivery management platform for Kerala Riders',
     'description': """
@@ -73,6 +73,11 @@ Features:
         # calls a method on logistics.indiapost.office.
         'data/indiapost_data.xml',
     ],
+    'assets': {
+        'web.assets_frontend': [
+            'keralariders_logistics/static/src/css/portal.css',
+        ],
+    },
     'post_init_hook': '_post_init_assign_hub_pincodes',
     'images': ['static/description/icon.png'],
     'installable': True,

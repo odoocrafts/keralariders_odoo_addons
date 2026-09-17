@@ -69,6 +69,85 @@
         </t>
     </template>
 
+    <!-- Shared status pill for order / shipment. -->
+    <template id="portal_status_pill" name="Portal Status Pill">
+        <span t-attf-class="badge rounded-pill kx-status-pill #{pill_class} flex-shrink-0">
+            <t t-esc="pill_label"/>
+        </span>
+    </template>
+
+    <template id="portal_order_shipment_status" name="Order Shipment Status Pill">
+        <t t-set="pill_label" t-value="dict(ship.fields_get(allfields=['state'])['state']['selection'])[ship.state]"/>
+        <t t-set="pill_class" t-value="{
+            'order_added': 'text-bg-secondary',
+            'pickup_requested': 'text-bg-warning',
+            'picked': 'text-bg-info',
+            'in_transit': 'text-bg-info',
+            'at_source_hub': 'text-bg-info',
+            'at_central_hub': 'text-bg-info',
+            'at_destination_hub': 'text-bg-info',
+            'out_for_delivery': 'text-bg-warning',
+            'delivery_failed': 'text-bg-danger',
+            'delivered': 'text-bg-success',
+            'cancelled': 'text-bg-danger',
+            'return_requested': 'text-bg-secondary',
+            'return_picked': 'text-bg-secondary',
+            'returned': 'text-bg-dark',
+        }.get(ship.state, 'text-bg-secondary')"/>
+        <t t-call="keralariders_logistics.portal_status_pill"/>
+    </template>
+
+    <!-- Phone-only shipment card. Desktop keeps the compact table. -->
+    <template id="portal_order_shipment_card" name="Order Detail Shipment Card">
+        <article class="kx-shipment-card card shadow-sm mb-2">
+            <div class="card-body p-3">
+                <div class="d-flex justify-content-between align-items-start gap-2 mb-3">
+                    <div class="kx-awb-block">
+                        <t t-call="keralariders_logistics.portal_shipment_awb_ref">
+                            <t t-set="shipment" t-value="ship"/>
+                        </t>
+                    </div>
+                    <t t-call="keralariders_logistics.portal_order_shipment_status"/>
+                </div>
+                <div class="row g-3 kx-shipment-card-grid">
+                    <div class="col-6">
+                        <div class="text-muted small">Customer</div>
+                        <div class="fw-semibold text-break"><span t-field="ship.shipping_to_name"/></div>
+                    </div>
+                    <div class="col-6">
+                        <div class="text-muted small">Phone</div>
+                        <div class="fw-semibold text-break"><span t-field="ship.shipping_to_mobile"/></div>
+                    </div>
+                    <div class="col-6">
+                        <div class="text-muted small">Weight</div>
+                        <div class="fw-semibold"><span t-field="ship.total_weight"/> kg</div>
+                    </div>
+                    <div class="col-6">
+                        <div class="text-muted small">Payment</div>
+                        <div class="fw-semibold">
+                            <span t-esc="dict(ship.fields_get(allfields=['order_payment_type'])['order_payment_type']['selection'])[ship.order_payment_type]"/>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="text-muted small">Charges</div>
+                        <div class="fw-semibold">
+                            <span t-field="ship.delivery_charges_total" t-options='{"widget": "monetary", "display_currency": ship.currency_id}'/>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="text-muted small">Time to deliver</div>
+                        <div class="fw-semibold">
+                            <t t-if="ship.delivery_duration_display">
+                                <span t-esc="ship.delivery_duration_display"/>
+                            </t>
+                            <t t-else="">—</t>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </article>
+    </template>
+
     <!-- Order Detail View -->
     <template id="portal_my_order_detail" name="Order Detail">
         <t t-call="portal.portal_layout">
@@ -78,53 +157,74 @@
             <t t-if="success">
                 <div class="alert alert-success" role="alert"><t t-esc="success"/></div>
             </t>
-            
-            <div class="card shadow-sm mb-4">
-                <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
-                    <h4 class="mb-0">Order: <t t-esc="order.name"/></h4>
-                    <div>
-                        <a t-if="order.state == 'draft'"
-                           t-attf-href="/my/orders/#{order.id}/shipments/new"
-                           class="btn btn-sm btn-primary me-2">
-                            <i class="fa fa-plus me-1"/> Add Shipment
-                        </a>
-                        <a t-if="order.state != 'draft'"
-                           t-attf-href="/my/orders/#{order.id}/print"
-                           class="btn btn-sm btn-outline-primary me-2 kx-print-awb">
-                            <i class="fa fa-print me-1"/> Print AWBs
-                        </a>
-                        <span class="badge bg-primary fs-6"><t t-esc="dict(order.fields_get(allfields=['state'])['state']['selection'])[order.state]"/></span>
+
+            <t t-set="order_status_label" t-value="dict(order.fields_get(allfields=['state'])['state']['selection'])[order.state]"/>
+            <t t-set="order_status_class" t-value="{
+                'draft': 'text-bg-secondary',
+                'pickup_requested': 'text-bg-warning',
+                'picked': 'text-bg-info',
+                'partial': 'text-bg-dark',
+                'delivered': 'text-bg-success',
+                'cancelled': 'text-bg-danger',
+            }.get(order.state, 'text-bg-primary')"/>
+
+            <div class="card shadow-sm mb-4 kx-portal-order-detail">
+                <div class="card-header bg-white py-3 kx-order-detail-header">
+                    <div class="d-flex flex-column flex-md-row align-items-md-center gap-2">
+                        <div class="d-flex justify-content-between align-items-center gap-2 kx-order-detail-title-row flex-grow-1">
+                            <h4 class="mb-0 text-break kx-order-detail-title">
+                                Order: <t t-esc="order.name"/>
+                            </h4>
+                            <t t-call="keralariders_logistics.portal_status_pill">
+                                <t t-set="pill_label" t-value="order_status_label"/>
+                                <t t-set="pill_class" t-value="order_status_class"/>
+                            </t>
+                        </div>
+                        <div class="d-grid d-md-block kx-order-detail-actions flex-shrink-0">
+                            <a t-if="order.state == 'draft'"
+                               t-attf-href="/my/orders/#{order.id}/shipments/new"
+                               class="btn btn-primary">
+                                <i class="fa fa-plus me-1"/> Add Shipment
+                            </a>
+                            <a t-if="order.state != 'draft'"
+                               t-attf-href="/my/orders/#{order.id}/print"
+                               class="btn btn-outline-primary kx-print-awb">
+                                <i class="fa fa-print me-1"/> Print AWBs
+                            </a>
+                        </div>
                     </div>
                 </div>
                 <div class="card-body">
-                    <div class="row mb-4">
-                        <div class="col-md-3">
-                            <strong>Order Date:</strong><br/>
-                            <span t-field="order.order_date"/>
+                    <div class="row g-3 mb-4 kx-order-meta">
+                        <div class="col-6 col-md-3">
+                            <div class="text-muted text-uppercase fw-semibold kx-order-meta-label">Order Date</div>
+                            <div class="fw-semibold"><span t-field="order.order_date"/></div>
                         </div>
-                        <div class="col-md-3">
-                            <strong>Pickup Date:</strong><br/>
-                            <span t-field="order.pickup_date"/>
+                        <div class="col-6 col-md-3">
+                            <div class="text-muted text-uppercase fw-semibold kx-order-meta-label">Pickup Date</div>
+                            <div class="fw-semibold"><span t-field="order.pickup_date"/></div>
                         </div>
-                        <div class="col-md-3">
-                            <strong>Total Shipments:</strong><br/>
-                            <span t-field="order.shipment_count"/>
+                        <div class="col-6 col-md-3">
+                            <div class="text-muted text-uppercase fw-semibold kx-order-meta-label">Total Shipments</div>
+                            <div class="fw-semibold"><span t-field="order.shipment_count"/></div>
                         </div>
-                        <div class="col-md-3 text-end">
-                            <h4 class="text-primary mb-0">Total Charges</h4>
-                            <h5><span t-field="order.total_charges" t-options='{"widget": "monetary", "display_currency": order.currency_id}'/></h5>
+                        <div class="col-6 col-md-3">
+                            <div class="text-muted text-uppercase fw-semibold kx-order-meta-label">Total Charges</div>
+                            <div class="fw-bold text-primary fs-5 mb-0">
+                                <span t-field="order.total_charges" t-options='{"widget": "monetary", "display_currency": order.currency_id}'/>
+                            </div>
                         </div>
                     </div>
-                    
+
                     <t t-if="order.state == 'draft'">
-                        <div t-attf-class="alert #{'alert-danger' if wallet.balance &lt; order.total_charges else 'alert-success'} d-flex justify-content-between align-items-center">
+                        <div t-attf-class="alert #{'alert-danger' if wallet.balance &lt; order.total_charges else 'alert-success'} d-flex flex-column flex-sm-row justify-content-between align-items-stretch align-items-sm-center gap-3">
                             <div>
                                 <strong>Wallet Balance: </strong> <span t-field="wallet.balance" t-options='{"widget": "monetary", "display_currency": wallet.currency_id}'/>
                                 <t t-if="wallet.balance &lt; order.total_charges">
                                     <br/><small>Insufficient balance. Please recharge your wallet to proceed.</small>
                                 </t>
                             </div>
-                            <div class="text-end">
+                            <div class="d-grid d-sm-block">
                                 <t t-if="wallet.balance &lt; order.total_charges">
                                     <a href="/my/wallet" class="btn btn-warning">Recharge Wallet</a>
                                 </t>
@@ -134,7 +234,7 @@
                                         <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
                                         <input type="hidden" name="order_id" t-att-value="order.id"/>
                                         <input type="hidden" name="pickup_confirm_token" t-att-value="pickup_confirm_token"/>
-                                        <button type="submit" class="btn btn-success"><i class="fa fa-truck me-1"/> Confirm &amp; Request Pickup</button>
+                                        <button type="submit" class="btn btn-success w-100"><i class="fa fa-truck me-1"/> Confirm &amp; Request Pickup</button>
                                     </form>
                                 </t>
                             </div>
@@ -142,8 +242,13 @@
                     </t>
 
                     <h5 class="mt-4 mb-3">Shipments Included in this Order</h5>
-                    <div class="table-responsive">
-                        <table class="table table-sm table-striped">
+                    <div class="d-md-none kx-shipment-cards">
+                        <t t-foreach="order.shipment_ids" t-as="ship">
+                            <t t-call="keralariders_logistics.portal_order_shipment_card"/>
+                        </t>
+                    </div>
+                    <div class="table-responsive d-none d-md-block kx-shipment-table-wrap">
+                        <table class="table table-sm table-striped align-middle kx-shipment-table">
                             <thead>
                                 <tr>
                                     <th>AWB / Ref</th>
@@ -160,9 +265,11 @@
                                 <t t-foreach="order.shipment_ids" t-as="ship">
                                     <tr>
                                         <td>
-                                            <t t-call="keralariders_logistics.portal_shipment_awb_ref">
-                                                <t t-set="shipment" t-value="ship"/>
-                                            </t>
+                                            <div class="kx-awb-block">
+                                                <t t-call="keralariders_logistics.portal_shipment_awb_ref">
+                                                    <t t-set="shipment" t-value="ship"/>
+                                                </t>
+                                            </div>
                                         </td>
                                         <td><span t-field="ship.shipping_to_name"/></td>
                                         <td><span t-field="ship.shipping_to_mobile"/></td>
@@ -170,9 +277,7 @@
                                         <td><span t-esc="dict(ship.fields_get(allfields=['order_payment_type'])['order_payment_type']['selection'])[ship.order_payment_type]"/></td>
                                         <td><span t-field="ship.delivery_charges_total" t-options='{"widget": "monetary", "display_currency": ship.currency_id}'/></td>
                                         <td>
-                                            <span class="badge bg-secondary">
-                                                <t t-esc="dict(ship.fields_get(allfields=['state'])['state']['selection'])[ship.state]"/>
-                                            </span>
+                                            <t t-call="keralariders_logistics.portal_order_shipment_status"/>
                                         </td>
                                         <td>
                                             <t t-if="ship.delivery_duration_display">
