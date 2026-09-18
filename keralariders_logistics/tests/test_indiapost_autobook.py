@@ -162,6 +162,28 @@ class TestIndiapostAutobook(IndiapostHermeticMixin, TransactionCase):
         self.assertEqual(shipment.indiapost_article_number, 'TT900009999IN')
         self.assertEqual(shipment.state, 'pickup_requested')
 
+    def test_book_skips_when_in_progress(self):
+        _order, shipment = self._new_order(self.ip_seller)
+        self._store_quote(shipment)
+        shipment.sudo().write({'indiapost_booking_in_progress': True})
+        self.assertFalse(shipment._ip_bookable())
+        with self._ip_patch_call() as mocked:
+            shipment.action_indiapost_book()
+        mocked.assert_not_called()
+        self.assertFalse(shipment.indiapost_article_number)
+
+    def test_book_skips_when_barcode_already_accepted(self):
+        _order, shipment = self._new_order(self.ip_seller)
+        self._store_quote(shipment)
+        barcode = shipment._ip_reserve_barcode()
+        barcode.sudo()._ip_mark_booked()
+        self.assertFalse(shipment._ip_bookable())
+        with self._ip_patch_call() as mocked:
+            shipment.action_indiapost_book()
+        mocked.assert_not_called()
+        self.assertEqual(barcode.state, 'booked')
+        self.assertEqual(shipment.indiapost_barcode_id, barcode)
+
     def test_booking_failure_keeps_pickup_and_debit(self):
         """Fail closed: pickup stays requested, error is on the shipment."""
         order, shipment = self._new_order(self.ip_seller)
@@ -338,6 +360,9 @@ class TestIndiapostAutobookPortal(IndiapostHermeticMixin, HttpCase):
 
         detail = self.url_open('/my/orders/%s' % order.id)
         self.assertEqual(detail.status_code, 200)
+        self.assertIn('kx-submit-once', detail.text)
+        self.assertIn('kx-submit-once-loading', detail.text)
+        self.assertIn('Requesting pickup...', detail.text)
         with self._ip_patch_call():
             pickup = self.url_open('/my/orders/request_pickup', data={
                 'csrf_token': self._csrf(detail.text),

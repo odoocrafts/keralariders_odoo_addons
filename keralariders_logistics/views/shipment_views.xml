@@ -511,6 +511,7 @@
                                 <group string="Booking">
                                     <field name="fulfilment_method" readonly="1"/>
                                     <field name="indiapost_booking_state"/>
+                                    <field name="indiapost_booking_in_progress" invisible="1"/>
                                     <field name="indiapost_article_number"/>
                                     <field name="indiapost_article_type"
                                            readonly="indiapost_article_number != False"/>

@@ -1,6 +1,6 @@
 {
     'name': 'Kerala Riders Logistics',
-    'version': '1.6.16',
+    'version': '1.6.17',
     'category': 'Operations/Logistics',
     'summary': 'Last-mile delivery management platform for Kerala Riders',
     'description': """
@@ -76,6 +76,10 @@ Features:
     'assets': {
         'web.assets_frontend': [
             'keralariders_logistics/static/src/css/portal.css',
+            'keralariders_logistics/static/src/js/portal_submit_once.js',
+        ],
+        'web.assets_backend': [
+            'keralariders_logistics/static/src/js/backend_book_once.js',
         ],
     },
     'post_init_hook': '_post_init_assign_hub_pincodes',

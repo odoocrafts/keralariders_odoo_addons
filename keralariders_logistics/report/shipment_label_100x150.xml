@@ -22,7 +22,7 @@
         <t t-set="seller_addr" t-value="o._awb_seller_address()"/>
         <t t-set="customer_phone" t-value="o._awb_customer_phone()"/>
         <t t-set="is_ip" t-value="o.fulfilment_method == 'indiapost'"/>
-        <t t-set="arn" t-value="(o.indiapost_article_number or '') if o.fulfilment_method == 'indiapost' else ''"/>
+        <t t-set="arn" t-value="o.portal_indiapost_arn() or ''"/>
         <div class="page kx-label-100x150">
             <table>
                 <tr>

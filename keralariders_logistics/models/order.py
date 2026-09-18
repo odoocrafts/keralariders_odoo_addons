@@ -74,6 +74,11 @@ class Order(models.Model):
 
     def action_request_pickup(self):
         for order in self:
+            self.env.cr.execute(
+                'SELECT id FROM logistics_order WHERE id = %s FOR UPDATE',
+                (order.id,),
+            )
+            order.invalidate_recordset(['state'])
             if order.state != 'draft':
                 raise UserError("Only draft orders can request pickup.")
                 

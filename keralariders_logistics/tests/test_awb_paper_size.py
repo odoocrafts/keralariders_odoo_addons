@@ -186,6 +186,19 @@ class TestAwbPaperSize(IndiapostHermeticMixin, TransactionCase):
         self.assertIn('SPEED POST', html)
         self.assertIn(shipment.name, html)
         self.assertIn('AWB', html)
+        self.assertIn('awb-indiapost-article', html)
+        self.assertIn('text=%s' % ARTICLE, html)
+        self.assertEqual(shipment.portal_indiapost_arn(), ARTICLE)
+
+    def test_indiapost_100x150_without_arn_prints_awb_in_top_cell(self):
+        shipment = self._new_shipment(self.ip_seller)
+        self.assertFalse(shipment.portal_indiapost_arn())
+        html = self._label_html(shipment)
+        self.assertIn('kx-label-100x150', html)
+        self.assertIn(shipment.name, html)
+        self.assertIn('AWB', html)
+        self.assertNotIn('awb-indiapost-barcode', html)
+        self.assertNotIn('awb-indiapost-article', html)
 
     def test_label_xml_parses(self):
         layout = (
@@ -216,6 +229,8 @@ class TestAwbPaperSize(IndiapostHermeticMixin, TransactionCase):
         self.assertIn('docs._awb_money_font_css()', source)
         self.assertIn('<meta charset="utf-8"/>', source)
         self.assertNotIn('t-field="o.cod_amount"', source)
+        self.assertIn('portal_indiapost_arn()', source)
+        self.assertIn('awb-indiapost-barcode', source)
         font = (
             Path(__file__).resolve().parents[1]
             / 'static' / 'src' / 'fonts' / 'KxAwbRupee-Bold.ttf'

@@ -230,11 +230,16 @@
                                 </t>
                                 <t t-else="">
                                     <form action="/my/orders/request_pickup" method="post"
-                                          onsubmit="var b=this.querySelector('button[type=submit]'); if(b){b.disabled=true;}">
+                                          class="kx-submit-once">
                                         <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
                                         <input type="hidden" name="order_id" t-att-value="order.id"/>
                                         <input type="hidden" name="pickup_confirm_token" t-att-value="pickup_confirm_token"/>
-                                        <button type="submit" class="btn btn-success w-100"><i class="fa fa-truck me-1"/> Confirm &amp; Request Pickup</button>
+                                        <button type="submit" class="btn btn-success w-100">
+                                            <span class="kx-submit-once-label"><i class="fa fa-truck me-1"/> Confirm &amp; Request Pickup</span>
+                                            <span class="kx-submit-once-loading d-none">
+                                                <i class="fa fa-spinner fa-spin me-1"/> Requesting pickup...
+                                            </span>
+                                        </button>
                                     </form>
                                 </t>
                             </div>

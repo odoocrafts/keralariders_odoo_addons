@@ -329,6 +329,11 @@ class Shipment(models.Model):
                                           readonly=True)
     indiapost_booking_error = fields.Text(string='Booking Errors', copy=False,
                                           readonly=True)
+    indiapost_booking_in_progress = fields.Boolean(
+        string='India Post Booking In Progress', copy=False, default=False,
+        help='Set while a pickup/book request is talking to India Post so a '
+             'second click cannot submit the same article again.',
+    )
 
     # ------------------------------------------------------------------
     # Tariff snapshot
@@ -1003,6 +1008,9 @@ class Shipment(models.Model):
             s.fulfilment_method == 'indiapost'
             and s.indiapost_booking_state != 'booked'
             and not s.indiapost_article_number
+            and not s.indiapost_booking_in_progress
+            and (not s.indiapost_barcode_id
+                 or s.indiapost_barcode_id.state != 'booked')
             and s.state != 'cancelled'
         ))
 
@@ -1015,15 +1023,37 @@ class Shipment(models.Model):
         Idempotent: a shipment that already carries an article number is
         skipped, and a shipment keeps the barcode it was first allocated, so a
         retry after a rejection re-sends the same number instead of burning
-        another one.
+        another one. Concurrent clicks wait on a row lock, then see the
+        stored article / in-flight flag and return without posting again.
         """
+        if self.ids:
+            self.env.cr.execute(
+                'SELECT id FROM logistics_shipment WHERE id IN %s FOR UPDATE',
+                [tuple(self.ids)],
+            )
+            self.invalidate_recordset([
+                'indiapost_article_number', 'indiapost_booking_state',
+                'indiapost_booking_in_progress', 'indiapost_barcode_id',
+            ])
+
         settings = self.env['logistics.indiapost.client']._ip_require_configured()
         self._ip_check_booking_settings(settings)
 
         candidates = self._ip_bookable()
-        already = self.filtered(lambda s: s.indiapost_article_number)
-        skipped = self - candidates - already
+        already = self.filtered(lambda s: (
+            s.indiapost_article_number
+            or s.indiapost_booking_state == 'booked'
+            or (s.indiapost_barcode_id and s.indiapost_barcode_id.state == 'booked')
+        ))
+        in_flight = self.filtered('indiapost_booking_in_progress')
+        skipped = self - candidates - already - in_flight
         if not candidates:
+            if in_flight and not already:
+                return self._ip_notify(
+                    _('India Post booking already in progress'),
+                    _('Wait for the current booking to finish before sending again.'),
+                    kind='warning',
+                )
             return self._ip_notify(
                 _('Nothing to book'),
                 _('%(booked)s shipment(s) are already booked and %(skipped)s '
@@ -1032,13 +1062,20 @@ class Shipment(models.Model):
                 kind='warning',
             )
 
+        candidates.sudo().write({'indiapost_booking_in_progress': True})
+        self.env.flush_all()
         booked_count = 0
         failed = []
-        for chunk_start in range(0, len(candidates), BOOKING_CHUNK_SIZE):
-            chunk = candidates[chunk_start:chunk_start + BOOKING_CHUNK_SIZE]
-            booked, errors = chunk._ip_book_chunk(settings)
-            booked_count += booked
-            failed.extend(errors)
+        try:
+            for chunk_start in range(0, len(candidates), BOOKING_CHUNK_SIZE):
+                chunk = candidates[chunk_start:chunk_start + BOOKING_CHUNK_SIZE]
+                booked, errors = chunk._ip_book_chunk(settings)
+                booked_count += booked
+                failed.extend(errors)
+        finally:
+            still = candidates.exists().filtered('indiapost_booking_in_progress')
+            if still:
+                still.sudo().write({'indiapost_booking_in_progress': False})
 
         title = _('India Post booking complete') if not failed \
             else _('India Post booking finished with errors')
@@ -1202,6 +1239,7 @@ class Shipment(models.Model):
                 entry.get('calculated_tariff')),
             'indiapost_booked_on': booked_on or fields.Datetime.now(),
             'indiapost_booking_error': False,
+            'indiapost_booking_in_progress': False,
         })
         if self.indiapost_barcode_id:
             self.indiapost_barcode_id.sudo()._ip_mark_booked()
@@ -1227,6 +1265,7 @@ class Shipment(models.Model):
             'indiapost_batch_id': batch_id or self.indiapost_batch_id,
             'indiapost_correlation_id': (correlation_id
                                          or self.indiapost_correlation_id),
+            'indiapost_booking_in_progress': False,
         })
         if self.indiapost_barcode_id:
             self.indiapost_barcode_id.sudo()._ip_mark_rejected(message)
@@ -1451,6 +1490,7 @@ class Shipment(models.Model):
                 'fulfilment_method': 'own_network',
                 'indiapost_booking_state': 'not_required',
                 'indiapost_booking_error': False,
+                'indiapost_booking_in_progress': False,
                 'indiapost_barcode_id': False,
             })
             if barcode:
