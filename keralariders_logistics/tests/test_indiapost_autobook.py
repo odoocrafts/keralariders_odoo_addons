@@ -8,6 +8,7 @@ The official CEPT sticker is stored for Print India Post Label, not merged.
 import base64
 import io
 import re
+from unittest.mock import patch
 
 from odoo import fields
 from odoo.tests import HttpCase, TransactionCase, tagged
@@ -196,6 +197,83 @@ class TestIndiapostAutobook(IndiapostHermeticMixin, TransactionCase):
         self.assertEqual(shipment.indiapost_booking_state, 'error')
         self.assertTrue(shipment.indiapost_booking_error)
         self.assertIn(IP_NETWORK_BLOCKED, shipment.indiapost_booking_error)
+
+    def test_live_pickup_does_not_call_india_post_before_commit(self):
+        """Production pickup must return after debit, not after India Post."""
+        order, shipment = self._new_order(self.ip_seller)
+        self._store_quote(shipment, total=118.0)
+        opening = self.ip_wallet.balance
+
+        with patch(
+            'odoo.addons.keralariders_logistics.models.indiapost_order'
+            '.modules.module.current_test',
+            False,
+        ), self._ip_patch_call() as mocked:
+            order.action_request_pickup()
+            mocked.assert_not_called()
+
+        self.assertEqual(shipment.state, 'pickup_requested')
+        self.assertTrue(shipment.wallet_transaction_id)
+        self.assertAlmostEqual(
+            shipment.wallet_transaction_id.amount, -118.0, places=2)
+        self.ip_wallet.invalidate_recordset(['balance'])
+        self.assertAlmostEqual(self.ip_wallet.balance, opening - 118.0, places=2)
+        self.assertNotEqual(shipment.indiapost_booking_state, 'booked')
+        self.assertFalse(shipment.indiapost_article_number)
+
+        with self._ip_patch_call() as mocked:
+            order._ip_autobook_after_pickup()
+        self.assertTrue(mocked.called)
+        self.assertEqual(shipment.indiapost_booking_state, 'booked')
+
+    def test_log_call_does_not_wait_on_locked_shipment(self):
+        """API log INSERT must not deadlock a pickup that holds FOR UPDATE."""
+        order, shipment = self._new_order(self.ip_seller)
+        self.env.cr.execute(
+            'SELECT id FROM logistics_shipment WHERE id = %s FOR UPDATE',
+            (shipment.id,),
+        )
+        self.env.cr.execute(
+            'SELECT id FROM logistics_order WHERE id = %s FOR UPDATE',
+            (order.id,),
+        )
+        self.env['logistics.indiapost.log'].log_call({
+            'endpoint': '/v1/access/login',
+            'method': 'POST',
+            'operation': 'login',
+            'environment': 'sandbox',
+            'http_status': 200,
+            'success': True,
+            'shipment_id': shipment.id,
+            'order_id': order.id,
+        })
+        self.env.invalidate_all()
+        log = self.env['logistics.indiapost.log'].search([
+            ('endpoint', '=', '/v1/access/login'),
+            ('operation', '=', 'login'),
+            ('shipment_id', '=', shipment.id),
+        ], limit=1)
+        self.assertTrue(log, 'log row should be visible and linked on this cursor')
+        self.assertEqual(log.order_id, order)
+
+    def test_cron_autobook_books_pending_pickup(self):
+        order, shipment = self._new_order(self.ip_seller)
+        self._store_quote(shipment)
+        with patch(
+            'odoo.addons.keralariders_logistics.models.indiapost_order'
+            '.modules.module.current_test',
+            False,
+        ), self._ip_patch_call() as mocked:
+            order.action_request_pickup()
+            mocked.assert_not_called()
+        self.assertNotEqual(shipment.indiapost_booking_state, 'booked')
+
+        with self._ip_patch_call() as mocked:
+            done = self.env['logistics.order'].cron_indiapost_autobook(
+                order_ids=[order.id])
+        self.assertEqual(done, 1)
+        self.assertTrue(mocked.called)
+        self.assertEqual(shipment.indiapost_booking_state, 'booked')
 
     def test_print_awb_stays_one_page_when_label_present(self):
         _order, shipment = self._new_order(self.ip_seller)

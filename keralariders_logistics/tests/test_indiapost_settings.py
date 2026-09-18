@@ -111,3 +111,15 @@ class TestIndiapostSettings(IndiapostHermeticMixin, TransactionCase):
         wizard._onchange_indiapost_environment()
         self.assertEqual(wizard.indiapost_base_url, custom)
 
+    def test_request_timeout_is_capped_so_workers_cannot_hang_120s(self):
+        from odoo.addons.keralariders_logistics.models.indiapost_client import (
+            DEFAULT_READ_TIMEOUT_S,
+            MAX_READ_TIMEOUT_S,
+        )
+        params = self.env['ir.config_parameter'].sudo()
+        params.set_param(CONFIG_PREFIX + 'indiapost_request_timeout', '60')
+        settings = self.env['logistics.indiapost.client']._ip_settings()
+        self.assertEqual(settings['indiapost_request_timeout'], MAX_READ_TIMEOUT_S)
+        self.assertLessEqual(settings['indiapost_request_timeout'], 30)
+        self.assertLessEqual(DEFAULT_READ_TIMEOUT_S, MAX_READ_TIMEOUT_S)
+

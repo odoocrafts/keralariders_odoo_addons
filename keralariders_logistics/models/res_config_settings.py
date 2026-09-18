@@ -145,8 +145,11 @@ class ResConfigSettings(models.TransientModel):
         config_parameter=CONFIG_PREFIX + 'indiapost_office_cache_days',
     )
     indiapost_request_timeout = fields.Integer(
-        string="Read Timeout (seconds)", default=60,
+        string="Read Timeout (seconds)", default=25,
         config_parameter=CONFIG_PREFIX + 'indiapost_request_timeout',
+        help="Seconds to wait for India Post to answer one HTTP call. Capped "
+             "at 30 so a hung booking cannot occupy a worker until Odoo kills "
+             "it at limit_time_real.",
     )
     indiapost_pickup_lead_days = fields.Integer(
         string="Pickup Lead Time (days)", default=1,

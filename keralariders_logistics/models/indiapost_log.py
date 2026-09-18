@@ -84,22 +84,43 @@ class IndiapostLog(models.Model):
 
     @api.model
     def log_call(self, vals):
-        """Persist one API call on its own cursor.
+        """Persist one API call without deadlocking the booking transaction.
 
-        Booking and validation failures raise, which rolls the request back. If
-        the log shared that transaction it would disappear exactly when it is
-        needed, so it gets committed independently.
+        Logs are committed on a separate cursor so a later raise still leaves a
+        diagnostic row. That INSERT must not include shipment/order foreign
+        keys: pickup holds those rows ``FOR UPDATE``, and a second transaction
+        waiting on the FK is what hung ``/my/orders/request_pickup`` until the
+        120s thread limit. FKs are attached afterwards on the caller's cursor
+        (same transaction as the locks, so it does not wait).
         """
         vals = dict(vals)
         vals['request_body'] = to_text(vals.get('request_body'))
         vals['response_body'] = to_text(vals.get('response_body'))
+        shipment_id = vals.pop('shipment_id', False) or False
+        order_id = vals.pop('order_id', False) or False
+        log_id = None
         try:
             with self.env.registry.cursor() as cr:
-                self.with_env(self.env(cr=cr)).sudo().create(vals)
+                log = self.with_env(self.env(cr=cr)).sudo().create(vals)
+                log_id = log.id
         except Exception:  # pragma: no cover - logging must never break a call
             _logger.exception(
                 'India Post: could not persist API log for %s %s',
                 vals.get('method'), vals.get('endpoint'),
+            )
+            return
+        if not log_id or not (shipment_id or order_id):
+            return
+        try:
+            with self.env.cr.savepoint():
+                self.browse(log_id).sudo().write({
+                    'shipment_id': shipment_id,
+                    'order_id': order_id,
+                })
+        except Exception:
+            _logger.debug(
+                'India Post: could not attach log %s to shipment/order',
+                log_id, exc_info=True,
             )
 
     @api.model

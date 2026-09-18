@@ -52,10 +52,11 @@ def resolve_indiapost_base_url(environment, stored=''):
 TOKEN_REFRESH_MARGIN_S = 60
 TOKEN_FALLBACK_TTL_S = 900
 
-CONNECT_TIMEOUT_S = 10
-DEFAULT_READ_TIMEOUT_S = 60
+CONNECT_TIMEOUT_S = 8
+DEFAULT_READ_TIMEOUT_S = 25
+MAX_READ_TIMEOUT_S = 30
 
-MAX_ATTEMPTS = 3
+MAX_ATTEMPTS = 2
 RETRY_STATUSES = frozenset({408, 425, 429, 500, 502, 503, 504})
 RETRY_BACKOFF_S = (0.5, 1.5)
 
@@ -206,6 +207,13 @@ class IndiapostClient(models.AbstractModel):
                 settings[key] = max(int(float(settings[key])), 0)
             except (TypeError, ValueError):
                 settings[key] = fallback
+        # A 60s read with retries used to hold an HTTP worker past
+        # limit_time_real. Cap so one India Post call cannot freeze a worker
+        # for the full 120s kill window.
+        settings['indiapost_request_timeout'] = min(
+            max(settings['indiapost_request_timeout'] or DEFAULT_READ_TIMEOUT_S, 1),
+            MAX_READ_TIMEOUT_S,
+        )
         try:
             settings['indiapost_quote_markup_percent'] = max(
                 float(settings['indiapost_quote_markup_percent']), 0.0)
