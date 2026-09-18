@@ -3,7 +3,6 @@ from odoo.exceptions import AccessError, UserError, ValidationError
 from odoo.tools.float_utils import float_compare, float_round
 from odoo.tools.misc import file_path
 from markupsafe import Markup
-from urllib.parse import quote
 import base64
 import logging
 import re
@@ -174,6 +173,42 @@ class Shipment(models.Model):
                 return value
         return ''
 
+    def _awb_barcode_png_data_uri(self, barcode_type, value, width=600, height=100):
+        """PNG data-URI so wkhtmltopdf never HTTP-fetches ``/report/barcode``.
+
+        With more than one worker, the process rendering the PDF cannot serve
+        that nested request (classic deadlock). External barcode CDNs fail the
+        same way when wkhtmltopdf cannot reach them. Generate in-process.
+        """
+        self.ensure_one()
+        value = (value or '').strip()
+        if not value:
+            return ''
+        try:
+            png = self.env['ir.actions.report'].barcode(
+                barcode_type,
+                value,
+                width=width,
+                height=height,
+                humanreadable=0,
+                quiet=1,
+            )
+        except Exception:
+            _logger.warning(
+                'AWB %s barcode failed for %r', barcode_type, value,
+                exc_info=True,
+            )
+            return ''
+        if hasattr(png, 'getvalue'):
+            png = png.getvalue()
+        elif hasattr(png, 'data'):
+            png = png.data
+        if not png:
+            return ''
+        if isinstance(png, str):
+            png = png.encode('latin-1')
+        return 'data:image/png;base64,%s' % base64.b64encode(png).decode()
+
     def _awb_indiapost_qr_payload(self):
         """Public DoP tracking URL encoded in the India Post AWB QR."""
         self.ensure_one()
@@ -181,18 +216,15 @@ class Shipment(models.Model):
 
     def _awb_indiapost_qr_img_src(self):
         self.ensure_one()
-        return (
-            'https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=%s'
-            % quote(self._awb_indiapost_qr_payload(), safe='')
+        return self._awb_barcode_png_data_uri(
+            'QR', self._awb_indiapost_qr_payload() or self.name or '',
+            width=150, height=150,
         )
 
     def _awb_indiapost_barcode_img_src(self):
         self.ensure_one()
         article = (self.indiapost_article_number or '').strip()
-        return (
-            'https://bwipjs-api.metafloor.com/?bcid=code128&text=%s&scale=2'
-            % quote(article, safe='')
-        )
+        return self._awb_barcode_png_data_uri('Code128', article)
 
     def _awb_indiapost_logo_data_uri(self):
         """Inline the official India Post wordmark so Print AWB needs no URL.
@@ -223,16 +255,12 @@ class Shipment(models.Model):
 
     def _awb_kx_barcode_img_src(self):
         self.ensure_one()
-        return (
-            'https://bwipjs-api.metafloor.com/?bcid=code128&text=%s&scale=2'
-            % quote(self.name or '', safe='')
-        )
+        return self._awb_barcode_png_data_uri('Code128', self.name or '')
 
     def _awb_kx_qr_img_src(self):
         self.ensure_one()
-        return (
-            'https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=%s'
-            % quote(self.name or '', safe='')
+        return self._awb_barcode_png_data_uri(
+            'QR', self.name or '', width=150, height=150,
         )
 
     def _awb_label_qr_img_src(self):
@@ -244,6 +272,17 @@ class Shipment(models.Model):
         ):
             return self._awb_indiapost_qr_img_src()
         return self._awb_kx_qr_img_src()
+
+    def _awb_label_top_barcode_value(self):
+        """Top Code128 on 100×150: ARN when booked, otherwise the KX AWB."""
+        self.ensure_one()
+        return self.portal_indiapost_arn() or (self.name or '').strip()
+
+    def _awb_label_top_barcode_img_src(self):
+        self.ensure_one()
+        return self._awb_barcode_png_data_uri(
+            'Code128', self._awb_label_top_barcode_value(),
+        )
 
     def _awb_label_service_code(self):
         """Large mark on the 100×150 thermal label (sort letter, else KX)."""

@@ -86,7 +86,7 @@ class Order(models.Model):
             return False
         if shipments._ip_bookable():
             return True
-        return bool(shipments.filtered(
+        return bool(shipments.sudo().filtered(
             lambda s: s.indiapost_article_number and not s.indiapost_label_pdf))
 
     def _ip_schedule_autobook_after_pickup(self):
@@ -184,7 +184,7 @@ class Order(models.Model):
             and shipment.indiapost_booking_error
         ]
 
-        to_label = shipments.filtered(
+        to_label = shipments.sudo().filtered(
             lambda s: s.indiapost_article_number and not s.indiapost_label_pdf)
         if to_label:
             try:

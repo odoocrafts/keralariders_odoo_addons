@@ -47,19 +47,18 @@
                         <div style="font-size: 11px; font-weight: 900; margin-top: 1.5mm;" t-field="o.shipping_to_zip"/>
                     </td>
                     <td style="width: 53%; padding: 1.5mm 1mm; text-align: center; vertical-align: middle;">
-                        <t t-if="arn">
-                            <img t-att-src="o._awb_indiapost_barcode_img_src()"
-                                 class="awb-indiapost-barcode"
-                                 style="width: 100%; max-width: 44mm; height: 12mm; margin: 0 auto; display: block;"
-                                 alt="India Post Article Barcode"/>
-                            <div class="awb-indiapost-article" style="font-size: 8px; font-weight: 700; margin-top: 0.5mm; letter-spacing: 0.3px;">
+                        <img t-att-src="o._awb_label_top_barcode_img_src()"
+                             class="awb-indiapost-barcode"
+                             style="width: 100%; max-width: 44mm; height: 12mm; margin: 0 auto; display: block;"
+                             alt="Shipping Barcode"/>
+                        <div class="awb-indiapost-article" style="font-size: 8px; font-weight: 700; margin-top: 0.5mm; letter-spacing: 0.3px;">
+                            <t t-if="arn">
                                 <span t-esc="arn"/>
-                            </div>
-                        </t>
-                        <t t-else="">
-                            <div style="font-size: 8px; font-weight: 700; letter-spacing: 0.4px;">AWB</div>
-                            <div style="font-size: 13px; font-weight: 900; letter-spacing: 0.5px;" t-field="o.name"/>
-                        </t>
+                            </t>
+                            <t t-else="">
+                                AWB <span t-field="o.name"/>
+                            </t>
+                        </div>
                     </td>
                     <td style="width: 25%; padding: 1.5mm 1mm; text-align: center; vertical-align: middle;">
                         <img t-att-src="o._awb_label_qr_img_src()"

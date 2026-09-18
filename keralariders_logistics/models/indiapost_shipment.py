@@ -1443,7 +1443,11 @@ class Shipment(models.Model):
         stored = (self.indiapost_sort_code or '').strip().upper()
         if stored:
             return stored
-        parsed = ipc.parse_label_sort_code_from_pdf(self._ip_label_pdf_bytes())
+        # Portal sellers cannot read indiapost_label_pdf (staff-only binary).
+        # Print AWB still needs the sort letter, so parse via sudo without
+        # exposing the PDF to the portal user.
+        parsed = ipc.parse_label_sort_code_from_pdf(
+            self.sudo()._ip_label_pdf_bytes())
         return parsed or ''
 
     # ------------------------------------------------------------------

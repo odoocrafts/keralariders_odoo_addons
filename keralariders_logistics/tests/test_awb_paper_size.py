@@ -7,7 +7,10 @@ from odoo import fields
 from odoo.exceptions import AccessError, UserError
 from odoo.tests import HttpCase, TransactionCase, tagged
 
-from odoo.addons.keralariders_logistics.tests.common import IndiapostHermeticMixin
+from odoo.addons.keralariders_logistics.tests.common import (
+    IndiapostHermeticMixin,
+    assert_awb_barcodes_are_data_uris,
+)
 
 ARTICLE = 'EY547878418IN'
 SELLER_STREET = 'Managath House Pickup Lane'
@@ -159,13 +162,16 @@ class TestAwbPaperSize(IndiapostHermeticMixin, TransactionCase):
         self.assertIn('PREPAID', html)
         self.assertIn('KERALAXPRESS', html)
         self.assertIn('kx-label-qr', html)
-        self.assertIn('bcid=code128', html)
         self.assertIn('kx-label-kx-logo', html)
         self.assertIn('width: 94mm', html)
         self.assertIn('box-sizing: border-box', html)
         self.assertNotIn('awb-indiapost-logo', html)
         self.assertNotIn('alt="India Post"', html)
         self.assertNotIn(ARTICLE, html)
+        self.assertEqual(shipment._awb_label_top_barcode_value(), shipment.name)
+        src = shipment._awb_label_top_barcode_img_src()
+        self.assertTrue(src.startswith('data:image/png;base64,'))
+        assert_awb_barcodes_are_data_uris(self, html)
 
     def test_indiapost_100x150_includes_both_logos_and_arn(self):
         shipment = self._new_shipment(self.ip_seller)
@@ -187,8 +193,12 @@ class TestAwbPaperSize(IndiapostHermeticMixin, TransactionCase):
         self.assertIn(shipment.name, html)
         self.assertIn('AWB', html)
         self.assertIn('awb-indiapost-article', html)
-        self.assertIn('text=%s' % ARTICLE, html)
+        self.assertEqual(shipment._awb_label_top_barcode_value(), ARTICLE)
+        src = shipment._awb_label_top_barcode_img_src()
+        self.assertTrue(src.startswith('data:image/png;base64,'))
+        self.assertTrue(src in html or src.replace('+', '&#43;') in html)
         self.assertEqual(shipment.portal_indiapost_arn(), ARTICLE)
+        assert_awb_barcodes_are_data_uris(self, html)
 
     def test_indiapost_100x150_without_arn_prints_awb_in_top_cell(self):
         shipment = self._new_shipment(self.ip_seller)
@@ -197,8 +207,12 @@ class TestAwbPaperSize(IndiapostHermeticMixin, TransactionCase):
         self.assertIn('kx-label-100x150', html)
         self.assertIn(shipment.name, html)
         self.assertIn('AWB', html)
-        self.assertNotIn('awb-indiapost-barcode', html)
-        self.assertNotIn('awb-indiapost-article', html)
+        self.assertIn('awb-indiapost-barcode', html)
+        self.assertIn('awb-indiapost-article', html)
+        self.assertEqual(shipment._awb_label_top_barcode_value(), shipment.name)
+        src = shipment._awb_label_top_barcode_img_src()
+        self.assertTrue(src.startswith('data:image/png;base64,'))
+        assert_awb_barcodes_are_data_uris(self, html)
 
     def test_label_xml_parses(self):
         layout = (
@@ -230,7 +244,10 @@ class TestAwbPaperSize(IndiapostHermeticMixin, TransactionCase):
         self.assertIn('<meta charset="utf-8"/>', source)
         self.assertNotIn('t-field="o.cod_amount"', source)
         self.assertIn('portal_indiapost_arn()', source)
+        self.assertIn('_awb_label_top_barcode_img_src()', source)
         self.assertIn('awb-indiapost-barcode', source)
+        self.assertNotIn('bwipjs-api.metafloor.com', source)
+        self.assertNotIn('/report/barcode', source)
         font = (
             Path(__file__).resolve().parents[1]
             / 'static' / 'src' / 'fonts' / 'KxAwbRupee-Bold.ttf'

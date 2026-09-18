@@ -6,9 +6,13 @@ store it; these tests never allocate a live barcode.
 
 import base64
 
+from odoo.exceptions import AccessError
 from odoo.tests import HttpCase, TransactionCase, tagged
 
-from odoo.addons.keralariders_logistics.tests.common import IndiapostHermeticMixin
+from odoo.addons.keralariders_logistics.tests.common import (
+    IndiapostHermeticMixin,
+    assert_awb_barcodes_are_data_uris,
+)
 
 ARTICLE = 'EA123456789IN'
 
@@ -239,3 +243,34 @@ class TestPortalIndiapostArnPages(PortalIndiapostArnMixin, HttpCase):
             % self.hub_shipment.id,
             allowed.headers.get('Location', ''),
         )
+
+    def test_seller_awb_print_does_not_read_indiapost_label_pdf(self):
+        portal = self.env['res.users'].search([('login', '=', self.ip_login)])
+        with self.assertRaises(AccessError):
+            self.ip_booked.with_user(portal).read(['indiapost_label_pdf'])
+        pdf = self._ip_pdf_with_text('S 680561')
+        self.ip_booked.sudo().write({
+            'indiapost_sort_code': False,
+            'indiapost_label_pdf': base64.b64encode(pdf),
+        })
+        self.assertEqual(
+            self.ip_booked.with_user(portal)._awb_indiapost_sort_code(), 'S')
+        html = self.env['ir.actions.report'].with_user(portal)._render_qweb_html(
+            'keralariders_logistics.report_shipment_document',
+            self.ip_booked.ids,
+        )[0]
+        if isinstance(html, bytes):
+            html = html.decode('utf-8')
+        self.assertIn('awb-layout-indiapost', html)
+        self.assertIn(ARTICLE, html)
+        assert_awb_barcodes_are_data_uris(self, html)
+
+        thermal = self.env['ir.actions.report'].with_user(portal)._render_qweb_html(
+            'keralariders_logistics.report_shipment_document_100x150',
+            self.ip_booked.ids,
+        )[0]
+        if isinstance(thermal, bytes):
+            thermal = thermal.decode('utf-8')
+        self.assertIn('kx-label-100x150', thermal)
+        self.assertIn(ARTICLE, thermal)
+        assert_awb_barcodes_are_data_uris(self, thermal)

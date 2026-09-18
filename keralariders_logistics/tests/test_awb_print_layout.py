@@ -7,12 +7,15 @@ import base64
 import re
 import xml.etree.ElementTree as ET
 from pathlib import Path
-from urllib.parse import quote
 
+from odoo.exceptions import AccessError
 from odoo.tests import HttpCase, TransactionCase, tagged
 
 from odoo.addons.keralariders_logistics.models import indiapost_common as ipc
-from odoo.addons.keralariders_logistics.tests.common import IndiapostHermeticMixin
+from odoo.addons.keralariders_logistics.tests.common import (
+    IndiapostHermeticMixin,
+    assert_awb_barcodes_are_data_uris,
+)
 
 ARTICLE = 'EY547878418IN'
 SELLER_STREET = 'Managath House Pickup Lane'
@@ -101,8 +104,6 @@ class TestAwbPrintLayout(IndiapostHermeticMixin, TransactionCase):
         self.assertIn('Hub Pickup Street', html)
         self.assertIn('AWB Hub Seller', html)
         self.assertIn('AWB#', html)
-        self.assertIn('bcid=code128', html)
-        self.assertIn('create-qr-code', html)
         self.assertNotIn('awb-layout-indiapost', html)
         self.assertNotIn('awb-indiapost-logo', html)
         self.assertNotIn('awb-indiapost-barcode', html)
@@ -111,6 +112,7 @@ class TestAwbPrintLayout(IndiapostHermeticMixin, TransactionCase):
         self.assertNotIn('India Post', html)
         self.assertNotIn('Mob:', html)
         self.assertNotIn('Phone:', html)
+        assert_awb_barcodes_are_data_uris(self, html)
 
     def test_indiapost_print_awb_uses_seller_and_ip_marks(self):
         shipment = self._new_shipment(self.ip_seller)
@@ -138,7 +140,10 @@ class TestAwbPrintLayout(IndiapostHermeticMixin, TransactionCase):
         self.assertIn('TrackConsignment.aspx', payload)
         self.assertIn(ARTICLE, payload)
         self.assertIn(payload, html)
-        self.assertIn(quote(payload, safe=''), html)
+        assert_awb_barcodes_are_data_uris(self, html)
+        src = shipment._awb_indiapost_barcode_img_src()
+        self.assertTrue(src.startswith('data:image/png;base64,'))
+        self.assertTrue(src in html or src.replace('+', '&#43;') in html)
         self.assertIn(CONSIGNOR, self.env['logistics.indiapost.client']._ip_settings()[
             'indiapost_sender_name'])
 
@@ -274,6 +279,11 @@ class TestAwbPrintLayout(IndiapostHermeticMixin, TransactionCase):
         self.assertIn('<meta charset="utf-8"/>', source)
         self.assertNotIn('t-field="o.cod_amount"', source)
         self.assertNotIn('t-field="o.total_order_value"', source)
+        self.assertIn("o._awb_kx_barcode_img_src()", source)
+        self.assertIn("o._awb_kx_qr_img_src()", source)
+        self.assertNotIn('bwipjs-api.metafloor.com', source)
+        self.assertNotIn('api.qrserver.com', source)
+        self.assertNotIn('/report/barcode', source)
 
     def test_a4_cod_uses_rupee_entity(self):
         shipment = self._new_shipment(
@@ -359,8 +369,14 @@ class TestAwbPrintLayoutPortal(IndiapostHermeticMixin, HttpCase):
             'indiapost_booking_state': 'booked',
             'indiapost_sort_code': 'S',
             'state': 'pickup_requested',
+            'indiapost_label_pdf': base64.b64encode(self._ip_blank_pdf_bytes()),
+            'indiapost_label_filename': '%s.pdf' % ARTICLE,
         })
-        html = self.env['ir.actions.report']._render_qweb_html(
+        portal = self.env['res.users'].search([('login', '=', self.ip_login)])
+        with self.assertRaises(AccessError):
+            shipment.with_user(portal).read(['indiapost_label_pdf'])
+
+        html = self.env['ir.actions.report'].with_user(portal)._render_qweb_html(
             'keralariders_logistics.report_shipment_document',
             shipment.ids,
         )[0]
@@ -371,6 +387,17 @@ class TestAwbPrintLayoutPortal(IndiapostHermeticMixin, HttpCase):
         self.assertIn(ARTICLE, html)
         self.assertNotIn('AWB#', html)
         self.assertNotRegex(html, r'>PIN<')
+        assert_awb_barcodes_are_data_uris(self, html)
+
+        label_html = self.env['ir.actions.report'].with_user(portal)._render_qweb_html(
+            'keralariders_logistics.report_shipment_document_100x150',
+            shipment.ids,
+        )[0]
+        if isinstance(label_html, bytes):
+            label_html = label_html.decode('utf-8')
+        self.assertIn('kx-label-100x150', label_html)
+        self.assertIn(ARTICLE, label_html)
+        assert_awb_barcodes_are_data_uris(self, label_html)
 
         self.authenticate(self.ip_login, self.ip_login)
         response = self.url_open(
@@ -382,3 +409,13 @@ class TestAwbPrintLayoutPortal(IndiapostHermeticMixin, HttpCase):
         self.assertIn(SELLER_STREET, body)
         self.assertIn(ARTICLE, body)
         self.assertNotIn('AWB#', body)
+        self.assertNotIn('indiapost_label_pdf', body)
+        assert_awb_barcodes_are_data_uris(self, body)
+
+        thermal = self.url_open(
+            '/report/html/keralariders_logistics.action_report_shipment_100x150/%s'
+            % shipment.id)
+        self.assertEqual(thermal.status_code, 200)
+        thermal_body = thermal.content.decode('utf-8', errors='replace')
+        self.assertIn('kx-label-100x150', thermal_body)
+        assert_awb_barcodes_are_data_uris(self, thermal_body)

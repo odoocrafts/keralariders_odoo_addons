@@ -9,7 +9,9 @@ them), seed any offices they need, flush the tariff cache, and patch
 ``ir.config_parameter`` values are never trusted.
 """
 
+import base64
 import io
+import re
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -23,6 +25,30 @@ CONFIG_PREFIX = 'keralariders_logistics.'
 SP_CONTRACT = '41124829'
 BP_CONTRACT = '41664688'
 IP_NETWORK_BLOCKED = 'India Post network is blocked in tests'
+
+AWB_HTTP_BARCODE_MARKERS = (
+    '/report/barcode',
+    'bwipjs-api.metafloor.com',
+    'api.qrserver.com',
+    'create-qr-code',
+    'bcid=code128',
+)
+
+
+def assert_awb_barcodes_are_data_uris(test, html, min_png=2):
+    """AWB HTML must embed PNG barcodes, not HTTP /report/barcode or CDNs."""
+    if isinstance(html, bytes):
+        html = html.decode('utf-8')
+    for marker in AWB_HTTP_BARCODE_MARKERS:
+        test.assertNotIn(marker, html)
+    uris = re.findall(r'data:image/png;base64,([A-Za-z0-9+/=]+)', html)
+    test.assertGreaterEqual(len(uris), min_png, html[:500])
+    pngs = 0
+    for uri in uris:
+        raw = base64.b64decode(uri + '==')
+        if raw.startswith(b'\x89PNG'):
+            pngs += 1
+    test.assertGreaterEqual(pngs, min_png)
 
 # Offices the delivery-charge and contract fixtures actually book through.
 TEST_OFFICES = (
