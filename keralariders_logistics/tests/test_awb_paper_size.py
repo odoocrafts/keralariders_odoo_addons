@@ -210,6 +210,36 @@ class TestAwbPaperSize(IndiapostHermeticMixin, TransactionCase):
         self.assertIn('max-width: 100%', source)
         self.assertNotIn('width: 96mm', source)
         self.assertNotIn('overflow: hidden; font-family', source)
+        self.assertIn('kx-awb-money', source)
+        self.assertIn('o._awb_format_money(o.cod_amount)', source)
+        self.assertIn('docs._awb_money_font_css()', source)
+        self.assertNotIn('t-field="o.cod_amount"', source)
+        font = (
+            Path(__file__).resolve().parents[1]
+            / 'static' / 'src' / 'fonts' / 'KxAwbRupee-Bold.ttf'
+        )
+        self.assertTrue(font.is_file(), 'AWB rupee font is missing')
+        self.assertGreater(font.stat().st_size, 1000)
+
+    def test_100x150_cod_embeds_rupee_font(self):
+        shipment = self._new_shipment(
+            self.ip_seller,
+            order_payment_type='cod',
+            total_order_value=299,
+            cod_amount=299,
+        )
+        shipment.currency_id = self.env.ref('base.INR')
+        self.assertEqual(shipment._awb_format_money(shipment.cod_amount), '₹299.00')
+        html = self._label_html(shipment)
+        self.assertIn('COD', html)
+        self.assertNotIn('PREPAID', html)
+        self.assertIn('kx-awb-money', html)
+        self.assertIn('KxAwbRupee', html)
+        self.assertIn('@font-face', html)
+        self.assertIn('data:font/ttf;base64,', html)
+        self.assertIn('₹299.00', html)
+        self.assertNotIn('₹₹', html)
+        self.assertEqual(html.count('₹299.00'), 1)
 
 
 @tagged('post_install', '-at_install')

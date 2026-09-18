@@ -62,8 +62,8 @@
                                 <td style="width: 30%; border: 2px solid black; padding: 15px; text-align: center; vertical-align: middle;">
                                     <t t-if="o.order_payment_type == 'cod'">
                                         <div style="font-size: 32px; font-weight: 900; border: 4px solid black; padding: 10px; display: inline-block;">COD</div>
-                                        <div style="font-size: 20px; font-weight: bold; margin-top: 15px;">
-                                            <span t-field="o.cod_amount"/>
+                                        <div class="kx-awb-money" style="font-size: 20px; font-weight: 700; margin-top: 15px;">
+                                            <t t-esc="o._awb_format_money(o.cod_amount)"/>
                                         </div>
                                     </t>
                                     <t t-else="">
@@ -107,7 +107,7 @@
                                     <span t-field="o.item_description"/>
                                 </td>
                                 <td style="width: 30%; border: 2px solid black; border-top: none; text-align: right; padding: 7px; vertical-align: middle; font-size: 14px; font-weight: bold;">
-                                    <span t-field="o.total_order_value"/>
+                                    <span class="kx-awb-money" t-esc="o._awb_format_money(o.total_order_value)"/>
                                 </td>
                             </tr>
 
@@ -209,8 +209,8 @@
                                 <td style="width: 30%; border: 2px solid black; padding: 15px; text-align: center; vertical-align: middle;">
                                     <t t-if="o.order_payment_type == 'cod'">
                                         <div style="font-size: 32px; font-weight: 900; border: 4px solid black; padding: 10px; display: inline-block;">COD</div>
-                                        <div style="font-size: 20px; font-weight: bold; margin-top: 15px;">
-                                            <span t-field="o.cod_amount"/>
+                                        <div class="kx-awb-money" style="font-size: 20px; font-weight: 700; margin-top: 15px;">
+                                            <t t-esc="o._awb_format_money(o.cod_amount)"/>
                                         </div>
                                     </t>
                                     <t t-else="">
@@ -255,7 +255,7 @@
                                     <span t-field="o.item_description"/>
                                 </td>
                                 <td style="width: 30%; border: 2px solid black; border-top: none; text-align: right; padding: 7px; vertical-align: middle; font-size: 14px; font-weight: bold;">
-                                    <span t-field="o.total_order_value"/>
+                                    <span class="kx-awb-money" t-esc="o._awb_format_money(o.total_order_value)"/>
                                 </td>
                             </tr>
 
@@ -273,6 +273,7 @@
 
     <template id="report_shipment_document">
         <t t-call="web.html_container">
+            <style type="text/css"><t t-out="docs._awb_money_font_css()"/></style>
             <t t-foreach="docs" t-as="o">
                 <t t-set="company" t-value="o.company_id" />
                 <t t-if="o.fulfilment_method == 'indiapost'">

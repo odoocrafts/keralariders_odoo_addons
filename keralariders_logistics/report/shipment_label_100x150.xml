@@ -109,8 +109,8 @@
                     <td colspan="2" style="width: 62%; border-top: 2px solid #000; border-right: 2px solid #000; padding: 1.5mm 2mm; text-align: center; vertical-align: middle;">
                         <t t-if="o.order_payment_type == 'cod'">
                             <div style="font-size: 16px; font-weight: 900; border: 2px solid #000; display: inline-block; padding: 0.8mm 3mm; letter-spacing: 1px;">COD</div>
-                            <div style="font-size: 12px; font-weight: 900; margin-top: 1mm;">
-                                <span t-field="o.cod_amount"/>
+                            <div class="kx-awb-money" style="font-size: 12px; font-weight: 700; margin-top: 1mm;">
+                                <t t-esc="o._awb_format_money(o.cod_amount)"/>
                             </div>
                         </t>
                         <t t-else="">
@@ -144,6 +144,7 @@
     <template id="report_shipment_document_100x150">
         <t t-call="web.html_container">
             <style type="text/css">
+                <t t-out="docs._awb_money_font_css()"/>
                 /* Physical page is 100×150 mm. Paperformat already applies 3 mm
                    wkhtmltopdf margins; do not add a second @page inset. */
                 @page { size: 100mm 150mm; margin: 0; }

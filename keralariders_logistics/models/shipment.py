@@ -267,6 +267,37 @@ class Shipment(models.Model):
             return (label or 'INDIA POST').upper()
         return 'KERALAXPRESS'
 
+    def _awb_format_money(self, amount):
+        """One currency symbol + 2 decimals for AWB PDFs.
+
+        Do not use t-field monetary: INR's ₹ (U+20B9) is missing from the
+        Arial/Helvetica stack wkhtmltopdf uses, so the glyph is dropped.
+        Pair with ``kx-awb-money`` and ``_awb_money_font_css``.
+        """
+        self.ensure_one()
+        number = '%0.2f' % (amount or 0.0)
+        symbol = ''
+        if self.currency_id:
+            symbol = (self.currency_id.symbol or '').strip()
+        if not symbol:
+            symbol = '₹'
+        return '%s%s' % (symbol, number)
+
+    @api.model
+    def _awb_money_font_css(self):
+        """Inline @font-face so wkhtmltopdf can draw ₹ without fetching a URL."""
+        path = file_path(
+            'keralariders_logistics/static/src/fonts/KxAwbRupee-Bold.ttf')
+        with open(path, 'rb') as handle:
+            encoded = base64.b64encode(handle.read()).decode()
+        return Markup(
+            '@font-face{font-family:KxAwbRupee;'
+            'src:url(data:font/ttf;base64,%s) format("truetype");'
+            'font-weight:700;font-style:normal}'
+            '.kx-awb-money{font-family:KxAwbRupee,Arial,Helvetica,sans-serif}'
+            % encoded
+        )
+
     def action_print_awb_picker(self):
         """Backend Print AWB: paper-size wizard, then the matching report."""
         return self.env['logistics.awb.print.wizard']._action_open(self)
