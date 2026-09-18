@@ -173,17 +173,17 @@ class Shipment(models.Model):
                 return value
         return ''
 
-    def _awb_barcode_png_data_uri(self, barcode_type, value, width=600, height=100):
-        """PNG data-URI so wkhtmltopdf never HTTP-fetches ``/report/barcode``.
+    def _awb_barcode_png_bytes(self, barcode_type, value, width=600, height=100):
+        """In-process PNG bytes. Never HTTP ``/report/barcode``.
 
-        With more than one worker, the process rendering the PDF cannot serve
-        that nested request (classic deadlock). External barcode CDNs fail the
-        same way when wkhtmltopdf cannot reach them. Generate in-process.
+        Odoo ``barcode()`` needs reportlab renderPM/rlPyCairo. This host may
+        lack that backend, so Code128 falls back to python-barcode+Pillow and
+        QR to the qrcode package — both already use Pillow, which Odoo ships.
         """
-        self.ensure_one()
         value = (value or '').strip()
         if not value:
-            return ''
+            return b''
+        kind = (barcode_type or '').replace('-', '').lower()
         try:
             png = self.env['ir.actions.report'].barcode(
                 barcode_type,
@@ -193,21 +193,79 @@ class Shipment(models.Model):
                 humanreadable=0,
                 quiet=1,
             )
+            if hasattr(png, 'getvalue'):
+                png = png.getvalue()
+            elif hasattr(png, 'data'):
+                png = png.data
+            if isinstance(png, str):
+                png = png.encode('latin-1')
+            if png and png[:8] == b'\x89PNG\r\n\x1a\n':
+                return png
+        except Exception:
+            _logger.info(
+                'Odoo barcode() PNG unavailable for %s %r; using fallback',
+                barcode_type, value, exc_info=True,
+            )
+        if kind == 'code128':
+            try:
+                from io import BytesIO
+                import barcode
+                from barcode.writer import ImageWriter
+                buf = BytesIO()
+                barcode.get('code128', value, writer=ImageWriter()).write(buf, {
+                    'module_width': 0.2,
+                    'module_height': 15.0,
+                    'quiet_zone': 1.0,
+                    'write_text': False,
+                    'format': 'PNG',
+                })
+                return buf.getvalue()
+            except Exception:
+                _logger.warning(
+                    'python-barcode Code128 failed for %r', value, exc_info=True)
+        if kind in ('qr', 'qrcode'):
+            try:
+                from io import BytesIO
+                import qrcode
+                img = qrcode.make(value, box_size=4, border=1)
+                buf = BytesIO()
+                img.save(buf, format='PNG')
+                return buf.getvalue()
+            except Exception:
+                _logger.warning('qrcode PNG failed for %r', value, exc_info=True)
+        return b''
+
+    def _awb_barcode_png_data_uri(self, barcode_type, value, width=600, height=100):
+        """PNG (or SVG) data-URI so wkhtmltopdf never HTTP-fetches barcodes.
+
+        With more than one worker, the process rendering the PDF cannot serve
+        a nested ``/report/barcode`` request (classic deadlock).
+        """
+        self.ensure_one()
+        value = (value or '').strip()
+        if not value:
+            return ''
+        png = self._awb_barcode_png_bytes(barcode_type, value, width, height)
+        if png:
+            return 'data:image/png;base64,%s' % base64.b64encode(png).decode()
+        try:
+            from reportlab.graphics.barcode import createBarcodeDrawing
+            drawing = createBarcodeDrawing(
+                barcode_type, value=value, format='svg',
+                width=width, height=height, humanReadable=False,
+            )
+            svg = drawing.asString('svg')
+            if isinstance(svg, bytes):
+                svg = svg.decode('utf-8')
+            if svg:
+                return 'data:image/svg+xml;base64,%s' % base64.b64encode(
+                    svg.encode('utf-8')).decode()
         except Exception:
             _logger.warning(
                 'AWB %s barcode failed for %r', barcode_type, value,
                 exc_info=True,
             )
-            return ''
-        if hasattr(png, 'getvalue'):
-            png = png.getvalue()
-        elif hasattr(png, 'data'):
-            png = png.data
-        if not png:
-            return ''
-        if isinstance(png, str):
-            png = png.encode('latin-1')
-        return 'data:image/png;base64,%s' % base64.b64encode(png).decode()
+        return ''
 
     def _awb_indiapost_qr_payload(self):
         """Public DoP tracking URL encoded in the India Post AWB QR."""
