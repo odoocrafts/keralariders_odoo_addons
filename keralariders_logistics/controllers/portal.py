@@ -1109,35 +1109,12 @@ class LogisticsPortal(CustomerPortal):
                 request.session['error'] = "Error processing file. Please check your CSV and try again."
             return request.redirect('/my/orders/new')
             
-    @http.route(['/my/orders/request_pickup'], type='http', auth="user", website=True, methods=['POST'])
-    def portal_my_orders_request_pickup(self, **post):
-        order_id = int(post.get('order_id', 0))
-        partner = request.env.user.partner_id
-        seller = request.env['logistics.seller'].search([('partner_id', '=', partner.id)], limit=1)
-        
-        order = request.env['logistics.order'].search([
-            ('id', '=', order_id),
-            ('seller_id', '=', seller.id),
-        ], limit=1)
+    def _portal_apply_pickup_request(self, order, redirect_url):
+        """Debit the order wallet and request pickup.
 
-        if not order:
-            request.session['error'] = "Order not found."
-            return request.redirect('/my/orders')
-        if order.state != 'draft':
-            request.session['success'] = (
-                "Pickup was already requested for Order %s." % order.name
-            )
-            return request.redirect(f'/my/orders/{order.id}')
-
-        if not self._consume_oneshot_token(
-            self._pickup_confirm_token_key(order.id),
-            post.get('pickup_confirm_token'),
-        ):
-            request.session['error'] = (
-                "This pickup request was already submitted."
-            )
-            return request.redirect(f'/my/orders/{order.id}')
-
+        India Post autobook is scheduled after commit by action_request_pickup;
+        this HTTP handler must return without waiting on CEPT.
+        """
         try:
             order.sudo().action_request_pickup()
             request.session['success'] = (
@@ -1170,8 +1147,86 @@ class LogisticsPortal(CustomerPortal):
                 )
         except Exception as e:
             request.session['error'] = str(e)
-            
-        return request.redirect(f'/my/orders/{order.id}')
+        return request.redirect(redirect_url)
+
+    @http.route(['/my/orders/request_pickup'], type='http', auth="user", website=True, methods=['POST'])
+    def portal_my_orders_request_pickup(self, **post):
+        order_id = int(post.get('order_id', 0))
+        partner = request.env.user.partner_id
+        seller = request.env['logistics.seller'].search([('partner_id', '=', partner.id)], limit=1)
+        
+        order = request.env['logistics.order'].search([
+            ('id', '=', order_id),
+            ('seller_id', '=', seller.id),
+        ], limit=1)
+
+        if not order:
+            request.session['error'] = "Order not found."
+            return request.redirect('/my/orders')
+        if order.state != 'draft':
+            request.session['success'] = (
+                "Pickup was already requested for Order %s." % order.name
+            )
+            return request.redirect(f'/my/orders/{order.id}')
+
+        if not self._consume_oneshot_token(
+            self._pickup_confirm_token_key(order.id),
+            post.get('pickup_confirm_token'),
+        ):
+            request.session['error'] = (
+                "This pickup request was already submitted."
+            )
+            return request.redirect(f'/my/orders/{order.id}')
+
+        return self._portal_apply_pickup_request(order, f'/my/orders/{order.id}')
+
+    @http.route(
+        ['/my/shipments/request_pickup',
+         '/my/shipments/<int:shipment_id>/pickup'],
+        type='http', auth="user", website=True, methods=['GET', 'POST'],
+    )
+    def portal_my_shipments_request_pickup(self, shipment_id=None, **post):
+        """One-shipment Request Pickup from /my/shipments.
+
+        The list posts here. GET is accepted only so an old ``<a href>`` or a
+        refresh does not 404: it never books, it sends the seller to confirm
+        on the order (draft) or back to the list.
+        """
+        seller = self._portal_seller()
+        if not seller:
+            return request.redirect('/my')
+
+        sid = shipment_id
+        if not sid:
+            try:
+                sid = int(post.get('shipment_id', 0) or 0)
+            except (TypeError, ValueError):
+                sid = 0
+
+        shipment = request.env['logistics.shipment'].browse()
+        if sid:
+            shipment = request.env['logistics.shipment'].search([
+                ('id', '=', sid),
+                ('seller_id', '=', seller.id),
+            ], limit=1)
+
+        if request.httprequest.method != 'POST':
+            if shipment and shipment.order_id.state == 'draft':
+                return request.redirect('/my/orders/%s' % shipment.order_id.id)
+            return request.redirect('/my/shipments')
+
+        if not shipment:
+            request.session['error'] = "Shipment not found."
+            return request.redirect('/my/shipments')
+
+        order = shipment.order_id
+        if shipment.state != 'order_added' or order.state != 'draft':
+            request.session['success'] = (
+                "Pickup was already requested for %s." % shipment.name
+            )
+            return request.redirect('/my/shipments')
+
+        return self._portal_apply_pickup_request(order, '/my/shipments')
 
     @http.route(['/my/shipments/<int:shipment_id>/print'], type='http',
                 auth="user", website=True)

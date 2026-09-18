@@ -499,3 +499,23 @@ class TestIndiapostAutobookPortal(IndiapostHermeticMixin, HttpCase):
         self.assertIn('could not book the shipment', pickup.text)
         self.assertIn(IP_NETWORK_BLOCKED, pickup.text)
         self.assertTrue(shipment.wallet_transaction_id)
+
+    def test_shipment_list_pickup_still_autobooks_indiapost(self):
+        self._create_portal_order(self.ip_login)
+        order = self.env['logistics.order'].search(
+            [('seller_id', '=', self.ip_seller.id)], limit=1)
+        shipment = order.shipment_ids
+        self._store_quote(shipment)
+        listing = self.url_open('/my/shipments')
+        self.assertIn('action="/my/shipments/request_pickup"', listing.text)
+        with self._ip_patch_call():
+            pickup = self.url_open('/my/shipments/request_pickup', data={
+                'csrf_token': self._csrf(listing.text),
+                'shipment_id': str(shipment.id),
+            })
+        self.assertEqual(pickup.status_code, 200)
+        self.assertNotIn("couldn't find the page", pickup.text.lower())
+        self.env.invalidate_all()
+        self.assertEqual(shipment.state, 'pickup_requested')
+        self.assertEqual(shipment.indiapost_booking_state, 'booked')
+        self.assertTrue(shipment.indiapost_article_number)

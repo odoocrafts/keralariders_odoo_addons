@@ -434,3 +434,65 @@ class TestPortalManualOrder(IndiapostHermeticMixin, HttpCase):
         self.assertNotIn('kx-order-detail-header', listing.text)
         self.assertIn('<th>Status</th>', listing.text)
         self.assertIn('text-end">Actions', listing.text)
+
+    def test_shipments_list_posts_request_pickup_without_404(self):
+        self.authenticate(self.portal_login, self.portal_login)
+        order = self._create_own_network_order()
+        shipment = order.shipment_ids
+        listing = self.url_open('/my/shipments')
+        self.assertEqual(listing.status_code, 200)
+        self.assertIn('action="/my/shipments/request_pickup"', listing.text)
+        self.assertIn('kx-submit-once', listing.text)
+        self.assertIn('Requesting pickup...', listing.text)
+        self.assertIn('name="shipment_id"', listing.text)
+        self.assertIn('value="%s"' % shipment.id, listing.text)
+        self.assertNotIn('/my/shipments/%s/print' % shipment.id, listing.text)
+
+        get_legacy = self._print_redirect(
+            '/my/shipments/%s/pickup' % shipment.id)
+        self.assertIn(get_legacy.status_code, (301, 302, 303, 307))
+        self.assertIn(
+            '/my/orders/%s' % order.id,
+            get_legacy.headers.get('Location', ''),
+        )
+
+        get_form = self._print_redirect('/my/shipments/request_pickup')
+        self.assertIn(get_form.status_code, (301, 302, 303, 307))
+        self.assertIn('/my/shipments', get_form.headers.get('Location', ''))
+        self.assertNotEqual(get_form.status_code, 404)
+
+        csrf = self._csrf(listing.text)
+        opening = self.wallet.balance
+        charge = order.total_charges
+        pickup = self.url_open('/my/shipments/request_pickup', data={
+            'csrf_token': csrf,
+            'shipment_id': str(shipment.id),
+        })
+        self.assertEqual(pickup.status_code, 200)
+        self.assertNotIn("couldn't find the page", pickup.text.lower())
+        self.assertIn('/my/shipments', pickup.url)
+        self.env.invalidate_all()
+        self.assertEqual(order.state, 'pickup_requested')
+        self.assertEqual(shipment.state, 'pickup_requested')
+        self.wallet.invalidate_recordset(['balance'])
+        self.assertAlmostEqual(self.wallet.balance, opening - charge, places=2)
+
+        booked = self.url_open('/my/shipments')
+        self.assertIn('/my/shipments/%s/print' % shipment.id, booked.text)
+        self.assertNotIn('action="/my/shipments/request_pickup"', booked.text)
+        self.assertNotIn('Request Pickup', booked.text)
+
+        second = self.url_open('/my/shipments/request_pickup', data={
+            'csrf_token': csrf,
+            'shipment_id': str(shipment.id),
+        })
+        self.assertEqual(second.status_code, 200)
+        self.env.invalidate_all()
+        self.wallet.invalidate_recordset(['balance'])
+        self.assertAlmostEqual(self.wallet.balance, opening - charge, places=2)
+        self.assertEqual(order.state, 'pickup_requested')
+
+        get_after = self._print_redirect(
+            '/my/shipments/%s/pickup' % shipment.id)
+        self.assertIn(get_after.status_code, (301, 302, 303, 307))
+        self.assertIn('/my/shipments', get_after.headers.get('Location', ''))
