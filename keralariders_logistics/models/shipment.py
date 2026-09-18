@@ -267,25 +267,50 @@ class Shipment(models.Model):
             return (label or 'INDIA POST').upper()
         return 'KERALAXPRESS'
 
-    def _awb_format_money(self, amount):
-        """One currency symbol + 2 decimals for AWB PDFs.
+    def _awb_html_currency_symbol(self):
+        """ASCII-only currency mark for AWB HTML (numeric entities, never raw ₹).
 
-        Do not use t-field monetary: INR's ₹ (U+20B9) is missing from the
-        Arial/Helvetica stack wkhtmltopdf uses, so the glyph is dropped.
-        Pair with ``kx-awb-money`` and ``_awb_money_font_css``.
+        UTF-8 U+20B9 is ``E2 82 B9``. wkhtmltopdf often reads the HTML file as
+        Latin-1/Windows-1252, which turns those three bytes into ``â,¹``.
+        ``&#8377;`` is ASCII so it survives that parser; QWeb must t-out the
+        Markup, not a Python ``'₹'`` string.
         """
         self.ensure_one()
-        number = '%0.2f' % (amount or 0.0)
         symbol = ''
         if self.currency_id:
             symbol = (self.currency_id.symbol or '').strip()
         if not symbol:
-            symbol = '₹'
-        return '%s%s' % (symbol, number)
+            return Markup('&#8377;')
+        encoded = []
+        for ch in symbol:
+            code = ord(ch)
+            if ch == '₹' or code == 0x20B9:
+                encoded.append('&#8377;')
+            elif 32 <= code < 128 and ch not in '&<>"\'':
+                encoded.append(ch)
+            else:
+                encoded.append('&#%d;' % code)
+        return Markup(''.join(encoded))
+
+    def _awb_format_money(self, amount):
+        """One currency symbol + 2 decimals for AWB PDFs.
+
+        Returns Markup so ``t-out`` emits ``&#8377;299.00`` instead of a raw
+        ₹ that Latin-1 wkhtmltopdf would print as â,¹. Pair with
+        ``kx-awb-money`` (glyph) and ``--encoding utf-8``.
+        """
+        self.ensure_one()
+        number = '%0.2f' % (amount or 0.0)
+        return Markup('%s%s') % (self._awb_html_currency_symbol(), number)
 
     @api.model
     def _awb_money_font_css(self):
-        """Inline @font-face so wkhtmltopdf can draw ₹ without fetching a URL."""
+        """Inline @font-face so wkhtmltopdf can draw U+20B9 after entity decode.
+
+        The font does not fix encoding: HTML must still avoid a raw ₹ byte
+        sequence. Data-URI TTF can fail silently; the numeric entity is the
+        encoding fix, this face is only the glyph.
+        """
         path = file_path(
             'keralariders_logistics/static/src/fonts/KxAwbRupee-Bold.ttf')
         with open(path, 'rb') as handle:

@@ -268,12 +268,14 @@ class TestAwbPrintLayout(IndiapostHermeticMixin, TransactionCase):
         self.assertIn('Mob:', source)
         self.assertIn('Phone:', source)
         self.assertIn('kx-awb-money', source)
-        self.assertIn('o._awb_format_money(o.cod_amount)', source)
+        self.assertIn('t-out="o._awb_format_money(o.cod_amount)"', source)
+        self.assertNotIn('t-esc="o._awb_format_money', source)
         self.assertIn('docs._awb_money_font_css()', source)
+        self.assertIn('<meta charset="utf-8"/>', source)
         self.assertNotIn('t-field="o.cod_amount"', source)
         self.assertNotIn('t-field="o.total_order_value"', source)
 
-    def test_a4_cod_embeds_rupee_font(self):
+    def test_a4_cod_uses_rupee_entity(self):
         shipment = self._new_shipment(
             self.hub_seller,
             order_payment_type='cod',
@@ -281,7 +283,13 @@ class TestAwbPrintLayout(IndiapostHermeticMixin, TransactionCase):
             cod_amount=299,
         )
         shipment.currency_id = self.env.ref('base.INR')
-        self.assertEqual(shipment._awb_format_money(299), '₹299.00')
+        formatted = shipment._awb_format_money(299)
+        self.assertNotIn('₹', str(formatted))
+        self.assertNotIn('\u20b9', str(formatted))
+        self.assertIn('&#8377;', str(formatted))
+        self.assertIn('299.00', str(formatted))
+        self.assertEqual(str(formatted), '&#8377;299.00')
+        str(formatted).encode('latin-1')
         html = self._awb_html(shipment)
         self.assertIn('COD', html)
         self.assertNotIn('PRE-PAID', html)
@@ -289,8 +297,17 @@ class TestAwbPrintLayout(IndiapostHermeticMixin, TransactionCase):
         self.assertIn('KxAwbRupee', html)
         self.assertIn('@font-face', html)
         self.assertIn('data:font/ttf;base64,', html)
-        self.assertIn('₹299.00', html)
-        self.assertNotIn('₹₹', html)
+        self.assertIn('<meta charset="utf-8"/>', html)
+        self.assertIn('&#8377;299.00', html)
+        self.assertNotIn('₹', html)
+        self.assertNotIn('\u20b9', html)
+        self.assertNotIn('&amp;#8377;', html)
+
+    def test_wkhtmltopdf_args_force_utf8_encoding(self):
+        args = self.env['ir.actions.report']._build_wkhtmltopdf_args(
+            False, False)
+        self.assertIn('--encoding', args)
+        self.assertEqual(args[args.index('--encoding') + 1], 'utf-8')
 
     def test_indiapost_logo_is_png_wordmark_not_emblem_svg(self):
         shipment = self._new_shipment(self.ip_seller)

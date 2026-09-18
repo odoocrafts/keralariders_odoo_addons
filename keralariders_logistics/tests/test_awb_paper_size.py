@@ -211,8 +211,10 @@ class TestAwbPaperSize(IndiapostHermeticMixin, TransactionCase):
         self.assertNotIn('width: 96mm', source)
         self.assertNotIn('overflow: hidden; font-family', source)
         self.assertIn('kx-awb-money', source)
-        self.assertIn('o._awb_format_money(o.cod_amount)', source)
+        self.assertIn('t-out="o._awb_format_money(o.cod_amount)"', source)
+        self.assertNotIn('t-esc="o._awb_format_money', source)
         self.assertIn('docs._awb_money_font_css()', source)
+        self.assertIn('<meta charset="utf-8"/>', source)
         self.assertNotIn('t-field="o.cod_amount"', source)
         font = (
             Path(__file__).resolve().parents[1]
@@ -221,7 +223,7 @@ class TestAwbPaperSize(IndiapostHermeticMixin, TransactionCase):
         self.assertTrue(font.is_file(), 'AWB rupee font is missing')
         self.assertGreater(font.stat().st_size, 1000)
 
-    def test_100x150_cod_embeds_rupee_font(self):
+    def test_100x150_cod_uses_rupee_entity(self):
         shipment = self._new_shipment(
             self.ip_seller,
             order_payment_type='cod',
@@ -229,7 +231,13 @@ class TestAwbPaperSize(IndiapostHermeticMixin, TransactionCase):
             cod_amount=299,
         )
         shipment.currency_id = self.env.ref('base.INR')
-        self.assertEqual(shipment._awb_format_money(shipment.cod_amount), '₹299.00')
+        formatted = shipment._awb_format_money(shipment.cod_amount)
+        self.assertNotIn('₹', str(formatted))
+        self.assertNotIn('\u20b9', str(formatted))
+        self.assertIn('&#8377;', str(formatted))
+        self.assertIn('299.00', str(formatted))
+        self.assertEqual(str(formatted), '&#8377;299.00')
+        str(formatted).encode('latin-1')
         html = self._label_html(shipment)
         self.assertIn('COD', html)
         self.assertNotIn('PREPAID', html)
@@ -237,9 +245,12 @@ class TestAwbPaperSize(IndiapostHermeticMixin, TransactionCase):
         self.assertIn('KxAwbRupee', html)
         self.assertIn('@font-face', html)
         self.assertIn('data:font/ttf;base64,', html)
-        self.assertIn('₹299.00', html)
-        self.assertNotIn('₹₹', html)
-        self.assertEqual(html.count('₹299.00'), 1)
+        self.assertIn('<meta charset="utf-8"/>', html)
+        self.assertIn('&#8377;299.00', html)
+        self.assertEqual(html.count('&#8377;299.00'), 1)
+        self.assertNotIn('₹', html)
+        self.assertNotIn('\u20b9', html)
+        self.assertNotIn('&amp;#8377;', html)
 
 
 @tagged('post_install', '-at_install')

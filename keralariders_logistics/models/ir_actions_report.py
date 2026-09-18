@@ -38,6 +38,23 @@ class IrActionsReport(models.Model):
                 'AWB labels are available after you request pickup.'
             ))
 
+    def _build_wkhtmltopdf_args(
+            self,
+            paperformat_id,
+            landscape,
+            specific_paperformat_args=None,
+            set_viewport_size=False):
+        command_args = super()._build_wkhtmltopdf_args(
+            paperformat_id,
+            landscape,
+            specific_paperformat_args=specific_paperformat_args,
+            set_viewport_size=set_viewport_size)
+        # Odoo writes UTF-8 HTML files but does not pass --encoding. Older
+        # wkhtmltopdf then treats ₹ (E2 82 B9) as Latin-1 and prints â,¹.
+        if '--encoding' not in command_args:
+            command_args.extend(['--encoding', 'utf-8'])
+        return command_args
+
     def _render_qweb_pdf_prepare_streams(self, report_ref, data, res_ids=None):
         self._kx_portal_forbid_draft_awb(report_ref, res_ids)
         collected = super()._render_qweb_pdf_prepare_streams(
