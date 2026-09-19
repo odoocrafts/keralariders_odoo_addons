@@ -135,6 +135,22 @@ class TestIndiapostCodSettlement(IndiapostHermeticMixin, TransactionCase):
         self.assertEqual(
             self.Transfer.get_seller_cod_pending_balance(self.seller), 299.0)
 
+    def test_seller_cod_balance_stat_button_matches_pending(self):
+        self.assertEqual(self.seller.cod_pending_balance, 0.0)
+
+        shipment = self._new_ip_cod_shipment(article='EY547878701IN')
+        self._deliver(shipment)
+        self.seller.invalidate_recordset(['cod_pending_balance'])
+
+        pending = self.Transfer.get_seller_cod_pending_balance(self.seller)
+        self.assertEqual(pending, 299.0)
+        self.assertEqual(self.seller.cod_pending_balance, pending)
+
+        action = self.seller.action_view_cod_balance()
+        self.assertEqual(action['res_model'], 'logistics.account.transfer')
+        transfers = self.Transfer.search(action['domain'])
+        self.assertIn(self._cod_payments(shipment), transfers)
+
     def test_repeat_delivered_write_does_not_double_credit(self):
         shipment = self._new_ip_cod_shipment(article='EY547878545IN')
         self._deliver(shipment)

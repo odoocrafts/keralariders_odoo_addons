@@ -76,6 +76,16 @@
                                 </span>
                             </div>
                         </button>
+                        <button name="action_view_cod_balance" type="object"
+                                class="oe_stat_button" icon="fa-money">
+                            <div class="o_stat_info">
+                                <span>
+                                    <field name="currency_id" invisible="1"/>
+                                    <field name="cod_pending_balance" class="o_stat_value" widget="monetary" options="{'currency_field': 'currency_id'}" decoration-success="cod_pending_balance > 0"/>
+                                </span>
+                                <span class="o_stat_text">COD Balance</span>
+                            </div>
+                        </button>
                     </div>
                     <div class="d-flex flex-column flex-sm-row align-items-center">
                         <div class="ms-2 p-0">

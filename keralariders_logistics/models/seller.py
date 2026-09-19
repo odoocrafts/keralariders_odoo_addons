@@ -28,6 +28,10 @@ COD_BANK_FIELDS = COD_BANK_REQUIRED_FIELDS + (
     'bank_name',
     'bank_branch',
 )
+# Portal /my/cod ledger: payments plus the settlement types that reduce pending.
+COD_LEDGER_TRANSFER_TYPES = (
+    'cod_payment', 'cod_clearance', 'cod_withdrawal', 'other',
+)
 
 
 class Seller(models.Model):
@@ -405,6 +409,41 @@ class Seller(models.Model):
             'view_mode': 'list,form',
             'domain': [('seller_id', '=', self.id)],
             'context': {'default_seller_id': self.id},
+        }
+
+    # Same figure as portal /my/cod: posted COD payments minus posted
+    # clearance / withdrawal / other. India Post credits never hit the
+    # seller COD account itself (they land on the company account with
+    # related_seller_id), so this is not seller_account_id.balance.
+    cod_pending_balance = fields.Monetary(
+        string='Pending COD Balance',
+        compute='_compute_cod_pending_balance',
+        currency_field='currency_id',
+    )
+
+    def _compute_cod_pending_balance(self):
+        Transfer = self.env['logistics.account.transfer']
+        for seller in self:
+            seller.cod_pending_balance = (
+                Transfer.get_seller_cod_pending_balance(seller) if seller.id else 0.0
+            )
+
+    def action_view_cod_balance(self):
+        """Open this seller's COD ledger (payments, clearances, withdrawals)."""
+        self.ensure_one()
+        if not self.env.user.has_group('base.group_user'):
+            raise AccessError(_("COD ledger is only available in the backend."))
+        return {
+            'name': _('COD Balance'),
+            'type': 'ir.actions.act_window',
+            'res_model': 'logistics.account.transfer',
+            'view_mode': 'list,form',
+            'domain': [
+                ('related_seller_id', '=', self.id),
+                ('transfer_type', 'in', list(COD_LEDGER_TRANSFER_TYPES)),
+                ('state', 'in', ['draft', 'posted']),
+            ],
+            'context': {'default_related_seller_id': self.id},
         }
 
     order_ids = fields.One2many('logistics.order', 'seller_id', string="Orders")

@@ -171,3 +171,15 @@ class TestSellerDraftCounts(TransactionCase):
         shipments = self.seller.action_view_shipments()
         self.assertTrue(shipments['context'].get('search_default_hide_unbooked'))
         self.assertEqual(shipments['domain'], [('seller_id', '=', self.seller.id)])
+
+    def test_cod_balance_stat_button_is_zero_without_ledger(self):
+        self.assertEqual(self.seller.cod_pending_balance, 0.0)
+        self.seller.seller_account_id = False
+        self.seller.invalidate_recordset(['cod_pending_balance'])
+        self.assertEqual(self.seller.cod_pending_balance, 0.0)
+
+        action = self.seller.action_view_cod_balance()
+        self.assertEqual(action['res_model'], 'logistics.account.transfer')
+        self.assertEqual(action['view_mode'], 'list,form')
+        self.assertIn(('related_seller_id', '=', self.seller.id), action['domain'])
+        self.assertFalse(self.env['logistics.account.transfer'].search(action['domain']))
