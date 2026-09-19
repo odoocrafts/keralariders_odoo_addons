@@ -213,6 +213,12 @@
                          decoration-info="state == 'draft'"
                          decoration-success="state == 'posted'"
                          decoration-muted="state == 'cancelled'"/>
+                <field name="cod_payout_state" widget="badge" width="90" string="Payout"
+                         optional="show"
+                         decoration-info="cod_payout_state == 'requested'"
+                         decoration-warning="cod_payout_state == 'approved'"
+                         decoration-success="cod_payout_state == 'paid'"
+                         decoration-muted="cod_payout_state == 'cancelled'"/>
                 <field name="related_seller_id" width="100"/>
                 <field name="shipment_id" width="100"/>
                 <field name="from_account_id" width="100"/>
@@ -235,9 +241,18 @@
                 <header>
                     <button name="action_approve" type="object" string="Approve"
                             class="btn-primary" invisible="state != 'draft'"/>
+                    <button name="action_mark_cod_paid" type="object" string="Mark Paid"
+                            class="btn-primary"
+                            groups="keralariders_logistics.group_logistics_admin,keralariders_logistics.group_staff_finance"
+                            invisible="transfer_type != 'cod_withdrawal' or state != 'posted' or cod_paid_on"
+                            confirm="Confirm the bank transfer to the seller has gone out?"/>
                     <button name="action_cancel_draft" type="object" string="Cancel"
                             invisible="state != 'draft'" confirm="Cancel this draft transfer?"/>
-                    <field name="state" widget="statusbar" statusbar_visible="draft,posted"/>
+                    <field name="cod_payout_state" widget="statusbar"
+                           statusbar_visible="requested,approved,paid"
+                           invisible="transfer_type != 'cod_withdrawal'"/>
+                    <field name="state" widget="statusbar" statusbar_visible="draft,posted"
+                           invisible="transfer_type == 'cod_withdrawal'"/>
                 </header>
                 <sheet>
                     <div class="oe_title" >
@@ -261,6 +276,11 @@
                             <field name="hub_deposit_transfer_id" invisible="not hub_deposit_transfer_id" readonly="1" force_save="1"/>
                             <field name="hub_banking_transfer_id" invisible="not hub_banking_transfer_id" readonly="1" force_save="1"/>
                             <field name="cod_clearance_transfer_id" invisible="not cod_clearance_transfer_id" readonly="1" force_save="1"/>
+                            <field name="cod_paid_reference"
+                                   invisible="transfer_type != 'cod_withdrawal'"
+                                   readonly="state != 'posted'"/>
+                            <field name="cod_paid_on" invisible="not cod_paid_on"/>
+                            <field name="cod_paid_by" invisible="not cod_paid_on"/>
                             <field name="currency_id" invisible="1"/>
                         </group>
                     </group>

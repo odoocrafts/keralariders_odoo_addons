@@ -2368,7 +2368,15 @@ class LogisticsPortal(CustomerPortal):
             ('transfer_type', '=', 'cod_withdrawal'),
             ('state', '=', 'draft'),
         ], order='transfer_date desc, id desc')
-        
+
+        # Withdrawals the seller is still waiting on: requested (draft) or
+        # approved but not yet paid out to their bank.
+        withdrawal_requests = Transfer.search([
+            ('related_seller_id', '=', seller.id),
+            ('transfer_type', '=', 'cod_withdrawal'),
+            ('state', 'in', ['draft', 'posted']),
+        ], order='transfer_date desc, id desc', limit=5)
+
         # Recent Settlements: posted clearances + withdrawals (+ legacy other payouts)
         recent_clearances = Transfer.search([
             ('related_seller_id', '=', seller.id),
@@ -2386,6 +2394,7 @@ class LogisticsPortal(CustomerPortal):
             'cod_balance': cod_balance,
             'withdrawable_balance': withdrawable,
             'draft_withdrawals': draft_withdrawals,
+            'withdrawal_requests': withdrawal_requests,
             'recent_clearances': recent_clearances,
             'seller': seller,
             'has_bank_details': has_bank_details,

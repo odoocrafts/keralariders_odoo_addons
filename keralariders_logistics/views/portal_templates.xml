@@ -367,20 +367,25 @@
                         </div>
                     </div>
                     
-                    <div class="card shadow-sm mb-4" t-if="draft_withdrawals">
+                    <div class="card shadow-sm mb-4" t-if="withdrawal_requests">
                         <div class="card-header bg-white">
-                            <h5 class="mb-0">Pending Withdrawal Requests</h5>
+                            <h5 class="mb-0">Withdrawal Requests</h5>
                         </div>
                         <ul class="list-group list-group-flush">
-                            <t t-foreach="draft_withdrawals" t-as="draft">
+                            <t t-foreach="withdrawal_requests" t-as="draft">
                                 <li class="list-group-item d-flex justify-content-between align-items-center">
                                     <div>
                                         <strong><span t-field="draft.name"/></strong><br/>
                                         <small class="text-muted"><span t-field="draft.transfer_date" t-options='{"widget": "date"}'/></small>
+                                        <div class="small text-muted" t-if="draft.cod_payout_state == 'approved'">
+                                            Approved — will be credited in the next 24 hours.
+                                        </div>
                                     </div>
                                     <div class="text-end">
                                         <span class="fw-bold" t-field="draft.amount" t-options='{"widget": "monetary", "display_currency": draft.currency_id}'/><br/>
-                                        <span class="badge bg-warning text-dark">Draft</span>
+                                        <span t-if="draft.cod_payout_state == 'requested'" class="badge bg-warning text-dark">Requested</span>
+                                        <span t-elif="draft.cod_payout_state == 'approved'" class="badge bg-info text-dark">Approved</span>
+                                        <span t-elif="draft.cod_payout_state == 'paid'" class="badge bg-success">Paid</span>
                                     </div>
                                 </li>
                             </t>

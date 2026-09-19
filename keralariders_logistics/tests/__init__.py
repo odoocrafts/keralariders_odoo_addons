@@ -21,3 +21,4 @@ from . import test_portal_indiapost_arn
 from . import test_kx_mail_notifications
 from . import test_staff_access
 from . import test_seller_draft_counts
+from . import test_cod_indiapost_settlement

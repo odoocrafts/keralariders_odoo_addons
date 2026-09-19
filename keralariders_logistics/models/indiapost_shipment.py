@@ -554,7 +554,127 @@ class Shipment(models.Model):
         # Unlike create, a write cannot be silently corrected: the caller asked
         # for a carrier change on an existing shipment and has to be told no.
         self._ip_check_fulfilment_method_write(vals)
-        return super().write(vals)
+        # Every route to "delivered" funnels through write(): the tracking sync
+        # and the webhook both land in _write_with_state, so does the DE's
+        # action_mark_delivered, and so does an administrator moving the
+        # statusbar by hand. Hooking the write rather than any one of them is
+        # what makes the credit impossible to route around.
+        newly_delivered = self.browse()
+        if vals.get('state') == 'delivered':
+            newly_delivered = self.filtered(lambda s: s.state != 'delivered')
+        res = super().write(vals)
+        if newly_delivered:
+            newly_delivered._ip_credit_seller_cod()
+        return res
+
+    # ------------------------------------------------------------------
+    # COD on delivery
+    #
+    # An own-network parcel is paid in cash to the delivery executive, so its
+    # COD credit is raised by the DE's own settlement (customer → DE → hub →
+    # company) and the seller is cleared from the company account at the end of
+    # it. India Post collects on our behalf and remits to the company directly,
+    # so there is no cash custody to record: the delivery scan itself is the
+    # collection, and the seller has to be credited the moment it lands.
+    # ------------------------------------------------------------------
+    indiapost_cod_credited = fields.Boolean(
+        string='India Post COD Credited', default=False, copy=False,
+        readonly=True, index=True,
+        help='Set once the seller COD ledger has been credited for this '
+             'delivered article. Repeated tracking polls re-write the same '
+             'delivered state, so the credit is guarded by this flag and by a '
+             'lookup of the payment itself.',
+    )
+
+    def _ip_cod_creditable(self):
+        """The subset of these shipments whose COD is owed to the seller now."""
+        return self.filtered(
+            lambda s: s.fulfilment_method == 'indiapost'
+            and s.state == 'delivered'
+            and not s.is_return_journey
+            and s.order_payment_type == 'cod'
+            and s.cod_amount > 0
+            and s.seller_id
+            and not s.indiapost_cod_credited
+        )
+
+    def _ip_credit_seller_cod(self):
+        """Raise the seller COD credit for delivered India Post COD articles.
+
+        Idempotent twice over: the stored flag short-circuits the common case
+        (a tracking poll re-writing the same delivered state), and
+        ``action_create_indiapost_cod_payment`` still looks the payment up by
+        shipment before creating one, so a shipment whose flag never got
+        written — a backfill, a restore — cannot be credited twice either.
+
+        A failure here must never take down a tracking batch or block a
+        delivery scan, so each shipment is credited in its own savepoint.
+        """
+        Transfer = self.env['logistics.account.transfer'].sudo()
+        credited = self.browse()
+        for shipment in self._ip_cod_creditable():
+            already = Transfer._indiapost_cod_payment_for_shipment(shipment)
+            try:
+                with self.env.cr.savepoint():
+                    transfer = Transfer.action_create_indiapost_cod_payment(
+                        shipment)
+            except Exception:
+                _logger.exception(
+                    'Could not credit India Post COD for shipment %s',
+                    shipment.name,
+                )
+                continue
+            shipment.sudo().indiapost_cod_credited = True
+            if already:
+                # Someone had already raised the payment by hand; stamp the
+                # shipment so the flag and the ledger agree, and say nothing.
+                continue
+            credited |= shipment
+            shipment.sudo().message_post(body=_(
+                'COD of %(amount)s collected by India Post credited to '
+                '%(seller)s (%(ref)s).',
+                amount=shipment.currency_id.format(shipment.cod_amount)
+                if shipment.currency_id else shipment.cod_amount,
+                seller=shipment.seller_id.display_name,
+                ref=transfer.name or '',
+            ))
+        return credited
+
+    @api.model
+    def _ip_backfill_cod_credits(self, limit=None):
+        """Credit delivered India Post COD shipments that predate this code.
+
+        Safe to run more than once and safe to run twice in a row: it only
+        picks up shipments with no COD payment behind them, and the create is
+        guarded again per shipment. Run it from an odoo shell — see the
+        module README notes — rather than from an upgrade hook, so crediting
+        historical money stays a decision somebody makes.
+        """
+        domain = [
+            ('fulfilment_method', '=', 'indiapost'),
+            ('state', '=', 'delivered'),
+            ('is_return_journey', '=', False),
+            ('order_payment_type', '=', 'cod'),
+            ('cod_amount', '>', 0),
+            ('indiapost_cod_credited', '=', False),
+        ]
+        shipments = self.sudo().search(domain, limit=limit, order='id')
+        # Shipments credited before the flag existed (or by hand through the
+        # COD payment wizard) already have a payment; stamp them instead of
+        # paying them a second time.
+        Transfer = self.env['logistics.account.transfer'].sudo()
+        already_paid = shipments.filtered(
+            lambda s: Transfer._indiapost_cod_payment_for_shipment(s)
+        )
+        if already_paid:
+            already_paid.write({'indiapost_cod_credited': True})
+        credited = (shipments - already_paid)._ip_credit_seller_cod()
+        _logger.info(
+            'India Post COD backfill: %s credited, %s already had a payment, '
+            '%s considered.',
+            len(credited), len(already_paid), len(shipments),
+        )
+        return credited
 
     # ------------------------------------------------------------------
     # Delivery charges

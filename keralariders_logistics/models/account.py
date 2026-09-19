@@ -110,6 +110,35 @@ class BankCashAccount(models.Model):
             return account
         return self.browse()
 
+    @api.model
+    def get_indiapost_cod_account(self):
+        """The customer-side account India Post COD is collected into.
+
+        Own-network COD moves as physical cash (customer → DE → hub → company),
+        so its customer account is the cash or UPI one the DE settles through.
+        India Post collects on our behalf and remits to the company, so its
+        collection account is a single ledger counterparty rather than anyone's
+        cash drawer.
+        """
+        account = self.sudo().env.ref(
+            'keralariders_logistics.account_indiapost_cod_collection',
+            raise_if_not_found=False,
+        )
+        if account:
+            return account.sudo()
+        account = self.sudo().search([
+            ('account_type', '=', 'cod_customer'),
+            ('name', 'ilike', 'india post'),
+        ], limit=1)
+        if account:
+            return account
+        return self.sudo().create({
+            'name': 'India Post COD Collection',
+            'account_type': 'cod_customer',
+            'reference': 'COD collected by India Post on delivery and remitted '
+                         'to KeralaXpress',
+        })
+
 
 class BankCashAccountTransfer(models.Model):
     _name = "logistics.account.transfer"
@@ -481,6 +510,80 @@ class BankCashAccountTransfer(models.Model):
         })
 
     @api.model
+    def _indiapost_cod_payment_for_shipment(self, shipment):
+        """The COD payment already recorded for this shipment, if any.
+
+        Looked up rather than trusted from a flag so a backfill (or a second
+        upgrade) can never credit the same article twice, even on a shipment
+        whose flag was lost.
+        """
+        if not shipment:
+            return self.browse()
+        return self.sudo().search([
+            ('transfer_type', '=', 'cod_payment'),
+            ('shipment_id', '=', shipment.id),
+            ('state', '!=', 'cancelled'),
+        ], limit=1)
+
+    @api.model
+    def action_create_indiapost_cod_payment(self, shipment):
+        """Credit the seller's COD ledger for one delivered India Post article.
+
+        India Post hands the money to the company, not to a delivery executive,
+        so this books the single leg that actually happened — collection
+        account → company account — and leaves the DE and hub cash custody
+        steps out. The seller side is ``related_seller_id``, which is what
+        ``_seller_cod_balance_parts`` sums for the portal balance, so the
+        shipment shows up at /my/cod_settlements as "COD collected from
+        customer" exactly like an own-network delivery.
+
+        Returns the existing payment when there already is one.
+        """
+        if not shipment:
+            return self.browse()
+        shipment = shipment.sudo()
+        existing = self._indiapost_cod_payment_for_shipment(shipment)
+        if existing:
+            return existing
+        if not shipment.seller_id:
+            raise UserError(_(
+                "Shipment %s has no seller, so its COD cannot be credited."
+            ) % shipment.name)
+        amount = shipment.cod_amount
+        if amount <= 0:
+            raise UserError(_(
+                "Shipment %s has no COD amount to credit."
+            ) % shipment.name)
+        from_account = self.env['logistics.account'].get_indiapost_cod_account()
+        to_account = self.env['logistics.account'].get_company_cod_account()
+        if not to_account:
+            raise UserError(_(
+                "No Company COD account configured. "
+                "Set it under Settings → Logistics, or create an account of "
+                "type Company."
+            ))
+        transfer = self.sudo().create({
+            'transfer_type': 'cod_payment',
+            'state': 'posted',
+            'from_account_id': from_account.id,
+            'to_account_id': to_account.id,
+            'amount': amount,
+            'transfer_date': fields.Date.to_date(
+                shipment.delivered_on or shipment.actual_delivery_date
+            ) or fields.Date.context_today(self),
+            'reference': _('India Post COD — %s') % (
+                shipment.indiapost_article_number or shipment.name),
+            'description': _(
+                'COD collected by India Post on delivery of %s and remitted '
+                'to KeralaXpress.'
+            ) % shipment.name,
+            'related_seller_id': shipment.seller_id.id,
+            'shipment_id': shipment.id,
+        })
+        shipment.cod_payment_transfer_ids = [(4, transfer.id)]
+        return transfer
+
+    @api.model
     def _seller_cod_balance_parts(self, seller):
         """Return (gross_payments, posted_settlements, draft_withdrawals) for a seller."""
         Transfer = self.sudo()
@@ -575,6 +678,78 @@ class BankCashAccountTransfer(models.Model):
             'related_seller_id': seller.id,
         })
 
+    # ------------------------------------------------------------------
+    # Withdrawal payout
+    #
+    # Approving a withdrawal posts the ledger — that is the company committing
+    # to the payout — but the money only leaves the bank when finance actually
+    # transfers it. Those are two different facts, so the second one is stamped
+    # separately instead of being folded into ``state``: a ``paid`` state would
+    # have dropped the transfer out of ``_compute_transaction_ids`` and taken
+    # the ledger lines (and the seller's settled balance) with it.
+    # ------------------------------------------------------------------
+    cod_paid_on = fields.Datetime(
+        string='Paid On', readonly=True, copy=False, tracking=True,
+        help='When finance confirmed the bank transfer actually left the '
+             'company account.',
+    )
+    cod_paid_by = fields.Many2one(
+        'res.users', string='Paid By', readonly=True, copy=False, tracking=True,
+    )
+    cod_paid_reference = fields.Char(
+        string='Bank Payment Reference', copy=False, tracking=True,
+        help='UTR / NEFT reference of the transfer to the seller.',
+    )
+    cod_payout_state = fields.Selection(
+        selection=[
+            ('requested', 'Requested'),
+            ('approved', 'Approved'),
+            ('paid', 'Paid'),
+            ('cancelled', 'Cancelled'),
+        ],
+        string='Payout Status',
+        compute='_compute_cod_payout_state',
+        store=True,
+        help='Seller-facing reading of a COD withdrawal: requested → approved '
+             '→ paid.',
+    )
+
+    @api.depends('state', 'cod_paid_on', 'transfer_type')
+    def _compute_cod_payout_state(self):
+        for rec in self:
+            if rec.transfer_type != 'cod_withdrawal':
+                rec.cod_payout_state = False
+            elif rec.state == 'cancelled':
+                rec.cod_payout_state = 'cancelled'
+            elif rec.state == 'draft':
+                rec.cod_payout_state = 'requested'
+            elif rec.cod_paid_on:
+                rec.cod_payout_state = 'paid'
+            else:
+                rec.cod_payout_state = 'approved'
+
+    def action_mark_cod_paid(self):
+        """Finance confirms the bank transfer promised at approval has gone out."""
+        for rec in self:
+            if rec.transfer_type != 'cod_withdrawal':
+                raise UserError(_(
+                    "Only COD withdrawals can be marked paid."
+                ))
+            if rec.state != 'posted':
+                raise UserError(_(
+                    "Withdrawal %s must be approved before it can be marked paid."
+                ) % (rec.name or ''))
+            if rec.cod_paid_on:
+                continue
+            rec.write({
+                'cod_paid_on': fields.Datetime.now(),
+                'cod_paid_by': self.env.user.id,
+            })
+            rec.message_post(body=_(
+                'Marked paid to the seller bank account by %s.'
+            ) % self.env.user.name)
+        return True
+
     def _get_logistics_admin_users(self):
         """Internal users in logistics admin group (excludes portal/public/system)."""
         admin_group = self.env.ref('keralariders_logistics.group_logistics_admin', raise_if_not_found=False)
@@ -632,6 +807,17 @@ class BankCashAccountTransfer(models.Model):
             feedback=feedback,
         )
 
+    def _cod_bank_reference(self):
+        """Readable account line for the seller this withdrawal pays."""
+        self.ensure_one()
+        seller = self.related_seller_id.sudo()
+        return ' / '.join(filter(None, [
+            seller.bank_account_name,
+            seller.bank_account_number,
+            seller.bank_ifsc,
+            seller.bank_name,
+        ])) or _('Not set')
+
     def _notify_admins_cod_withdrawal_request(self):
         """Queue a team email for a new COD withdrawal (company From, not seller)."""
         Mail = self.env['logistics.mail.notify'].sudo()
@@ -641,6 +827,14 @@ class BankCashAccountTransfer(models.Model):
                 'Skipping COD withdrawal team email: no ops/admin/company recipient.'
             )
             return
+        base = Mail._kx_base_url()
+        action = self.sudo().env.ref(
+            'keralariders_logistics.action_logistics_account_transfer_other',
+            raise_if_not_found=False,
+        )
+        list_url = '%s/odoo/m-logistics.account.transfer' % base
+        if action:
+            list_url = '%s/odoo/action-%s' % (base, action.id)
         for transfer in self:
             try:
                 amount = (
@@ -652,18 +846,28 @@ class BankCashAccountTransfer(models.Model):
                     or transfer.related_seller_id.partner_id.email
                     or ''
                 ).strip()
+                form_url = '%s/%s' % (list_url, transfer.id) if transfer.id \
+                    else list_url
                 inner = Markup(
                     '<p>A seller requested a COD withdrawal.</p>'
                     '<ul>'
                     '<li><strong>Seller:</strong> %s</li>'
                     '<li><strong>Amount:</strong> %s</li>'
                     '<li><strong>Reference:</strong> %s</li>'
+                    '<li><strong>Bank account:</strong> %s</li>'
                     '</ul>'
+                    '<p>Open the request: <a href="%s">%s</a><br/>'
+                    'Or review the withdrawal list: <a href="%s">%s</a></p>'
                     '<p>Please review and approve or cancel the draft transfer.</p>'
                 ) % (
                     html_escape(transfer.related_seller_id.display_name or ''),
                     html_escape(str(amount)),
                     html_escape(transfer.name or ''),
+                    html_escape(transfer._cod_bank_reference()),
+                    html_escape(form_url),
+                    html_escape(form_url),
+                    html_escape(list_url),
+                    html_escape(list_url),
                 )
                 Mail._kx_queue_mail(
                     email_to=email_to,
@@ -681,6 +885,58 @@ class BankCashAccountTransfer(models.Model):
                     transfer.name,
                 )
 
+    def _notify_seller_cod_withdrawal_approved(self):
+        """Tell the seller the approved amount is on its way to their bank.
+
+        Sent once, from :meth:`action_approve`, which refuses anything that is
+        not still draft — so a second approve cannot produce a second mail.
+        """
+        Mail = self.env['logistics.mail.notify'].sudo()
+        for transfer in self:
+            seller = transfer.related_seller_id.sudo()
+            email = (
+                seller.email or seller.partner_id.email or ''
+            ).strip()
+            if not email or '@' not in email:
+                continue
+            try:
+                amount = (
+                    transfer.currency_id.format(transfer.amount)
+                    if transfer.currency_id else transfer.amount
+                )
+                inner = Markup(
+                    '<p>Hello %s,</p>'
+                    '<p>Your COD withdrawal request has been approved. The '
+                    'amount will be credited in the next 24 hours.</p>'
+                    '<ul>'
+                    '<li><strong>Request ref:</strong> %s</li>'
+                    '<li><strong>Amount approved:</strong> %s</li>'
+                    '<li><strong>Bank account:</strong> %s</li>'
+                    '</ul>'
+                    '<p>You can follow the payout under COD Settlements in '
+                    'your seller portal.</p>'
+                ) % (
+                    html_escape(seller.display_name or ''),
+                    html_escape(transfer.name or ''),
+                    html_escape(str(amount)),
+                    html_escape(transfer._cod_bank_reference()),
+                )
+                Mail._kx_queue_mail(
+                    email_to=email,
+                    subject=_('COD withdrawal approved — %s') % (
+                        transfer.name or ''),
+                    body_html=Mail._kx_wrap_body(
+                        _('Your COD withdrawal has been approved'), inner),
+                    reply_to=Mail._kx_support_email() or False,
+                    res_model=self._name,
+                    res_id=transfer.id,
+                )
+            except Exception:
+                _logger.exception(
+                    'Failed to queue COD withdrawal approval email for %s',
+                    transfer.name,
+                )
+
     def action_approve(self):
         """Approve draft transfer: post ledger transactions and complete activities."""
         for rec in self:
@@ -691,6 +947,7 @@ class BankCashAccountTransfer(models.Model):
             rec.write({'state': 'posted'})
             if rec.transfer_type == 'cod_withdrawal':
                 rec._complete_admin_approval_activities(_('Approved'))
+                rec._notify_seller_cod_withdrawal_approved()
         return True
 
     def action_cancel_draft(self):

@@ -6,4 +6,14 @@
         <field name="account_type">company</field>
         <field name="reference">Default company account for hub banking and seller COD clearance</field>
     </record>
+
+    <!-- India Post collects COD from the customer and remits it to the company,
+         so there is no DE or hub cash custody leg for those shipments: the
+         credit goes straight from this collection account to the company
+         account. -->
+    <record id="account_indiapost_cod_collection" model="logistics.account">
+        <field name="name">India Post COD Collection</field>
+        <field name="account_type">cod_customer</field>
+        <field name="reference">COD collected by India Post on delivery and remitted to KeralaXpress</field>
+    </record>
 </odoo>

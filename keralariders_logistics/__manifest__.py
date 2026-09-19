@@ -1,6 +1,6 @@
 {
     'name': 'Kerala Riders Logistics',
-    'version': '1.6.21',
+    'version': '1.6.23',
     'category': 'Operations/Logistics',
     'summary': 'Last-mile delivery management platform for Kerala Riders',
     'description': """
@@ -14,7 +14,8 @@ Features:
 - Bulk shipment upload via Excel
 - Delivery executive management
 - Hub custody and district hub network (14 Kerala hubs)
-- COD cash path: DE → Hub → Company → Seller
+- COD cash path: DE → Hub → Company → Seller, and India Post COD credited to
+  the seller automatically on delivery
 - Real-time shipment tracking with public tracking URL
 - Seller / DE / Hub Manager portals
 - Same-district skip-hub local delivery
