@@ -312,7 +312,12 @@ class Shipment(models.Model):
         return cls.AWB_REPORT_XMLID_A4
 
     def _awb_kx_barcode_img_src(self):
+        """Bottom (and A4 hub) KX AWB Code128. Empty for India Post: the
+        thermal label already encodes the ARN in the top barcode cell.
+        """
         self.ensure_one()
+        if self.fulfilment_method == 'indiapost':
+            return ''
         return self._awb_barcode_png_data_uri('Code128', self.name or '')
 
     def _awb_kx_qr_img_src(self):

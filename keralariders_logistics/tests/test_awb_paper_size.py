@@ -171,6 +171,11 @@ class TestAwbPaperSize(IndiapostHermeticMixin, TransactionCase):
         self.assertEqual(shipment._awb_label_top_barcode_value(), shipment.name)
         src = shipment._awb_label_top_barcode_img_src()
         self.assertTrue(src.startswith('data:image/png;base64,'))
+        self.assertIn('kx-label-awb-barcode', html)
+        self.assertIn('alt="AWB Barcode"', html)
+        bottom = shipment._awb_kx_barcode_img_src()
+        self.assertTrue(bottom.startswith('data:image/png;base64,'))
+        self.assertTrue(bottom in html or bottom.replace('+', '&#43;') in html)
         assert_awb_barcodes_are_data_uris(self, html)
 
     def test_indiapost_100x150_includes_both_logos_and_arn(self):
@@ -190,14 +195,15 @@ class TestAwbPaperSize(IndiapostHermeticMixin, TransactionCase):
         self.assertIn(SELLER_STREET, html)
         self.assertIn('Label Customer', html)
         self.assertIn('SPEED POST', html)
-        self.assertIn(shipment.name, html)
-        self.assertIn('AWB', html)
         self.assertIn('awb-indiapost-article', html)
         self.assertEqual(shipment._awb_label_top_barcode_value(), ARTICLE)
         src = shipment._awb_label_top_barcode_img_src()
         self.assertTrue(src.startswith('data:image/png;base64,'))
         self.assertTrue(src in html or src.replace('+', '&#43;') in html)
         self.assertEqual(shipment.portal_indiapost_arn(), ARTICLE)
+        self.assertNotIn('kx-label-awb-barcode', html)
+        self.assertNotIn('alt="AWB Barcode"', html)
+        self.assertFalse(shipment._awb_kx_barcode_img_src())
         assert_awb_barcodes_are_data_uris(self, html)
 
     def test_indiapost_100x150_without_arn_prints_awb_in_top_cell(self):
@@ -212,7 +218,36 @@ class TestAwbPaperSize(IndiapostHermeticMixin, TransactionCase):
         self.assertEqual(shipment._awb_label_top_barcode_value(), shipment.name)
         src = shipment._awb_label_top_barcode_img_src()
         self.assertTrue(src.startswith('data:image/png;base64,'))
+        self.assertNotIn('kx-label-awb-barcode', html)
+        self.assertNotIn('alt="AWB Barcode"', html)
+        self.assertFalse(shipment._awb_kx_barcode_img_src())
         assert_awb_barcodes_are_data_uris(self, html)
+
+    def test_indiapost_100x150_hides_bottom_awb_barcode_hub_keeps_it(self):
+        ip = self._new_shipment(self.ip_seller)
+        ip.sudo().write({
+            'indiapost_article_number': ARTICLE,
+            'indiapost_booking_state': 'booked',
+        })
+        ip_html = self._label_html(ip)
+        self.assertIn('awb-indiapost-barcode', ip_html)
+        self.assertIn(ARTICLE, ip_html)
+        self.assertNotIn('kx-label-awb-barcode', ip_html)
+        self.assertNotIn('alt="AWB Barcode"', ip_html)
+        self.assertFalse(ip._awb_kx_barcode_img_src())
+        top = ip._awb_label_top_barcode_img_src()
+        self.assertTrue(top.startswith('data:image/png;base64,'))
+        self.assertTrue(top in ip_html or top.replace('+', '&#43;') in ip_html)
+
+        hub = self._new_shipment(self.hub_seller)
+        hub_html = self._label_html(hub)
+        self.assertIn('kx-label-awb-barcode', hub_html)
+        self.assertIn('alt="AWB Barcode"', hub_html)
+        self.assertIn('AWB', hub_html)
+        bottom = hub._awb_kx_barcode_img_src()
+        self.assertTrue(bottom.startswith('data:image/png;base64,'))
+        self.assertTrue(
+            bottom in hub_html or bottom.replace('+', '&#43;') in hub_html)
 
     def test_label_xml_parses(self):
         layout = (
@@ -246,6 +281,8 @@ class TestAwbPaperSize(IndiapostHermeticMixin, TransactionCase):
         self.assertIn('portal_indiapost_arn()', source)
         self.assertIn('_awb_label_top_barcode_img_src()', source)
         self.assertIn('awb-indiapost-barcode', source)
+        self.assertIn('kx-label-awb-barcode', source)
+        self.assertIn('t-if="not is_ip"', source)
         self.assertNotIn('bwipjs-api.metafloor.com', source)
         self.assertNotIn('/report/barcode', source)
         font = (

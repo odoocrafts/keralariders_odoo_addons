@@ -126,7 +126,10 @@
                         <span t-field="o.item_description"/>
                     </td>
                 </tr>
-                <tr>
+                <!-- Hub/DE: bottom KX AWB Code128. India Post already has the
+                     ARN barcode in the top cell — omit this strip so the
+                     thermal label does not end in a duplicate/empty box. -->
+                <tr t-if="not is_ip">
                     <td colspan="3" class="kx-label-awb-barcode" style="border-top: 2px solid #000; padding: 1.5mm 2mm 1mm 2mm; text-align: center;">
                         <img t-att-src="o._awb_kx_barcode_img_src()"
                              style="width: 100%; max-width: 80mm; height: 12mm; margin: 0 auto; display: block;"
