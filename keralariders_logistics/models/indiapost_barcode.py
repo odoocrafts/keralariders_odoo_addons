@@ -245,6 +245,9 @@ class IndiapostBarcodeRange(models.Model):
         numbers are never moved to another range, even when the product on
         the shipment no longer matches the prefix (the EY Business Parcel
         bookings that predate product-bound ranges).
+
+        Barcodes released by a pre-scan seller cancel (``state=available``)
+        are preferred over minting a new serial from the range counter.
         """
         Barcode = self.env['logistics.indiapost.barcode'].sudo()
         if shipment:
@@ -260,6 +263,20 @@ class IndiapostBarcodeRange(models.Model):
         rng = self._ip_pick_range(environment, article_type=article_type)
         if not rng:
             raise self._ip_missing_range_error(environment, article_type)
+
+        free = Barcode.search([
+            ('state', '=', 'available'),
+            ('shipment_id', '=', False),
+            ('range_id', '=', rng.id),
+        ], order='serial, id', limit=1)
+        if free:
+            free.write({
+                'shipment_id': shipment.id if shipment else False,
+                'state': 'reserved',
+                'booked_on': False,
+                'note': False,
+            })
+            return free
 
         serial = rng._ip_next_serial()
         return Barcode.create({
@@ -299,6 +316,7 @@ class IndiapostBarcode(models.Model):
     )
     state = fields.Selection(
         [
+            ('available', 'Available (pool)'),
             ('reserved', 'Reserved'),
             ('booked', 'Booked'),
             ('rejected', 'Rejected by India Post'),
@@ -334,6 +352,28 @@ class IndiapostBarcode(models.Model):
 
     def _ip_mark_rejected(self, note=None):
         self.write({'state': 'rejected', 'note': (note or '')[:255]})
+
+    def _ip_release_to_pool(self, note=None):
+        """Return barcodes to the allocatable pool for reuse.
+
+        Used only for seller/admin cancel before India Post has scanned the
+        ARN. Idempotent: already-available rows with no shipment stay put and
+        are never duplicated.
+        """
+        release_note = (note or _('Released by pre-scan cancel'))[:255]
+        for record in self:
+            if record.state == 'available' and not record.shipment_id:
+                continue
+            if record.state == 'void':
+                raise UserError(_(
+                    'Barcode %s is void and cannot return to the pool.'
+                ) % record.barcode)
+            record.write({
+                'shipment_id': False,
+                'state': 'available',
+                'booked_on': False,
+                'note': release_note,
+            })
 
     def action_ip_void(self):
         """Take a barcode out of circulation without freeing the serial."""

@@ -145,6 +145,19 @@
                     </div>
                 </div>
                 <t t-call="keralariders_logistics.portal_indiapost_scan_adjustment"/>
+                <div t-if="ship.portal_indiapost_cancel_allowed()" class="mt-3">
+                    <form t-attf-action="/my/shipments/#{ship.id}/cancel"
+                          method="post" class="kx-submit-once"
+                          onsubmit="return confirm('Cancel this India Post booking before scan? The shipping charge will be returned to your wallet.');">
+                        <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                        <button type="submit" class="btn btn-outline-danger btn-sm w-100">
+                            <span class="kx-submit-once-label">Cancel booking</span>
+                            <span class="kx-submit-once-loading d-none">
+                                <i class="fa fa-spinner fa-spin me-1"/> Cancelling...
+                            </span>
+                        </button>
+                    </form>
+                </div>
             </div>
         </article>
     </template>
@@ -265,6 +278,7 @@
                                     <th>Charges</th>
                                     <th>Status</th>
                                     <th>Time to Deliver</th>
+                                    <th class="text-end">Action</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -291,9 +305,24 @@
                                             </t>
                                             <t t-else="">—</t>
                                         </td>
+                                        <td class="text-end">
+                                            <form t-if="ship.portal_indiapost_cancel_allowed()"
+                                                  t-attf-action="/my/shipments/#{ship.id}/cancel"
+                                                  method="post" class="kx-submit-once d-inline-block"
+                                                  onsubmit="return confirm('Cancel this India Post booking before scan? The shipping charge will be returned to your wallet.');">
+                                                <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                                                <button type="submit" class="btn btn-outline-danger btn-sm">
+                                                    <span class="kx-submit-once-label">Cancel</span>
+                                                    <span class="kx-submit-once-loading d-none">
+                                                        <i class="fa fa-spinner fa-spin"/>
+                                                    </span>
+                                                </button>
+                                            </form>
+                                            <span t-else="" class="text-muted">—</span>
+                                        </td>
                                     </tr>
                                     <tr t-if="ship.portal_indiapost_scan_visible()">
-                                        <td colspan="8" class="bg-light">
+                                        <td colspan="9" class="bg-light">
                                             <t t-call="keralariders_logistics.portal_indiapost_scan_adjustment"/>
                                         </td>
                                     </tr>

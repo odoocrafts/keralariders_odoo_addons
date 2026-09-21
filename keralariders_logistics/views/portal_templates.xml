@@ -939,6 +939,9 @@
             <t t-if="error">
                 <div class="alert alert-danger" role="alert"><t t-esc="error"/></div>
             </t>
+            <t t-if="success">
+                <div class="alert alert-success" role="alert"><t t-esc="success"/></div>
+            </t>
             <div class="card shadow-sm mb-4 kx-portal-shipment-detail">
                 <div class="card-header bg-white py-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
                     <h4 class="mb-0 text-break">
@@ -987,7 +990,20 @@
                     <div class="mt-3">
                         <a t-attf-href="/track/#{shipment.tracking_token}" class="btn btn-outline-primary btn-sm me-2">Track</a>
                         <a t-if="shipment.order_id" t-attf-href="/my/orders/#{shipment.order_id.id}"
-                           class="btn btn-outline-secondary btn-sm">Back to order</a>
+                           class="btn btn-outline-secondary btn-sm me-2">Back to order</a>
+                        <form t-if="shipment.portal_indiapost_cancel_allowed()"
+                              t-attf-action="/my/shipments/#{shipment.id}/cancel"
+                              method="post" class="kx-submit-once d-inline-block"
+                              onsubmit="return confirm('Cancel this India Post booking before scan? The shipping charge will be returned to your wallet.');">
+                            <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                            <input type="hidden" name="redirect" t-attf-value="/my/shipments/#{shipment.id}"/>
+                            <button type="submit" class="btn btn-outline-danger btn-sm">
+                                <span class="kx-submit-once-label">Cancel booking</span>
+                                <span class="kx-submit-once-loading d-none">
+                                    <i class="fa fa-spinner fa-spin me-1"/> Cancelling...
+                                </span>
+                            </button>
+                        </form>
                     </div>
                 </div>
             </div>

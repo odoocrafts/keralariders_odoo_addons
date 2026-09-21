@@ -2322,7 +2322,13 @@ class Shipment(models.Model):
         return True
 
     def action_cancel_shipment(self):
-        """Admin cancel — preferred over free statusbar clicks."""
+        """Admin cancel — preferred over free statusbar clicks.
+
+        India Post shipments that are still awaiting the pickup scan use the
+        pre-scan path (wallet credit + ARN pool release). Own-network and
+        post-scan India Post cancels keep the historic behaviour (no automatic
+        refund).
+        """
         for shipment in self:
             if shipment.state in ('delivered', 'returned'):
                 raise UserError(
@@ -2330,6 +2336,10 @@ class Shipment(models.Model):
                     % (shipment.name, shipment.state)
                 )
             if shipment.state == 'cancelled':
+                continue
+            if (shipment.fulfilment_method == 'indiapost'
+                    and shipment._ip_can_cancel_pre_scan()):
+                shipment.action_indiapost_cancel_pre_scan()
                 continue
             shipment._create_custody_event(
                 'status_override',

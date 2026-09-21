@@ -85,7 +85,7 @@
                         <li>Returns are free — requesting a return does not debit the wallet.</li>
                         <li>Charge, carrier, hub and delivery-executive fields cannot be set by the API. KeralaXpress prices the parcel with the same calculator as the portal.</li>
                         <li>Required to create a shipment: customer name, phone, address, destination pincode, weight (kg), item description. COD also needs an order / COD amount.</li>
-                        <li>Sellers cannot cancel a booked shipment from the API (the portal does not refund wallet on cancel).</li>
+                        <li>Sellers can cancel an India Post booking before the pickup agent scans the ARN; the shipping charge is credited back to the wallet. After a scan, cancel is refused.</li>
                     </ul>
                 </div>
             </div>

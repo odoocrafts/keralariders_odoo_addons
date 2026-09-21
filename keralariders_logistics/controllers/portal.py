@@ -1197,6 +1197,7 @@ class LogisticsPortal(CustomerPortal):
             'shipment': shipment,
             'page_name': 'shipment',
             'error': request.session.pop('error', None),
+            'success': request.session.pop('success', None),
         }
         return request.render(
             'keralariders_logistics.portal_my_shipment_detail', values)
@@ -1248,6 +1249,64 @@ class LogisticsPortal(CustomerPortal):
             return request.redirect('/my/shipments')
 
         return self._portal_apply_pickup_request(order, '/my/shipments')
+
+    @http.route(
+        ['/my/shipments/<int:shipment_id>/cancel'],
+        type='http', auth='user', website=True, methods=['POST'],
+    )
+    def portal_my_shipment_cancel(self, shipment_id=None, **post):
+        """Seller cancel of an India Post booking before ARN scan."""
+        seller = self._portal_seller()
+        if not seller:
+            return request.redirect('/my')
+
+        redirect = post.get('redirect') or '/my/shipments/%s' % (shipment_id or '')
+        shipment = request.env['logistics.shipment'].search([
+            ('id', '=', shipment_id),
+            ('seller_id', '=', seller.id),
+        ], limit=1)
+        if not shipment:
+            request.session['error'] = _("Shipment not found.")
+            return request.redirect('/my/shipments')
+
+        if shipment.state == 'cancelled':
+            request.session['success'] = _(
+                "Shipment %s is already cancelled."
+            ) % shipment.name
+            if shipment.order_id:
+                return request.redirect('/my/orders/%s' % shipment.order_id.id)
+            return request.redirect(redirect)
+
+        if not shipment.portal_indiapost_cancel_allowed():
+            request.session['error'] = _(
+                "This booking can no longer be cancelled. India Post may "
+                "already have scanned the article, or pickup is past the "
+                "cancellable stage."
+            )
+            if shipment.order_id:
+                return request.redirect('/my/orders/%s' % shipment.order_id.id)
+            return request.redirect(redirect)
+
+        try:
+            # Ownership checked above as the portal user; wallet credit, ARN
+            # release and custody events need elevated rights.
+            shipment._ip_check_cancel_caller()
+            shipment.sudo().with_context(
+                ip_pre_scan_cancel_trusted=True,
+            ).action_indiapost_cancel_pre_scan()
+        except (UserError, AccessError) as exc:
+            request.session['error'] = exc.args[0] if exc.args else str(exc)
+            if shipment.order_id:
+                return request.redirect('/my/orders/%s' % shipment.order_id.id)
+            return request.redirect(redirect)
+
+        request.session['success'] = _(
+            "Booking for %s cancelled. The shipping charge has been "
+            "returned to your wallet."
+        ) % shipment.name
+        if shipment.order_id:
+            return request.redirect('/my/orders/%s' % shipment.order_id.id)
+        return request.redirect('/my/shipments')
 
     @http.route(['/my/shipments/<int:shipment_id>/print'], type='http',
                 auth="user", website=True)

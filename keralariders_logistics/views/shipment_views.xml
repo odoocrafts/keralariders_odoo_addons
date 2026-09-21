@@ -320,8 +320,14 @@
                             groups="keralariders_logistics.group_logistics_admin,keralariders_logistics.group_logistics_executive"
                             class="btn-secondary"
                             confirm="Same-district local delivery — skip hub inventory and go Out for Delivery?"/>
+                    <button name="action_indiapost_cancel_pre_scan" type="object"
+                            string="Cancel before India Post Scan"
+                            invisible="not indiapost_pre_scan_cancel_ok"
+                            groups="keralariders_logistics.group_logistics_admin,keralariders_logistics.group_logistics_executive"
+                            class="btn-warning"
+                            confirm="Cancel this India Post booking before scan? The seller wallet will be credited the shipping charge and the ARN returned to the pool."/>
                     <button name="action_cancel_shipment" type="object" string="Cancel Shipment"
-                            invisible="state in ('delivered', 'cancelled', 'returned')"
+                            invisible="state in ('delivered', 'cancelled', 'returned') or indiapost_pre_scan_cancel_ok"
                             groups="keralariders_logistics.group_logistics_admin"
                             class="btn-secondary"
                             confirm="Cancel this shipment?"/>
@@ -374,6 +380,7 @@
                         <group string="Delivery Charges">
                             <field name="currency_id" invisible="1"/>
                             <field name="is_indiapost" invisible="1"/>
+                            <field name="indiapost_pre_scan_cancel_ok" invisible="1"/>
                             <field name="total_weight"/>
                             <label for="length_cm" string="Dimensions (cm)"/>
                             <div class="o_row">

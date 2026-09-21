@@ -26,6 +26,7 @@ from markupsafe import Markup
 import base64
 import json
 import logging
+import re
 
 from . import indiapost_common as ipc
 from .indiapost_client import IndiapostApiError
@@ -93,6 +94,48 @@ INDIAPOST_SCAN_ADJUST_FIELDS = (
 INDIAPOST_CHARGE_FIELDS = INDIAPOST_QUOTE_FIELDS + INDIAPOST_SCAN_ADJUST_FIELDS
 
 SCAN_ADJ_REF_PREFIX = 'IP-SCAN-ADJ:'
+CANCEL_REF_PREFIX = 'IP-CANCEL:'
+
+# Shipment states that mean India Post (or our network) already has the parcel.
+_IP_CANCEL_BLOCKING_STATES = frozenset({
+    'picked',
+    'in_transit',
+    'at_source_hub',
+    'at_central_hub',
+    'at_destination_hub',
+    'out_for_delivery',
+    'delivery_failed',
+    'delivered',
+    'return_requested',
+    'return_picked',
+    'returned',
+})
+
+# Custody events that prove a physical scan / network movement. Local
+# ``indiapost_booked`` from process-articles has no ``indiapost_event_key`` and
+# does not block cancel — India Post has not billed KeralaXpress yet.
+_IP_CANCEL_BLOCKING_EVENT_TYPES = frozenset({
+    'pickup_scan',
+    'indiapost_transit_scan',
+    'dropped_at_hub',
+    'hub_receive',
+    'hub_dispatch',
+    'depart_hub',
+    'central_pass_through',
+    'skip_hub_local',
+    'out_for_delivery',
+    'delivery_failed',
+    'delivered',
+    'returned',
+})
+
+_IP_CANCEL_SCAN_PHRASES = (
+    'ITEM PICKEDUP',
+    'ITEM PICKED UP',
+    'PICKEDUP',
+    'PICKED UP',
+    'ITEM BOOKED',
+)
 
 
 def quote_failure_reason(exc):
@@ -658,6 +701,22 @@ class Shipment(models.Model):
             and not self.is_return_journey
             and self.indiapost_scan_seen
         )
+
+    indiapost_pre_scan_cancel_ok = fields.Boolean(
+        string='Pre-scan Cancel Allowed',
+        compute='_compute_indiapost_pre_scan_cancel_ok',
+    )
+
+    @api.depends(
+        'state', 'fulfilment_method', 'is_return_journey',
+        'indiapost_scan_seen', 'indiapost_scan_adjusted',
+        'indiapost_scan_wallet_txn_id', 'event_ids', 'event_ids.event_type',
+        'event_ids.indiapost_event_key', 'event_ids.indiapost_event_code',
+        'event_ids.note',
+    )
+    def _compute_indiapost_pre_scan_cancel_ok(self):
+        for record in self:
+            record.indiapost_pre_scan_cancel_ok = record._ip_can_cancel_pre_scan()
 
     def _ip_scan_adj_reference(self):
         self.ensure_one()
@@ -2247,6 +2306,261 @@ class Shipment(models.Model):
                 'number yet, so there is nothing to track.'
             ))
         return self.env['logistics.indiapost.tracking'].action_ip_sync_now(trackable)
+
+    # ------------------------------------------------------------------
+    # Pre-scan cancel (seller wallet credit + ARN pool reuse)
+    # ------------------------------------------------------------------
+    def _ip_cancel_reference(self):
+        self.ensure_one()
+        return '%s%s' % (CANCEL_REF_PREFIX, self.id)
+
+    def _ip_existing_cancel_wallet_line(self):
+        self.ensure_one()
+        return self.env['logistics.wallet.transaction'].sudo().search([
+            ('shipment_id', '=', self.id),
+            ('reference', '=', self._ip_cancel_reference()),
+        ], limit=1)
+
+    def _ip_cancel_debit_amount(self):
+        """Absolute amount credited back — the original Request Pickup debit."""
+        self.ensure_one()
+        if self.wallet_transaction_id:
+            return abs(self.wallet_transaction_id.amount or 0.0)
+        if self.indiapost_orig_charge:
+            return abs(self.indiapost_orig_charge or 0.0)
+        return abs(self.delivery_charges_total or 0.0)
+
+    def _ip_has_carrier_pickup_scan(self):
+        """True when India Post (or network) has already scanned/picked the ARN.
+
+        Local process-articles booking writes ``indiapost_booked`` without an
+        ``indiapost_event_key``; that alone does not block cancel. Tracking /
+        webhook scans always carry a key.
+        """
+        self.ensure_one()
+        if self.state in _IP_CANCEL_BLOCKING_STATES:
+            return True
+        if self.indiapost_scan_seen or self.indiapost_scan_adjusted:
+            return True
+        if self._ip_existing_scan_wallet_line():
+            return True
+        for event in self.event_ids:
+            if event.event_type in _IP_CANCEL_BLOCKING_EVENT_TYPES:
+                return True
+            if event.event_type == 'indiapost_booked' and event.indiapost_event_key:
+                return True
+            if not (event.indiapost_event_key or event.indiapost_event_code):
+                continue
+            text = '%s %s' % (
+                event.indiapost_event_code or '',
+                event.note or '',
+            )
+            upper = re.sub(r'\s+', ' ', text).upper()
+            if any(phrase in upper for phrase in _IP_CANCEL_SCAN_PHRASES):
+                return True
+        return False
+
+    def portal_indiapost_cancel_allowed(self):
+        """Seller portal / backend button visibility for pre-scan cancel."""
+        self.ensure_one()
+        return self._ip_can_cancel_pre_scan()
+
+    def _ip_can_cancel_pre_scan(self):
+        self.ensure_one()
+        if self.fulfilment_method != 'indiapost':
+            return False
+        if self.is_return_journey:
+            return False
+        if self.state == 'cancelled':
+            return False
+        if self.state != 'pickup_requested':
+            return False
+        if self._ip_has_carrier_pickup_scan():
+            return False
+        return True
+
+    def _ip_assert_cancel_pre_scan(self):
+        """Hard gate used inside the cancel transaction (race-safe)."""
+        self.ensure_one()
+        if self.fulfilment_method != 'indiapost':
+            raise UserError(_(
+                'Only India Post shipments can use pre-scan cancel.'
+            ))
+        if self.state == 'cancelled':
+            return
+        if self.state != 'pickup_requested':
+            raise UserError(_(
+                'Shipment %s can only be cancelled before India Post scans '
+                'the ARN (current status: %s).'
+            ) % (self.name, self.state))
+        if self._ip_has_carrier_pickup_scan():
+            raise UserError(_(
+                'India Post has already scanned ARN for shipment %s. '
+                'Cancel is no longer available, and the shipping charge '
+                'cannot be returned automatically.'
+            ) % self.name)
+        if self._ip_existing_scan_wallet_line():
+            raise UserError(_(
+                'Shipment %s already has an India Post scan adjustment on '
+                'the wallet, so pre-scan cancel is refused.'
+            ) % self.name)
+
+    def _ip_check_cancel_caller(self):
+        """Portal seller (own shipment) or logistics staff may cancel."""
+        self.ensure_one()
+        user = self.env.user
+        if user.has_group('keralariders_logistics.group_logistics_admin'):
+            return
+        if user.has_group('keralariders_logistics.group_logistics_executive'):
+            return
+        if user.has_group('keralariders_logistics.group_logistics_hub_manager'):
+            return
+        seller = self.seller_id
+        if seller and seller.partner_id and seller.partner_id == user.partner_id:
+            return
+        raise AccessError(_(
+            'You are not allowed to cancel this India Post shipment.'
+        ))
+
+    def _ip_credit_cancel_wallet(self):
+        """Credit the original pickup debit once (``IP-CANCEL:{id}``)."""
+        self.ensure_one()
+        existing = self._ip_existing_cancel_wallet_line()
+        if existing:
+            return existing, False
+        amount = self._round_charge(self._ip_cancel_debit_amount())
+        if float_compare(amount, 0.0, precision_digits=2) <= 0:
+            return self.env['logistics.wallet.transaction'], False
+        wallet = (self.seller_id.wallet_ids[:1]
+                  or (self.wallet_transaction_id.wallet_id
+                      if self.wallet_transaction_id else False))
+        if not wallet:
+            raise UserError(_(
+                'Cannot return the shipping charge for %s: no seller wallet.'
+            ) % self.name)
+        transaction = self.env['logistics.wallet.transaction'].sudo().create({
+            'wallet_id': wallet.id,
+            'amount': amount,
+            'transaction_date': fields.Date.context_today(self),
+            'shipment_id': self.id,
+            'order_id': self.order_id.id if self.order_id else False,
+            'reference': self._ip_cancel_reference(),
+            'description': _(
+                'India Post booking cancelled before scan — refund for AWB %s'
+            ) % (self.name or ''),
+        })
+        return transaction, True
+
+    def _ip_release_arn_on_cancel(self):
+        """Clear ARN on the shipment and return the barcode row to the pool."""
+        self.ensure_one()
+        barcode = self.indiapost_barcode_id
+        article = (self.indiapost_article_number or '').strip()
+        if not barcode and article:
+            barcode = self.env['logistics.indiapost.barcode'].sudo().search([
+                ('barcode', '=', article),
+            ], limit=1)
+        if barcode:
+            barcode.sudo()._ip_release_to_pool(
+                note=_('Released by pre-scan cancel of %s') % (self.name or ''),
+            )
+        self.sudo().write({
+            'indiapost_article_number': False,
+            'indiapost_barcode_id': False,
+            'indiapost_booking_in_progress': False,
+            'indiapost_booking_error': False,
+        })
+
+    def _ip_queue_cancel_mail(self, credit_amount):
+        """One queued seller mail after a successful pre-scan cancel + credit."""
+        self.ensure_one()
+        if float_compare(credit_amount, 0.0, precision_digits=2) <= 0:
+            return self.env['mail.mail']
+        seller = self.seller_id
+        email = (
+            (seller.email or seller.partner_id.email or '') if seller else ''
+        ).strip()
+        if not email or '@' not in email:
+            return self.env['mail.mail']
+        Mail = self.env['logistics.mail.notify'].sudo()
+        awb = self.name or ''
+        amount_txt = self._ip_format_money(credit_amount)
+        seller_name = html_escape(seller.name or '')
+        inner = Markup(
+            '<p>Hello %s,</p>'
+            '<p>Your India Post booking for AWB <strong>%s</strong> was '
+            'cancelled before India Post scanned the article. The shipping '
+            'charge of <strong>%s</strong> has been returned to your '
+            'KeralaXpress wallet.</p>'
+            '<p>You can create a new shipment whenever you are ready.</p>'
+        ) % (seller_name, html_escape(awb), html_escape(amount_txt))
+        return Mail._kx_queue_mail(
+            email_to=email,
+            subject=_('KeralaXpress: booking cancelled for AWB %s') % awb,
+            body_html=Mail._kx_wrap_body(
+                _('Booking cancelled — shipping charge returned'), inner),
+            res_model=self._name,
+            res_id=self.id,
+        )
+
+    def action_indiapost_cancel_pre_scan(self):
+        """Cancel an India Post shipment before the pickup agent scans the ARN.
+
+        Credits the seller wallet for the Request Pickup debit, returns the
+        ARN to the local barcode pool, and marks the shipment cancelled.
+        Does not call any India Post cancel API (none exists on beextcustomer).
+        Idempotent on retry.
+        """
+        for record in self:
+            if not self.env.context.get('ip_pre_scan_cancel_trusted'):
+                record._ip_check_cancel_caller()
+            if record.state == 'cancelled':
+                # Friendly no-op: never credit twice or re-insert the ARN.
+                continue
+
+            self.env.cr.execute(
+                'SELECT id FROM logistics_shipment WHERE id = %s FOR UPDATE',
+                (record.id,),
+            )
+            record.invalidate_recordset()
+            if record.state == 'cancelled':
+                continue
+
+            record._ip_assert_cancel_pre_scan()
+
+            credit, newly_credited = record._ip_credit_cancel_wallet()
+            credit_amount = abs(credit.amount or 0.0) if credit else 0.0
+
+            # Re-check after wallet write in case a concurrent scan landed.
+            record.invalidate_recordset()
+            if record._ip_has_carrier_pickup_scan():
+                if newly_credited and credit:
+                    credit.unlink()
+                raise UserError(_(
+                    'India Post scanned ARN for shipment %s while cancel was '
+                    'in progress. No wallet credit was kept and the article '
+                    'number was not released.'
+                ) % record.name)
+
+            record._ip_release_arn_on_cancel()
+            record._create_custody_event(
+                'status_override',
+                to_custodian=record.custodian_type,
+                note=_('Cancelled before India Post scan by %s.')
+                % self.env.user.name,
+            )
+            record._write_with_state({'state': 'cancelled'})
+            if newly_credited and credit_amount:
+                record._ip_queue_cancel_mail(credit_amount)
+            record.message_post(body=_(
+                'India Post booking cancelled before scan. Shipping charge '
+                '%(amount)s returned to the seller wallet '
+                '(ref %(ref)s).'
+            ) % {
+                'amount': record._ip_format_money(credit_amount),
+                'ref': record._ip_cancel_reference(),
+            })
+        return True
 
     # ------------------------------------------------------------------
     # Escape hatch
