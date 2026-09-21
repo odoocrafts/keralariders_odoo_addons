@@ -219,6 +219,8 @@
                          decoration-warning="cod_payout_state == 'approved'"
                          decoration-success="cod_payout_state == 'paid'"
                          decoration-muted="cod_payout_state == 'cancelled'"/>
+                <field name="cod_settlement_date" width="100" string="Settlement"
+                         optional="show"/>
                 <field name="related_seller_id" width="100"/>
                 <field name="shipment_id" width="100"/>
                 <field name="from_account_id" width="100"/>
@@ -279,6 +281,8 @@
                             <field name="cod_paid_reference"
                                    invisible="transfer_type != 'cod_withdrawal'"
                                    readonly="state != 'posted'"/>
+                            <field name="cod_settlement_date"
+                                   invisible="transfer_type != 'cod_withdrawal'"/>
                             <field name="cod_paid_on" invisible="not cod_paid_on"/>
                             <field name="cod_paid_by" invisible="not cod_paid_on"/>
                             <field name="currency_id" invisible="1"/>

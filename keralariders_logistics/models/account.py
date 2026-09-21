@@ -1,14 +1,21 @@
 import logging
+from datetime import date, datetime, timezone as dt_timezone
 
 from markupsafe import Markup
 from odoo import models, fields, api, _
 from odoo.exceptions import AccessError, UserError
 from odoo.tools import html_escape
+from odoo.tools.misc import format_date
 
 _logger = logging.getLogger(__name__)
 
 # Transfers that settle COD to the seller (reduce portal pending when posted).
 _COD_SETTLEMENT_TYPES = ('cod_clearance', 'cod_withdrawal', 'other')
+
+_MONTH_ABBR = (
+    '', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+)
 
 
 class BankCashAccount(models.Model):
@@ -620,6 +627,135 @@ class BankCashAccountTransfer(models.Model):
         payments, settlements, draft = self._seller_cod_balance_parts(seller)
         return max(0.0, payments - settlements - draft)
 
+    # ------------------------------------------------------------------
+    # COD withdrawal settlement cycle
+    #
+    # A request is tied to the cycle of its request date (seller tz). Money is
+    # scheduled for a fixed settlement date — not "anytime / next 24 hours".
+    # One open (draft or approved-unpaid) withdrawal per seller per cycle.
+    # ------------------------------------------------------------------
+    @api.model
+    def _cod_withdrawal_tz_name(self, seller=None):
+        """Timezone for the request-date calendar day (UTC only when none set)."""
+        if seller:
+            partner = seller.partner_id
+            if partner:
+                user = self.env['res.users'].sudo().search(
+                    [('partner_id', '=', partner.id)], limit=1)
+                if user and user.tz:
+                    return user.tz
+                if partner.tz:
+                    return partner.tz
+        company_partner = self.env.company.partner_id
+        if company_partner and company_partner.tz:
+            return company_partner.tz
+        if self.env.user.tz:
+            return self.env.user.tz
+        return False
+
+    @api.model
+    def _cod_withdrawal_request_date(self, seller=None):
+        """Today's date in the seller/company/user timezone (UTC if none)."""
+        tz_name = self._cod_withdrawal_tz_name(seller)
+        if tz_name:
+            return fields.Date.context_today(self.with_context(tz=tz_name))
+        # Explicit UTC calendar day — do not fall through to a later user.tz.
+        return fields.Date.to_date(datetime.now(dt_timezone.utc).date())
+
+    @api.model
+    def _cod_settlement_date_for_request_date(self, request_date):
+        """Map a request calendar date to its fixed COD settlement date.
+
+        | Request dates              | Settlement date                          |
+        | 6th–15th                   | 20th of the same month                   |
+        | 16th–25th                  | 30th same month (Feb → 28, never 29)     |
+        | 26th–end, and 1st–5th      | 10th (next month if 26–31; this if 1–5)  |
+        """
+        d = fields.Date.to_date(request_date)
+        day, year, month = d.day, d.year, d.month
+        if 6 <= day <= 15:
+            return date(year, month, 20)
+        if 16 <= day <= 25:
+            if month == 2:
+                return date(year, 2, 28)
+            return date(year, month, 30)
+        if day >= 26:
+            if month == 12:
+                return date(year + 1, 1, 10)
+            return date(year, month + 1, 10)
+        # 1st–5th → 10th of this month
+        return date(year, month, 10)
+
+    @api.model
+    def _format_cod_day_month(self, value):
+        """Short calendar label like ``7 Sep`` / ``20 Sep`` (no year)."""
+        d = fields.Date.to_date(value)
+        return '%s %s' % (d.day, _MONTH_ABBR[d.month])
+
+    @api.model
+    def _cod_settlement_cycle_window(self, request_date):
+        """Return (window_start, window_end) covering the cycle of ``request_date``."""
+        d = fields.Date.to_date(request_date)
+        day, year, month = d.day, d.year, d.month
+        if 6 <= day <= 15:
+            return date(year, month, 6), date(year, month, 15)
+        if 16 <= day <= 25:
+            return date(year, month, 16), date(year, month, 25)
+        # 26–end + 1–5 share the 10th settlement
+        if day >= 26:
+            if month == 12:
+                return date(year, month, 26), date(year + 1, 1, 5)
+            return date(year, month, 26), date(year, month + 1, 5)
+        # 1–5: window started on the 26th of the previous month
+        if month == 1:
+            return date(year - 1, 12, 26), date(year, month, 5)
+        return date(year, month - 1, 26), date(year, month, 5)
+
+    @api.model
+    def get_cod_settlement_cycle_info(self, seller=None, request_date=None):
+        """Portal helpers: current cycle window + settlement date if requesting now."""
+        if request_date is None:
+            request_date = self._cod_withdrawal_request_date(seller)
+        else:
+            request_date = fields.Date.to_date(request_date)
+        settlement = self._cod_settlement_date_for_request_date(request_date)
+        window_start, window_end = self._cod_settlement_cycle_window(request_date)
+        start_label = self._format_cod_day_month(window_start)
+        end_label = self._format_cod_day_month(window_end)
+        settle_label = self._format_cod_day_month(settlement)
+        summary = _(
+            "Requests from %(start)s–%(end)s settle on %(settle)s.",
+            start=start_label,
+            end=end_label,
+            settle=settle_label,
+        )
+        return {
+            'request_date': request_date,
+            'settlement_date': settlement,
+            'window_start': window_start,
+            'window_end': window_end,
+            'summary': summary,
+            'settlement_label': settle_label,
+        }
+
+    @api.model
+    def _find_open_cod_withdrawal_for_settlement(self, seller, settlement_date):
+        """Draft or approved-unpaid withdrawal for this seller + settlement date."""
+        return self.sudo().search([
+            ('related_seller_id', '=', seller.id),
+            ('transfer_type', '=', 'cod_withdrawal'),
+            ('cod_settlement_date', '=', settlement_date),
+            ('cod_payout_state', 'in', ('requested', 'approved')),
+        ], limit=1)
+
+    @api.model
+    def seller_has_open_cod_withdrawal_this_cycle(self, seller, request_date=None):
+        """Whether the seller already has an open request for this cycle's settlement."""
+        if request_date is None:
+            request_date = self._cod_withdrawal_request_date(seller)
+        settlement = self._cod_settlement_date_for_request_date(request_date)
+        return bool(self._find_open_cod_withdrawal_for_settlement(seller, settlement))
+
     @api.model
     def action_create_cod_withdrawal(self, seller, amount, note=None):
         """Seller portal: create a draft COD withdrawal (no ledger lines until approved)."""
@@ -657,6 +793,21 @@ class BankCashAccountTransfer(models.Model):
                 amount=amount,
                 available=available,
             ))
+        request_date = self._cod_withdrawal_request_date(seller)
+        settlement_date = self._cod_settlement_date_for_request_date(request_date)
+        open_same_cycle = self._find_open_cod_withdrawal_for_settlement(
+            seller, settlement_date)
+        if open_same_cycle:
+            settle_label = format_date(
+                self.env, settlement_date, date_format='d MMMM y')
+            raise UserError(_(
+                "You already have a COD withdrawal scheduled for settlement on "
+                "%(date)s (request %(ref)s). Only one open request is allowed "
+                "per settlement cycle. Wait until it is paid or cancelled before "
+                "requesting again for this cycle.",
+                date=settle_label,
+                ref=open_same_cycle.name or '',
+            ))
         bank_ref = _(
             "%(name)s / %(number)s / %(ifsc)s / %(bank)s",
             name=seller.bank_account_name or '',
@@ -670,7 +821,8 @@ class BankCashAccountTransfer(models.Model):
             'from_account_id': company_account.id,
             'to_account_id': seller_account.id,
             'amount': amount,
-            'transfer_date': fields.Date.context_today(self),
+            'transfer_date': request_date,
+            'cod_settlement_date': settlement_date,
             'reference': _('COD Withdrawal — %s') % seller.name,
             'description': note or _(
                 "Seller COD withdrawal request to bank: %s"
@@ -688,6 +840,15 @@ class BankCashAccountTransfer(models.Model):
     # have dropped the transfer out of ``_compute_transaction_ids`` and taken
     # the ledger lines (and the seller's settled balance) with it.
     # ------------------------------------------------------------------
+    cod_settlement_date = fields.Date(
+        string='Settlement Date',
+        readonly=True,
+        copy=False,
+        tracking=True,
+        index=True,
+        help='Fixed payout date for this COD withdrawal, set from the request '
+             'date cycle when the seller submits. Not recomputed later.',
+    )
     cod_paid_on = fields.Datetime(
         string='Paid On', readonly=True, copy=False, tracking=True,
         help='When finance confirmed the bank transfer actually left the '
@@ -781,10 +942,14 @@ class BankCashAccountTransfer(models.Model):
                 "Seller: %(seller)s<br/>"
                 "Amount: %(amount)s<br/>"
                 "Reference: %(reference)s<br/>"
+                "Settlement date: %(settle)s<br/>"
                 "Bank: %(bank)s",
                 seller=transfer.related_seller_id.display_name or '',
                 amount=amount,
                 reference=transfer.name or '',
+                settle=format_date(
+                    self.env, transfer.cod_settlement_date, date_format='d MMMM y'
+                ) if transfer.cod_settlement_date else _('Not set'),
                 bank=' / '.join(filter(None, [
                     transfer.related_seller_id.bank_account_name,
                     transfer.related_seller_id.bank_account_number,
@@ -848,12 +1013,18 @@ class BankCashAccountTransfer(models.Model):
                 ).strip()
                 form_url = '%s/%s' % (list_url, transfer.id) if transfer.id \
                     else list_url
+                settle_label = (
+                    format_date(
+                        self.env, transfer.cod_settlement_date, date_format='d MMMM y')
+                    if transfer.cod_settlement_date else _('Not set')
+                )
                 inner = Markup(
                     '<p>A seller requested a COD withdrawal.</p>'
                     '<ul>'
                     '<li><strong>Seller:</strong> %s</li>'
                     '<li><strong>Amount:</strong> %s</li>'
                     '<li><strong>Reference:</strong> %s</li>'
+                    '<li><strong>Settlement date:</strong> %s</li>'
                     '<li><strong>Bank account:</strong> %s</li>'
                     '</ul>'
                     '<p>Open the request: <a href="%s">%s</a><br/>'
@@ -863,6 +1034,7 @@ class BankCashAccountTransfer(models.Model):
                     html_escape(transfer.related_seller_id.display_name or ''),
                     html_escape(str(amount)),
                     html_escape(transfer.name or ''),
+                    html_escape(settle_label),
                     html_escape(transfer._cod_bank_reference()),
                     html_escape(form_url),
                     html_escape(form_url),
@@ -886,7 +1058,7 @@ class BankCashAccountTransfer(models.Model):
                 )
 
     def _notify_seller_cod_withdrawal_approved(self):
-        """Tell the seller the approved amount is on its way to their bank.
+        """Tell the seller the approved amount is scheduled for their bank.
 
         Sent once, from :meth:`action_approve`, which refuses anything that is
         not still draft — so a second approve cannot produce a second mail.
@@ -904,21 +1076,29 @@ class BankCashAccountTransfer(models.Model):
                     transfer.currency_id.format(transfer.amount)
                     if transfer.currency_id else transfer.amount
                 )
+                settle_label = (
+                    format_date(
+                        self.env, transfer.cod_settlement_date, date_format='d MMMM y')
+                    if transfer.cod_settlement_date else _('Not set')
+                )
                 inner = Markup(
                     '<p>Hello %s,</p>'
                     '<p>Your COD withdrawal request has been approved. The '
-                    'amount will be credited in the next 24 hours.</p>'
+                    'amount will be credited on %s.</p>'
                     '<ul>'
                     '<li><strong>Request ref:</strong> %s</li>'
                     '<li><strong>Amount approved:</strong> %s</li>'
+                    '<li><strong>Settlement date:</strong> %s</li>'
                     '<li><strong>Bank account:</strong> %s</li>'
                     '</ul>'
                     '<p>You can follow the payout under COD Settlements in '
                     'your seller portal.</p>'
                 ) % (
                     html_escape(seller.display_name or ''),
+                    html_escape(settle_label),
                     html_escape(transfer.name or ''),
                     html_escape(str(amount)),
+                    html_escape(settle_label),
                     html_escape(transfer._cod_bank_reference()),
                 )
                 Mail._kx_queue_mail(

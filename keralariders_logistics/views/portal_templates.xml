@@ -309,7 +309,12 @@
                             <h5>Pending COD Balance</h5>
                             <h2><span t-esc="cod_balance" t-options='{"widget": "monetary", "display_currency": currency_id}'/></h2>
                             <p class="mb-0 mt-2 small opacity-75">This amount is yet to be settled to your bank account.</p>
-                            <t t-if="has_bank_details and withdrawable_balance &gt; 0">
+                            <t t-if="cod_cycle_info">
+                                <p class="mb-0 mt-2 small opacity-75">
+                                    <t t-esc="cod_cycle_info['summary']"/>
+                                </p>
+                            </t>
+                            <t t-if="has_bank_details and withdrawable_balance &gt; 0 and not cod_cycle_blocked">
                                 <button type="button" class="btn btn-light mt-3" data-bs-toggle="modal" data-bs-target="#codWithdrawModal">
                                     Request COD Withdrawal
                                 </button>
@@ -318,6 +323,15 @@
                                 <p class="mb-0 mt-3 small">
                                     <a href="/my/bank" class="text-white text-decoration-underline">Update your bank details</a>
                                     to request a withdrawal.
+                                </p>
+                            </t>
+                            <t t-elif="cod_cycle_blocked">
+                                <p class="mb-0 mt-3 small">
+                                    You already have an open withdrawal for this settlement cycle
+                                    <t t-if="cod_cycle_info">
+                                        (settles on <t t-esc="cod_cycle_info['settlement_label']"/>).
+                                    </t>
+                                    Only one open request is allowed per cycle.
                                 </p>
                             </t>
                             <t t-elif="draft_withdrawals">
@@ -341,6 +355,11 @@
                                             Available to withdraw:
                                             <strong t-esc="withdrawable_balance" t-options='{"widget": "monetary", "display_currency": currency_id}'/>
                                         </p>
+                                        <t t-if="cod_cycle_info">
+                                            <p class="text-muted small">
+                                                <t t-esc="cod_cycle_info['summary']"/>
+                                            </p>
+                                        </t>
                                         <div class="form-floating mb-3">
                                             <input type="number" step="0.01" min="0.01"
                                                    t-att-max="withdrawable_balance"
@@ -377,8 +396,19 @@
                                     <div>
                                         <strong><span t-field="draft.name"/></strong><br/>
                                         <small class="text-muted"><span t-field="draft.transfer_date" t-options='{"widget": "date"}'/></small>
-                                        <div class="small text-muted" t-if="draft.cod_payout_state == 'approved'">
-                                            Approved — will be credited in the next 24 hours.
+                                        <div class="small text-muted" t-if="draft.cod_settlement_date">
+                                            <t t-if="draft.cod_payout_state == 'approved'">
+                                                Approved — will be credited on
+                                                <span t-field="draft.cod_settlement_date" t-options='{"widget": "date"}'/>.
+                                            </t>
+                                            <t t-elif="draft.cod_payout_state == 'requested'">
+                                                Settlement date:
+                                                <span t-field="draft.cod_settlement_date" t-options='{"widget": "date"}'/>.
+                                            </t>
+                                            <t t-elif="draft.cod_payout_state == 'paid'">
+                                                Settled on
+                                                <span t-field="draft.cod_settlement_date" t-options='{"widget": "date"}'/>.
+                                            </t>
                                         </div>
                                     </div>
                                     <div class="text-end">

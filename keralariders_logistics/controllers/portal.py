@@ -7,6 +7,7 @@ from odoo import http, fields, _
 from odoo.addons.portal.controllers.portal import CustomerPortal, pager as portal_pager
 from odoo.http import request
 from odoo.exceptions import AccessError, UserError, ValidationError
+from odoo.tools.misc import format_date
 
 _logger = logging.getLogger(__name__)
 
@@ -2383,6 +2384,8 @@ class LogisticsPortal(CustomerPortal):
         
         cod_balance = Transfer.get_seller_cod_pending_balance(seller)
         withdrawable = Transfer.get_seller_cod_withdrawable_balance(seller)
+        cycle_info = Transfer.get_cod_settlement_cycle_info(seller)
+        cycle_blocked = Transfer.seller_has_open_cod_withdrawal_this_cycle(seller)
         draft_withdrawals = Transfer.search([
             ('related_seller_id', '=', seller.id),
             ('transfer_type', '=', 'cod_withdrawal'),
@@ -2418,6 +2421,8 @@ class LogisticsPortal(CustomerPortal):
             'recent_clearances': recent_clearances,
             'seller': seller,
             'has_bank_details': has_bank_details,
+            'cod_cycle_info': cycle_info,
+            'cod_cycle_blocked': cycle_blocked,
             'currency_id': seller.currency_id or request.env.company.currency_id,
             'cod_type_label': self._cod_settlement_seller_type_label,
             'cod_type_badge': self._cod_settlement_seller_type_badge,
@@ -2439,11 +2444,18 @@ class LogisticsPortal(CustomerPortal):
                 seller=seller,
                 amount=amount,
             )
+            settle = transfer.cod_settlement_date
+            settle_txt = (
+                format_date(request.env, settle, date_format='d MMMM y')
+                if settle else ''
+            )
             request.session['success'] = _(
                 "COD withdrawal request %(ref)s for %(amount)s submitted. "
+                "Scheduled settlement date: %(settle)s. "
                 "It will remain in draft until a logistics admin approves it.",
                 ref=transfer.name,
                 amount=transfer.currency_id.format(transfer.amount) if transfer.currency_id else transfer.amount,
+                settle=settle_txt,
             )
         except (UserError, AccessError, ValueError) as e:
             request.session['error'] = str(e)
