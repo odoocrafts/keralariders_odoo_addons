@@ -236,6 +236,10 @@ class IndiapostTracking(models.AbstractModel):
     @api.model
     def cron_sync_tracking(self, limit=2000):
         """Poll India Post for every open article and apply the scans."""
+        # Catch pickup_requested orders whose shipments are already past
+        # pickup (OFD / in transit / delivered) even if this poll finds
+        # no new scans — stored compute is not rerun on upgrade.
+        self.env['logistics.order'].sudo()._advance_stuck_pickup_requested_orders()
         Client = self.env['logistics.indiapost.client']
         if not Client._ip_is_configured():
             _logger.info('India Post tracking sync skipped: not configured.')
@@ -260,6 +264,8 @@ class IndiapostTracking(models.AbstractModel):
         shipments = shipments.filtered(lambda s: s.indiapost_article_number)
         if not shipments:
             return 0
+        # Unstick pickup_requested from local shipment state before HTTP.
+        shipments.mapped('order_id')._advance_picked_up_from_shipments()
         settings = self.env['logistics.indiapost.client']._ip_require_configured()
         updated = 0
         for start in range(0, len(shipments), TRACKING_BATCH_SIZE):
@@ -271,6 +277,9 @@ class IndiapostTracking(models.AbstractModel):
                     'India Post tracking batch of %s failed: %s',
                     len(batch), exc.message,
                 )
+        # Local shipment state is enough to unstick pickup_requested even
+        # when the tracking HTTP call failed or returned no new scans.
+        shipments.mapped('order_id')._advance_picked_up_from_shipments()
         return updated
 
     @api.model
@@ -326,6 +335,7 @@ class IndiapostTracking(models.AbstractModel):
             if del_status and del_status != shipment.indiapost_del_status:
                 shipment.sudo().write({'indiapost_del_status': del_status})
             self._ip_try_scan_adjustment(shipment, extracted)
+            shipment.order_id._advance_picked_up_from_shipments()
             return False
 
         parsed = self._ip_parse_scans(scans)
@@ -340,6 +350,9 @@ class IndiapostTracking(models.AbstractModel):
         if vals:
             shipment.sudo()._write_with_state(vals)
         self._ip_try_scan_adjustment(shipment, extracted)
+        # Re-applying OFD does not rewrite shipment.state, so force the
+        # parent order compute for already-out-for-delivery articles.
+        shipment.order_id._advance_picked_up_from_shipments()
         return bool(created or vals)
 
     @api.model

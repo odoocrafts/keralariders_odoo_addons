@@ -23,3 +23,4 @@ from . import test_staff_access
 from . import test_seller_draft_counts
 from . import test_cod_indiapost_settlement
 from . import test_indiapost_scan_adjustment
+from . import test_order_pickup_state

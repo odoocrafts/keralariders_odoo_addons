@@ -31,6 +31,26 @@ class Order(models.Model):
         ('cancelled', 'Cancelled')
     ], string='Status', default='draft', compute='_compute_state', store=True, tracking=True)
 
+    # Shipment states that mean the parcel has already left the seller.
+    # Own-network pickup writes ``picked``; India Post often jumps to
+    # ``in_transit`` / ``out_for_delivery`` without that intermediate.
+    _PAST_PICKUP_STATES = frozenset({
+        'picked',
+        'in_transit',
+        'at_source_hub',
+        'at_central_hub',
+        'at_destination_hub',
+        'out_for_delivery',
+        'delivery_failed',
+        'delivered',
+        'return_requested',
+        'return_picked',
+        'returned',
+    })
+    _PARTIAL_DELIVERY_STATES = frozenset({
+        'delivered', 'return_requested', 'return_picked', 'returned',
+    })
+
     @api.model
     def _domain_not_draft(self):
         """Booked orders only: draft is unfinished and omitted from seller badges."""
@@ -52,25 +72,58 @@ class Order(models.Model):
 
     @api.depends('shipment_ids.state')
     def _compute_state(self):
+        """Map shipment lifecycle onto the order status bar.
+
+        Fully Delivered only when every non-cancelled shipment is delivered.
+        One out-for-delivery / in-transit shipment must not jump the order
+        there — it only proves pickup already happened (Picked Up).
+        """
         for order in self:
             if not order.shipment_ids:
                 order.state = 'draft'
                 continue
-                
-            states = order.shipment_ids.mapped('state')
-            if any(s in ('delivered', 'return_requested', 'return_picked', 'returned') for s in states):
-                order.state = 'partial'
 
-            if all(s == 'delivered' for s in states):
-                order.state = 'delivered'
-            elif all(s == 'cancelled' for s in states):
+            states = order.shipment_ids.mapped('state')
+            active = [s for s in states if s != 'cancelled']
+            if not active:
                 order.state = 'cancelled'
-            elif all(s == 'picked' for s in states):
+            elif all(s == 'delivered' for s in active):
+                order.state = 'delivered'
+            elif any(s in order._PARTIAL_DELIVERY_STATES for s in active):
+                order.state = 'partial'
+            elif any(s in order._PAST_PICKUP_STATES for s in active):
                 order.state = 'picked'
-            elif all(s == 'pickup_requested' for s in states):
+            elif all(s == 'pickup_requested' for s in active):
                 order.state = 'pickup_requested'
-            # else:
-            #     order.state = 'draft'
+            else:
+                order.state = 'draft'
+
+    def _advance_picked_up_from_shipments(self):
+        """Recompute these orders from current shipment states.
+
+        ``_compute_state`` already runs when a shipment state is written.
+        Tracking polls / webhooks / Sync Now can re-apply out-for-delivery
+        without changing the shipment, so the stored compute does not rerun.
+        """
+        if self:
+            self._compute_state()
+        return self
+
+    @api.model
+    def _advance_stuck_pickup_requested_orders(self):
+        """Catch pickup_requested orders whose parcels already left the seller.
+
+        Stored compute is not recomputed on upgrade, so records such as
+        ORD26090072 (shipment out for delivery, order still Pickup Requested)
+        flip on the next tracking cron / Sync Now. Safe and idempotent.
+        """
+        stuck = self.search([
+            ('state', '=', 'pickup_requested'),
+            ('shipment_ids.state', 'in', list(self._PAST_PICKUP_STATES)),
+        ])
+        if stuck:
+            stuck._compute_state()
+        return stuck
 
     def action_request_pickup(self):
         for order in self:
