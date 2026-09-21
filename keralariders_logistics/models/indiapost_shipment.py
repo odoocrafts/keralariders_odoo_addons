@@ -19,8 +19,12 @@ validator accepts. The official CEPT label SENDER line follows ``sender_*``.
 
 from odoo import api, fields, models, _
 from odoo.exceptions import AccessError, UserError, ValidationError
+from odoo.tools import html_escape
+from odoo.tools.float_utils import float_compare
+from markupsafe import Markup
 
 import base64
+import json
 import logging
 
 from . import indiapost_common as ipc
@@ -49,7 +53,7 @@ QUOTE_SIGNATURE_VERSION = 'v2'
 # The two staleness fields belong here as much as the amounts do — a seller who
 # could backdate the signature would make a forged tariff look freshly quoted
 # and walk straight past the re-quote that protects the debit.
-INDIAPOST_CHARGE_FIELDS = (
+INDIAPOST_QUOTE_FIELDS = (
     'indiapost_base_tariff',
     'indiapost_vas_charges',
     'indiapost_tax_amount',
@@ -57,6 +61,38 @@ INDIAPOST_CHARGE_FIELDS = (
     'indiapost_quote_signature',
     'indiapost_tariff_quoted_on',
 )
+
+# Original pickup debit vs India Post scan reweigh. Same guard as the quote:
+# a portal write here would mint a wallet credit.
+INDIAPOST_SCAN_ADJUST_FIELDS = (
+    'indiapost_orig_charge',
+    'indiapost_orig_weight_g',
+    'indiapost_orig_length_cm',
+    'indiapost_orig_breadth_cm',
+    'indiapost_orig_height_cm',
+    'indiapost_orig_volumetric_g',
+    'indiapost_scan_weight_g',
+    'indiapost_scan_length_cm',
+    'indiapost_scan_breadth_cm',
+    'indiapost_scan_height_cm',
+    'indiapost_scan_volumetric_g',
+    'indiapost_scan_chargeable_g',
+    'indiapost_scan_tariff_raw',
+    'indiapost_scan_tariff_trusted',
+    'indiapost_scan_quote',
+    'indiapost_scan_quote_source',
+    'indiapost_scan_difference',
+    'indiapost_scan_raw',
+    'indiapost_scan_seen',
+    'indiapost_scan_quote_pending',
+    'indiapost_scan_adjusted',
+    'indiapost_scan_notified',
+    'indiapost_scan_wallet_txn_id',
+)
+
+INDIAPOST_CHARGE_FIELDS = INDIAPOST_QUOTE_FIELDS + INDIAPOST_SCAN_ADJUST_FIELDS
+
+SCAN_ADJ_REF_PREFIX = 'IP-SCAN-ADJ:'
 
 
 def quote_failure_reason(exc):
@@ -524,6 +560,633 @@ class Shipment(models.Model):
             ) if record.indiapost_article_number else False
 
     # ------------------------------------------------------------------
+    # Scan reweigh / volumetric adjustment
+    #
+    # Wallet is debited at Request Pickup from the seller's declared
+    # package. India Post may later reweigh or remeasure. Bulk tracking
+    # ``booking_details`` has a ``tariff`` field (often 0) and no
+    # weight/dimensions in every payload we have seen. When actuals appear
+    # we re-quote through the tariff endpoint; ops can enter them by hand.
+    # Webhook amounts are stored for audit and never posted to the wallet
+    # on their own — same rule as ignoring webhook charge keys.
+    # ------------------------------------------------------------------
+    indiapost_orig_charge = fields.Monetary(
+        string='Charged at Pickup', currency_field='currency_id',
+        copy=False, readonly=True,
+        help='Delivery charge taken from the seller wallet at Request Pickup. '
+             'Scan adjustments are the difference against this amount.',
+    )
+    indiapost_orig_weight_g = fields.Integer(
+        string='Original Weight (g)', copy=False, readonly=True)
+    indiapost_orig_length_cm = fields.Integer(
+        string='Original Length (cm)', copy=False, readonly=True)
+    indiapost_orig_breadth_cm = fields.Integer(
+        string='Original Breadth (cm)', copy=False, readonly=True)
+    indiapost_orig_height_cm = fields.Integer(
+        string='Original Height (cm)', copy=False, readonly=True)
+    indiapost_orig_volumetric_g = fields.Integer(
+        string='Original Volumetric (g)', copy=False, readonly=True)
+    indiapost_scan_weight_g = fields.Integer(
+        string='India Post Actual Weight (g)', copy=False)
+    indiapost_scan_length_cm = fields.Integer(
+        string='India Post Actual Length (cm)', copy=False)
+    indiapost_scan_breadth_cm = fields.Integer(
+        string='India Post Actual Breadth (cm)', copy=False)
+    indiapost_scan_height_cm = fields.Integer(
+        string='India Post Actual Height (cm)', copy=False)
+    indiapost_scan_volumetric_g = fields.Integer(
+        string='India Post Volumetric (g)', copy=False)
+    indiapost_scan_chargeable_g = fields.Integer(
+        string='India Post Chargeable (g)', copy=False)
+    indiapost_scan_tariff_raw = fields.Monetary(
+        string='India Post Reported Tariff', currency_field='currency_id',
+        copy=False, readonly=True,
+        help='booking_details.tariff (or equivalent) when the API sends a '
+             'non-zero figure. Often 0 even after scans.',
+    )
+    indiapost_scan_tariff_trusted = fields.Boolean(
+        string='Reported Tariff from Tracking Poll', copy=False, readonly=True,
+        help='True when the reported tariff came from our authenticated bulk '
+             'tracking poll, not an inbound webhook.',
+    )
+    indiapost_scan_quote = fields.Monetary(
+        string='Quote after Scan', currency_field='currency_id', copy=False)
+    indiapost_scan_quote_source = fields.Selection(
+        [
+            ('tariff', 'Re-quoted from actuals'),
+            ('booking_tariff', 'India Post tracking tariff'),
+            ('ops', 'Entered by KeralaXpress'),
+        ],
+        string='Scan Quote Source', copy=False, readonly=True,
+    )
+    indiapost_scan_difference = fields.Monetary(
+        string='Scan Adjustment', currency_field='currency_id',
+        copy=False, readonly=True,
+        help='Scan quote minus the pickup debit. Positive means the seller '
+             'owes more (wallet debit); negative is a credit.',
+    )
+    indiapost_scan_raw = fields.Text(
+        string='India Post Scan Actuals (raw)', copy=False, readonly=True)
+    indiapost_scan_seen = fields.Boolean(
+        string='India Post Scan Actuals Recorded', copy=False, readonly=True,
+        help='Something usable (weight, dimensions, or a reported tariff) '
+             'arrived after scan. The seller portal shows the comparison '
+             'only when this is set.',
+    )
+    indiapost_scan_quote_pending = fields.Boolean(
+        string='Scan Re-quote Pending', copy=False, readonly=True, index=True,
+        help='Actuals are stored but a tariff HTTP call was skipped (webhook) '
+             'or failed. The tracking cron finishes it.',
+    )
+    indiapost_scan_adjusted = fields.Boolean(
+        string='Scan Adjustment Applied', copy=False, readonly=True, index=True,
+        help='The scan quote has been evaluated once. A wallet line is posted '
+             'only when the difference is non-zero.',
+    )
+    indiapost_scan_notified = fields.Boolean(
+        string='Scan Adjustment Emailed', copy=False, readonly=True)
+    indiapost_scan_wallet_txn_id = fields.Many2one(
+        'logistics.wallet.transaction', string='Scan Adjustment Wallet Line',
+        copy=False, readonly=True, ondelete='set null',
+    )
+
+    def portal_indiapost_scan_visible(self):
+        """Seller portal shows the original vs scan block when we have actuals."""
+        self.ensure_one()
+        return bool(
+            self.fulfilment_method == 'indiapost'
+            and not self.is_return_journey
+            and self.indiapost_scan_seen
+        )
+
+    def _ip_scan_adj_reference(self):
+        self.ensure_one()
+        return '%s%s' % (SCAN_ADJ_REF_PREFIX, self.id)
+
+    def _ip_scan_adj_label(self):
+        self.ensure_one()
+        awb = self.name or ''
+        arn = (self.indiapost_article_number or '').strip()
+        if arn and arn != awb:
+            return _('India Post rate adjustment — AWB %s (ARN %s)') % (
+                awb, arn)
+        return _('India Post rate adjustment — AWB %s') % awb
+
+    def _ip_snapshot_charged_package(self):
+        """Freeze the declared package and pickup debit for later comparison."""
+        for record in self:
+            if record.fulfilment_method != 'indiapost':
+                continue
+            if record.indiapost_orig_charge:
+                continue
+            charge = 0.0
+            if record.wallet_transaction_id:
+                charge = abs(record.wallet_transaction_id.amount or 0.0)
+            if not charge:
+                charge = abs(record.delivery_charges_total or 0.0)
+            if not charge:
+                continue
+            length = ipc.cm_to_int(record.length_cm)
+            breadth = ipc.cm_to_int(record.breadth_cm)
+            height = ipc.cm_to_int(record.height_cm)
+            record.with_context(allow_delivery_charge_write=True).write({
+                'indiapost_orig_charge': record._round_charge(charge),
+                'indiapost_orig_weight_g': ipc.kg_to_grams(record.total_weight),
+                'indiapost_orig_length_cm': length,
+                'indiapost_orig_breadth_cm': breadth,
+                'indiapost_orig_height_cm': height,
+                'indiapost_orig_volumetric_g': ipc.volumetric_weight_g(
+                    length, breadth, height),
+            })
+
+    def _ip_scan_eligible(self):
+        self.ensure_one()
+        if self.fulfilment_method != 'indiapost':
+            return False
+        if self.is_return_journey:
+            return False
+        if not self.wallet_transaction_id:
+            return False
+        if abs(self.wallet_transaction_id.amount or 0.0) < 0.005:
+            return False
+        return True
+
+    def _ip_existing_scan_wallet_line(self):
+        self.ensure_one()
+        if self.indiapost_scan_wallet_txn_id:
+            return self.indiapost_scan_wallet_txn_id
+        return self.env['logistics.wallet.transaction'].sudo().search([
+            ('shipment_id', '=', self.id),
+            ('reference', '=', self._ip_scan_adj_reference()),
+        ], limit=1)
+
+    def _ip_merge_scan_actuals(self, extracted):
+        """Write newly observed actuals without wiping values we already have."""
+        self.ensure_one()
+        extracted = extracted or {}
+        vals = {}
+        mapping = (
+            ('weight_g', 'indiapost_scan_weight_g'),
+            ('length_cm', 'indiapost_scan_length_cm'),
+            ('breadth_cm', 'indiapost_scan_breadth_cm'),
+            ('height_cm', 'indiapost_scan_height_cm'),
+            ('volumetric_g', 'indiapost_scan_volumetric_g'),
+            ('chargeable_g', 'indiapost_scan_chargeable_g'),
+        )
+        for src, dest in mapping:
+            value = int(extracted.get(src) or 0)
+            if value > 0 and value != (self[dest] or 0):
+                vals[dest] = value
+        tariff = extracted.get('tariff')
+        if tariff not in (None, False, '') and ipc.as_amount(tariff) > 0:
+            amount = self._round_charge(ipc.as_amount(tariff))
+            if float_compare(amount, self.indiapost_scan_tariff_raw or 0.0,
+                             precision_digits=2) != 0:
+                vals['indiapost_scan_tariff_raw'] = amount
+            if extracted.get('tariff_trusted') and not self.indiapost_scan_tariff_trusted:
+                vals['indiapost_scan_tariff_trusted'] = True
+        raw_bits = extracted.get('raw')
+        if raw_bits:
+            dumped = json.dumps(raw_bits, default=str, sort_keys=True)[:8000]
+            if dumped != (self.indiapost_scan_raw or ''):
+                vals['indiapost_scan_raw'] = dumped
+        length = vals.get('indiapost_scan_length_cm', self.indiapost_scan_length_cm)
+        breadth = vals.get('indiapost_scan_breadth_cm', self.indiapost_scan_breadth_cm)
+        height = vals.get('indiapost_scan_height_cm', self.indiapost_scan_height_cm)
+        if length and breadth and height and not (
+                vals.get('indiapost_scan_volumetric_g')
+                or self.indiapost_scan_volumetric_g):
+            vals['indiapost_scan_volumetric_g'] = ipc.volumetric_weight_g(
+                length, breadth, height)
+        has_actuals = bool(
+            (vals.get('indiapost_scan_weight_g') or self.indiapost_scan_weight_g)
+            or (vals.get('indiapost_scan_length_cm') or self.indiapost_scan_length_cm)
+            or (vals.get('indiapost_scan_breadth_cm') or self.indiapost_scan_breadth_cm)
+            or (vals.get('indiapost_scan_height_cm') or self.indiapost_scan_height_cm)
+            or (vals.get('indiapost_scan_volumetric_g') or self.indiapost_scan_volumetric_g)
+            or (vals.get('indiapost_scan_tariff_raw') or self.indiapost_scan_tariff_raw)
+        )
+        if has_actuals and not self.indiapost_scan_seen:
+            vals['indiapost_scan_seen'] = True
+        if vals:
+            self.with_context(allow_delivery_charge_write=True).write(vals)
+        return has_actuals or self.indiapost_scan_seen
+
+    def _ip_scan_package_changed(self):
+        """True when India Post actual weight or dims differ from pickup."""
+        self.ensure_one()
+        if self.indiapost_scan_weight_g and self.indiapost_orig_weight_g:
+            if self.indiapost_scan_weight_g != self.indiapost_orig_weight_g:
+                return True
+        orig = (
+            self.indiapost_orig_length_cm,
+            self.indiapost_orig_breadth_cm,
+            self.indiapost_orig_height_cm,
+        )
+        scan = (
+            self.indiapost_scan_length_cm,
+            self.indiapost_scan_breadth_cm,
+            self.indiapost_scan_height_cm,
+        )
+        if any(scan) and scan != orig:
+            return True
+        if (self.indiapost_scan_volumetric_g
+                and self.indiapost_orig_volumetric_g
+                and self.indiapost_scan_volumetric_g
+                != self.indiapost_orig_volumetric_g):
+            return True
+        return False
+
+    def _ip_scan_has_dims(self):
+        self.ensure_one()
+        return bool(
+            self.indiapost_scan_length_cm
+            and self.indiapost_scan_breadth_cm
+            and self.indiapost_scan_height_cm
+        )
+
+    def _ip_markup_amount(self, base, settings=None):
+        settings = settings or self.env['logistics.indiapost.client']._ip_settings()
+        percent = settings.get('indiapost_quote_markup_percent') or 0.0
+        return round(ipc.as_amount(base) * percent / 100.0, 2)
+
+    def _ip_cached_scan_quote(self, weight_g, length, breadth, height,
+                              settings=None):
+        """Tariff cache only — never calls India Post."""
+        self.ensure_one()
+        settings = settings or self.env['logistics.indiapost.client']._ip_settings()
+        if not settings.get('indiapost_enabled'):
+            return None
+        Tariff = self.env['logistics.indiapost.tariff']
+        billed_g = ipc.band_weight(weight_g)
+        vas_key = Tariff._ip_vas_key(
+            insurance_value=self.indiapost_insurance_value,
+            **self._ip_vas_flags())
+        origin = self._ip_origin_pincode_soft()
+        dest = (self.shipping_to_zip or '').strip()
+        if not origin or not dest:
+            return None
+        try:
+            dest = ipc.normalize_pincode(dest, _('Destination pincode'))
+        except ipc.IndiapostDataError:
+            return None
+        cache_key = Tariff._ip_cache_key(
+            origin, dest, billed_g, length, breadth, height, vas_key,
+            settings['indiapost_environment'], article_type=self._ip_product(),
+        )
+        entry = self.env['logistics.indiapost.tariff.cache'].sudo().search([
+            ('cache_key', '=', cache_key),
+            ('expires_at', '>', fields.Datetime.now()),
+        ], limit=1)
+        if not entry:
+            return None
+        quote = Tariff._ip_quote_from_cache(entry)
+        markup = self._ip_markup_amount(quote['final_amount'], settings)
+        quote['total_payable'] = round(quote['final_amount'] + markup, 2)
+        quote['billed_weight_g'] = billed_g
+        quote['volumetric_weight_g'] = ipc.volumetric_weight_g(
+            length, breadth, height)
+        quote['chargeable_weight_g'] = quote.get('chargeable_weight_g') or max(
+            billed_g, quote['volumetric_weight_g'])
+        return quote
+
+    def _ip_requote_scan_package(self, settings=None):
+        """Live (or cached) tariff for the scanned weight and dimensions."""
+        self.ensure_one()
+        weight_g = self.indiapost_scan_weight_g or self.indiapost_orig_weight_g
+        if not weight_g or not self._ip_scan_has_dims():
+            return None
+        settings = settings or self.env['logistics.indiapost.client']._ip_settings()
+        origin = self._ip_origin_pincode_soft()
+        dest = (self.shipping_to_zip or '').strip()
+        if not origin or not dest:
+            return None
+        quote = self.env['logistics.indiapost.tariff'].quote_safe(
+            origin, dest,
+            article_type=self._ip_product(),
+            weight_g=weight_g,
+            length_cm=self.indiapost_scan_length_cm,
+            breadth_cm=self.indiapost_scan_breadth_cm,
+            height_cm=self.indiapost_scan_height_cm,
+            insurance_value=self.indiapost_insurance_value,
+            use_cache=True,
+            shipment=self,
+            settings=settings,
+            **self._ip_vas_flags()
+        )
+        if not quote or not quote.get('ok'):
+            return None
+        return quote
+
+    def _ip_resolve_scan_quote(self, extracted=None, allow_tariff_http=False,
+                               allow_api_tariff=False):
+        """Pick a scan quote without inventing India Post figures.
+
+        Preference: tariff re-quote from actual weight/dims, then a trusted
+        tracking ``tariff`` (poll only), then a figure ops typed in.
+        """
+        self.ensure_one()
+        extracted = extracted or {}
+        settings = self.env['logistics.indiapost.client']._ip_settings()
+        if self._ip_scan_has_dims() and (
+                self.indiapost_scan_weight_g or self.indiapost_orig_weight_g):
+            if allow_tariff_http:
+                quote = self._ip_requote_scan_package(settings=settings)
+                if quote:
+                    return quote['total_payable'], 'tariff', quote
+            cached = self._ip_cached_scan_quote(
+                self.indiapost_scan_weight_g or self.indiapost_orig_weight_g,
+                self.indiapost_scan_length_cm,
+                self.indiapost_scan_breadth_cm,
+                self.indiapost_scan_height_cm,
+                settings=settings,
+            )
+            if cached:
+                return cached['total_payable'], 'tariff', cached
+            if not allow_tariff_http:
+                return None, 'pending', None
+        if allow_api_tariff and self.indiapost_scan_tariff_trusted \
+                and (self.indiapost_scan_tariff_raw or 0.0) > 0:
+            raw = self.indiapost_scan_tariff_raw
+            payable = self._round_charge(raw + self._ip_markup_amount(raw, settings))
+            return payable, 'booking_tariff', None
+        if extracted.get('ops_quote') not in (None, False, ''):
+            return self._round_charge(ipc.as_amount(extracted['ops_quote'])), 'ops', None
+        if self.indiapost_scan_quote and self.indiapost_scan_quote_source == 'ops':
+            return self.indiapost_scan_quote, 'ops', None
+        return None, 'pending' if self.indiapost_scan_seen else None, None
+
+    def _ip_apply_scan_rate_adjustment(self, extracted=None,
+                                       allow_tariff_http=False,
+                                       allow_api_tariff=False):
+        """Persist scan actuals, optionally re-quote, and post one wallet line.
+
+        Idempotent. Safe to call from tracking polls, Sync Now, cron, and the
+        ops button. Never raises to the caller: a tariff failure leaves the
+        row pending instead of blocking a scan.
+        """
+        extracted = extracted or {}
+        for record in self:
+            try:
+                record._ip_apply_scan_rate_adjustment_one(
+                    extracted=extracted,
+                    allow_tariff_http=allow_tariff_http,
+                    allow_api_tariff=allow_api_tariff,
+                )
+            except Exception:
+                _logger.exception(
+                    'India Post scan rate adjustment failed for shipment %s',
+                    record.name,
+                )
+        return True
+
+    def _ip_apply_scan_rate_adjustment_one(self, extracted=None,
+                                           allow_tariff_http=False,
+                                           allow_api_tariff=False):
+        self.ensure_one()
+        if not self._ip_scan_eligible():
+            return False
+        self._ip_snapshot_charged_package()
+        seen = self._ip_merge_scan_actuals(extracted)
+        existing = self._ip_existing_scan_wallet_line()
+        if self.indiapost_scan_adjusted and existing:
+            return False
+        if self.indiapost_scan_adjusted and not self.indiapost_scan_quote_pending:
+            return False
+        if not seen and not (extracted or {}).get('ops_quote'):
+            return False
+
+        payable, source, quote = self._ip_resolve_scan_quote(
+            extracted=extracted,
+            allow_tariff_http=allow_tariff_http,
+            allow_api_tariff=allow_api_tariff,
+        )
+        vals = {}
+        if source == 'pending' or payable is None:
+            if self.indiapost_scan_seen and not self.indiapost_scan_quote_pending:
+                vals['indiapost_scan_quote_pending'] = True
+            if vals:
+                self.with_context(allow_delivery_charge_write=True).write(vals)
+            if self._ip_scan_package_changed() and not self.indiapost_scan_notified:
+                self._ip_queue_scan_adjustment_mail(wallet_amount=0.0)
+            return False
+
+        payable = self._round_charge(payable)
+        orig = self._round_charge(self.indiapost_orig_charge or 0.0)
+        difference = self._round_charge(payable - orig)
+        if quote:
+            if quote.get('volumetric_weight_g') and not self.indiapost_scan_volumetric_g:
+                vals['indiapost_scan_volumetric_g'] = int(quote['volumetric_weight_g'])
+            if quote.get('chargeable_weight_g') and not self.indiapost_scan_chargeable_g:
+                vals['indiapost_scan_chargeable_g'] = int(quote['chargeable_weight_g'])
+        vals.update({
+            'indiapost_scan_quote': payable,
+            'indiapost_scan_quote_source': source,
+            'indiapost_scan_difference': difference,
+            'indiapost_scan_quote_pending': False,
+            'indiapost_scan_seen': True,
+        })
+        self.with_context(allow_delivery_charge_write=True).write(vals)
+
+        wallet_amount = 0.0
+        posted_wallet = False
+        if float_compare(difference, 0.0, precision_digits=2) != 0:
+            if existing:
+                wallet_amount = existing.amount
+            else:
+                wallet_amount = self._round_charge(-difference)
+                posted = self._ip_post_scan_wallet_line(wallet_amount)
+                if posted:
+                    posted_wallet = True
+                    existing = posted
+        self.with_context(allow_delivery_charge_write=True).write({
+            'indiapost_scan_adjusted': True,
+            'indiapost_scan_wallet_txn_id': existing.id if existing else False,
+        })
+
+        package_changed = self._ip_scan_package_changed()
+        should_mail = posted_wallet or (
+            package_changed and not self.indiapost_scan_notified)
+        if should_mail:
+            self._ip_queue_scan_adjustment_mail(
+                wallet_amount=wallet_amount if (
+                    posted_wallet or existing) else 0.0)
+        return True
+
+    def _ip_post_scan_wallet_line(self, amount):
+        """One credit (positive) or debit (negative) for the scan difference."""
+        self.ensure_one()
+        if float_compare(amount, 0.0, precision_digits=2) == 0:
+            return self.env['logistics.wallet.transaction']
+        if self._ip_existing_scan_wallet_line():
+            return self._ip_existing_scan_wallet_line()
+        wallet = (self.seller_id.wallet_ids[:1]
+                  or self.wallet_transaction_id.wallet_id)
+        if not wallet:
+            _logger.warning(
+                'India Post scan adjustment for %s skipped: no seller wallet',
+                self.name,
+            )
+            return self.env['logistics.wallet.transaction']
+        transaction = self.env['logistics.wallet.transaction'].sudo().create({
+            'wallet_id': wallet.id,
+            'amount': amount,
+            'transaction_date': fields.Date.context_today(self),
+            'shipment_id': self.id,
+            'order_id': self.order_id.id if self.order_id else False,
+            'reference': self._ip_scan_adj_reference(),
+            'description': self._ip_scan_adj_label(),
+        })
+        self.sudo().message_post(body=_(
+            'India Post rate adjustment of %(amount)s posted on the seller '
+            'wallet (%(label)s).',
+            amount=self._ip_format_money(amount),
+            label=self._ip_scan_adj_label(),
+        ))
+        return transaction
+
+    def _ip_format_money(self, amount):
+        self.ensure_one()
+        if self.currency_id:
+            return self.currency_id.format(amount or 0.0)
+        return '%.2f' % (amount or 0.0)
+
+    def _ip_format_weight_g(self, grams):
+        if not grams:
+            return _('not reported')
+        return _('%s g') % int(grams)
+
+    def _ip_format_dims_cm(self, length, breadth, height):
+        if not (length or breadth or height):
+            return _('not reported')
+        return _('%s × %s × %s cm') % (
+            int(length or 0), int(breadth or 0), int(height or 0))
+
+    def _ip_queue_scan_adjustment_mail(self, wallet_amount=0.0):
+        """One queued seller mail covering package change and/or wallet move."""
+        self.ensure_one()
+        if self.indiapost_scan_notified and float_compare(
+                wallet_amount, 0.0, precision_digits=2) == 0:
+            return self.env['mail.mail']
+        seller = self.seller_id
+        email = ((seller.email or seller.partner_id.email or '') if seller else '').strip()
+        if not email or '@' not in email:
+            self.with_context(allow_delivery_charge_write=True).write({
+                'indiapost_scan_notified': True,
+            })
+            return self.env['mail.mail']
+        Mail = self.env['logistics.mail.notify'].sudo()
+        awb = self.name or ''
+        arn = (self.indiapost_article_number or '').strip() or _('not yet allocated')
+        orig_charge = self._ip_format_money(self.indiapost_orig_charge)
+        new_quote = (
+            self._ip_format_money(self.indiapost_scan_quote)
+            if self.indiapost_scan_quote or self.indiapost_scan_adjusted
+            else _('not yet available')
+        )
+        if float_compare(wallet_amount, 0.0, precision_digits=2) > 0:
+            wallet_line = _('Credit %s to your wallet') % self._ip_format_money(
+                wallet_amount)
+        elif float_compare(wallet_amount, 0.0, precision_digits=2) < 0:
+            wallet_line = _('Debit %s from your wallet') % self._ip_format_money(
+                abs(wallet_amount))
+        else:
+            wallet_line = _('No wallet movement — the quoted charge is unchanged.')
+        inner = Markup(
+            '<p>Hello %s,</p>'
+            '<p>India Post has scanned this shipment and the billed weight, '
+            'size or rate may differ from what was declared at pickup.</p>'
+            '<ul>'
+            '<li><strong>AWB:</strong> %s</li>'
+            '<li><strong>ARN:</strong> %s</li>'
+            '</ul>'
+            '<p><strong>Original (at pickup)</strong></p>'
+            '<ul>'
+            '<li>Weight: %s</li>'
+            '<li>Dimensions: %s</li>'
+            '<li>Volumetric weight: %s</li>'
+            '<li>Quoted charge: %s</li>'
+            '</ul>'
+            '<p><strong>After India Post scan</strong></p>'
+            '<ul>'
+            '<li>Weight: %s</li>'
+            '<li>Dimensions: %s</li>'
+            '<li>Volumetric weight: %s</li>'
+            '<li>Quoted charge: %s</li>'
+            '</ul>'
+            '<p><strong>Wallet:</strong> %s</p>'
+            '<p>This is a shipping-charge adjustment only. COD collected from '
+            'the customer is unchanged.</p>'
+        ) % (
+            html_escape(seller.display_name or ''),
+            html_escape(awb),
+            html_escape(arn),
+            html_escape(self._ip_format_weight_g(self.indiapost_orig_weight_g)),
+            html_escape(self._ip_format_dims_cm(
+                self.indiapost_orig_length_cm,
+                self.indiapost_orig_breadth_cm,
+                self.indiapost_orig_height_cm)),
+            html_escape(self._ip_format_weight_g(self.indiapost_orig_volumetric_g)),
+            html_escape(orig_charge),
+            html_escape(self._ip_format_weight_g(self.indiapost_scan_weight_g)),
+            html_escape(self._ip_format_dims_cm(
+                self.indiapost_scan_length_cm,
+                self.indiapost_scan_breadth_cm,
+                self.indiapost_scan_height_cm)),
+            html_escape(self._ip_format_weight_g(self.indiapost_scan_volumetric_g)),
+            html_escape(new_quote),
+            html_escape(wallet_line),
+        )
+        subject = _('India Post updated AWB %s') % awb
+        mail = Mail._kx_queue_mail(
+            email_to=email,
+            subject=subject,
+            body_html=Mail._kx_wrap_body(
+                _('India Post scan update'), inner),
+            res_model=self._name,
+            res_id=self.id,
+        )
+        self.with_context(allow_delivery_charge_write=True).write({
+            'indiapost_scan_notified': True,
+        })
+        return mail
+
+    def action_indiapost_apply_scan_adjustment(self):
+        """Ops: re-quote from stored/entered actuals and post the wallet line."""
+        if not self.env.user.has_group('keralariders_logistics.group_logistics_admin'):
+            raise UserError(_(
+                'Only a Logistics Administrator can apply an India Post '
+                'scan rate adjustment.'
+            ))
+        applied = 0
+        skipped = 0
+        for record in self:
+            if not record._ip_scan_eligible():
+                skipped += 1
+                continue
+            before = record.indiapost_scan_wallet_txn_id
+            record._ip_apply_scan_rate_adjustment(
+                extracted={'ops_quote': record.indiapost_scan_quote}
+                if record.indiapost_scan_quote and not record._ip_scan_has_dims()
+                else {},
+                allow_tariff_http=True,
+                allow_api_tariff=True,
+            )
+            record.invalidate_recordset([
+                'indiapost_scan_adjusted', 'indiapost_scan_wallet_txn_id',
+            ])
+            if record.indiapost_scan_adjusted or record.indiapost_scan_seen:
+                applied += 1
+            elif before:
+                skipped += 1
+        return self._ip_notify(
+            _('India Post scan adjustment'),
+            _('Evaluated %(applied)s shipment(s) (%(skipped)s skipped).') % {
+                'applied': applied, 'skipped': skipped,
+            },
+        )
+
+    # ------------------------------------------------------------------
     # Creation
     # ------------------------------------------------------------------
     @api.model_create_multi
@@ -790,7 +1453,9 @@ class Shipment(models.Model):
                     'package as it stands, so the wallet has not been '
                     'debited. Refresh the India Post rate and try again.'
                 ) % record.name)
-        return super().action_add_wallet_transaction()
+        res = super().action_add_wallet_transaction()
+        self._ip_snapshot_charged_package()
+        return res
 
     # ------------------------------------------------------------------
     # Rate quoting

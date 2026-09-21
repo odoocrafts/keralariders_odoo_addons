@@ -155,6 +155,69 @@ def classify_event(raw_event):
     return None, 'indiapost_transit_scan', text
 
 
+# Keys observed or reasonably expected on booking_details / article payloads.
+# Live bulk tracking currently returns tariff (often 0) and no dimensions;
+# extra names are kept so a later API revision is stored instead of ignored.
+_SCAN_WEIGHT_G_KEYS = (
+    'physical_weight', 'physicalWeight', 'actual_weight', 'actualWeight',
+    'charged_weight', 'chargedWeight', 'weight_g', 'article_weight',
+    'reweigh_weight', 'revised_weight', 'revisedWeight',
+)
+_SCAN_WEIGHT_KG_KEYS = (
+    'weight_kg', 'actual_weight_kg', 'physical_weight_kg',
+)
+_SCAN_VOL_KEYS = (
+    'volumetric_weight', 'volumetricWeight', 'volume_weight',
+    'volumetric_weight_g',
+)
+_SCAN_LENGTH_KEYS = (
+    'article_length', 'articleLength', 'length_cm', 'length',
+)
+_SCAN_BREADTH_KEYS = (
+    'article_breadth', 'articleBreadth', 'breadth_diameter', 'breadth_cm',
+    'breadth', 'width', 'article_width',
+)
+_SCAN_HEIGHT_KEYS = (
+    'article_height', 'articleHeight', 'height_cm', 'height',
+)
+_SCAN_TARIFF_KEYS = (
+    'tariff', 'calculated_tariff', 'calculatedTariff', 'charged_amount',
+    'billed_amount', 'final_amount', 'total_amount',
+)
+_SCAN_CHARGEABLE_KEYS = (
+    'charged_weight', 'chargedWeight', 'chargeable_weight',
+    'chargeable_weight_g', 'billed_weight',
+)
+
+
+def _ip_positive_number(value):
+    if value in (None, '', False):
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if number <= 0:
+        return None
+    return number
+
+
+def _ip_positive_int(value):
+    number = _ip_positive_number(value)
+    if number is None:
+        return 0
+    return int(round(number))
+
+
+def _ip_first_in(node, keys):
+    if not isinstance(node, dict):
+        return None
+    for key in keys:
+        if key in node and node.get(key) not in (None, '', False):
+            return node.get(key)
+    return None
+
+
 class IndiapostTracking(models.AbstractModel):
     _name = 'logistics.indiapost.tracking'
     _description = 'India Post Tracking Service'
@@ -182,11 +245,18 @@ class IndiapostTracking(models.AbstractModel):
             order='indiapost_last_tracking_sync asc nulls first, id',
             limit=limit,
         )
-        return self.sync_shipments(shipments)
+        updated = self.sync_shipments(shipments)
+        # Delivered articles leave the poller; finish a pending re-quote if
+        # actuals were stored earlier (typically by a webhook).
+        self._ip_apply_pending_scan_adjustments(limit=limit)
+        return updated
 
     @api.model
     def sync_shipments(self, shipments):
         """Refresh tracking for an explicit set of shipments."""
+        # Polling and Sync Now may re-quote from actuals; webhooks do not.
+        self = self.with_context(
+            ip_allow_tariff_http=True, ip_trust_booking_tariff=True)
         shipments = shipments.filtered(lambda s: s.indiapost_article_number)
         if not shipments:
             return 0
@@ -246,13 +316,16 @@ class IndiapostTracking(models.AbstractModel):
             del_status = del_status.get('del_status')
         scans = [scan for scan in (record.get('tracking_details') or [])
                  if isinstance(scan, dict)]
+        extracted = self._ip_extract_scan_actuals(record)
 
         # An unbooked barcode returns success with no scans and
         # del_status "not delivered", which is indistinguishable from a booked
-        # article awaiting its first scan. Neither tells us anything.
+        # article awaiting its first scan. Neither tells us anything — unless
+        # booking_details now carries a reweigh / tariff we can persist.
         if not scans:
             if del_status and del_status != shipment.indiapost_del_status:
                 shipment.sudo().write({'indiapost_del_status': del_status})
+            self._ip_try_scan_adjustment(shipment, extracted)
             return False
 
         parsed = self._ip_parse_scans(scans)
@@ -266,7 +339,123 @@ class IndiapostTracking(models.AbstractModel):
             vals.update(self._ip_state_timestamps(shipment, target, parsed))
         if vals:
             shipment.sudo()._write_with_state(vals)
+        self._ip_try_scan_adjustment(shipment, extracted)
         return bool(created or vals)
+
+    @api.model
+    def _ip_extract_scan_actuals(self, record):
+        """Pull weight / dims / tariff from a tracking or webhook payload.
+
+        Live bulk tracking (CEPT proof, 2026-09-06) returns booking_details
+        with article_number, booked_at, booked_on, origin_pincode,
+        destination_pincode, tariff (0 on the scanned sample), article_type,
+        delivery_location, delivery_confirmed_on — and tracking_details scans
+        of {date, time, office, officeid, event}. No physical_weight,
+        volumetric_weight, dimensions, or billed amount. Missing keys stay
+        absent; we never invent them.
+        """
+        if not isinstance(record, dict):
+            return {}
+        nodes = [record]
+        for key in ('booking_details', 'bookingDetails', 'article', 'data',
+                    'payload'):
+            nested = record.get(key)
+            if isinstance(nested, dict):
+                nodes.append(nested)
+        found = {}
+        raw = {}
+        for node in nodes:
+            weight = _ip_first_in(node, _SCAN_WEIGHT_G_KEYS)
+            if weight is not None and not found.get('weight_g'):
+                grams = _ip_positive_int(weight)
+                if grams:
+                    found['weight_g'] = grams
+                    raw['weight_g'] = weight
+            weight_kg = _ip_first_in(node, _SCAN_WEIGHT_KG_KEYS)
+            if weight_kg is not None and not found.get('weight_g'):
+                grams = ipc.kg_to_grams(weight_kg)
+                if grams:
+                    found['weight_g'] = grams
+                    raw['weight_kg'] = weight_kg
+            vol = _ip_first_in(node, _SCAN_VOL_KEYS)
+            if vol is not None and not found.get('volumetric_g'):
+                grams = _ip_positive_int(vol)
+                if grams:
+                    found['volumetric_g'] = grams
+                    raw['volumetric_g'] = vol
+            length = _ip_first_in(node, _SCAN_LENGTH_KEYS)
+            if length is not None and not found.get('length_cm'):
+                cms = _ip_positive_int(length)
+                if cms:
+                    found['length_cm'] = cms
+                    raw['length_cm'] = length
+            breadth = _ip_first_in(node, _SCAN_BREADTH_KEYS)
+            if breadth is not None and not found.get('breadth_cm'):
+                cms = _ip_positive_int(breadth)
+                if cms:
+                    found['breadth_cm'] = cms
+                    raw['breadth_cm'] = breadth
+            height = _ip_first_in(node, _SCAN_HEIGHT_KEYS)
+            if height is not None and not found.get('height_cm'):
+                cms = _ip_positive_int(height)
+                if cms:
+                    found['height_cm'] = cms
+                    raw['height_cm'] = height
+            chargeable = _ip_first_in(node, _SCAN_CHARGEABLE_KEYS)
+            if chargeable is not None and not found.get('chargeable_g'):
+                grams = _ip_positive_int(chargeable)
+                if grams:
+                    found['chargeable_g'] = grams
+                    raw['chargeable_g'] = chargeable
+            tariff = _ip_first_in(node, _SCAN_TARIFF_KEYS)
+            if tariff is not None and not found.get('tariff'):
+                amount = _ip_positive_number(tariff)
+                if amount:
+                    found['tariff'] = amount
+                    raw['tariff'] = tariff
+        if raw:
+            found['raw'] = raw
+        return found
+
+    @api.model
+    def _ip_try_scan_adjustment(self, shipment, extracted):
+        """Apply a volumetric / quote adjustment without failing tracking."""
+        if not shipment:
+            return
+        try:
+            shipment._ip_apply_scan_rate_adjustment(
+                extracted=dict(
+                    extracted or {},
+                    tariff_trusted=bool(
+                        self.env.context.get('ip_trust_booking_tariff')),
+                ),
+                allow_tariff_http=bool(
+                    self.env.context.get('ip_allow_tariff_http')),
+                allow_api_tariff=bool(
+                    self.env.context.get('ip_trust_booking_tariff')),
+            )
+        except Exception:
+            _logger.exception(
+                'India Post scan adjustment after tracking failed for %s',
+                shipment.name,
+            )
+
+    @api.model
+    def _ip_apply_pending_scan_adjustments(self, limit=500):
+        """Finish re-quotes that a webhook stored without calling tariff HTTP."""
+        shipments = self.env['logistics.shipment'].sudo().search([
+            ('fulfilment_method', '=', 'indiapost'),
+            ('indiapost_scan_quote_pending', '=', True),
+            ('indiapost_scan_adjusted', '=', False),
+            ('is_return_journey', '=', False),
+            ('wallet_transaction_id', '!=', False),
+        ], limit=limit, order='id')
+        if shipments:
+            shipments.with_context(
+                ip_allow_tariff_http=True, ip_trust_booking_tariff=True,
+            )._ip_apply_scan_rate_adjustment(
+                allow_tariff_http=True, allow_api_tariff=True)
+        return len(shipments)
 
     @api.model
     def _ip_parse_scans(self, scans):
@@ -489,6 +678,7 @@ class IndiapostTracking(models.AbstractModel):
     @api.model
     def action_ip_sync_now(self, shipments):
         updated = self.sync_shipments(shipments)
+        self._ip_apply_pending_scan_adjustments(limit=max(len(shipments), 1))
         return {
             'type': 'ir.actions.client',
             'tag': 'display_notification',
@@ -680,6 +870,13 @@ class IndiapostTracking(models.AbstractModel):
             'article': article,
             'del_status': del_status,
             'tracking_details': scans,
+            'booking_details': (
+                payload.get('booking_details')
+                or payload.get('bookingDetails') or {}
+            ),
+            # Keep original keys so extract can see a future weight / tariff
+            # without treating them as a delivery-charge write.
+            'payload': payload,
         }]
 
     @api.model
@@ -726,8 +923,10 @@ class IndiapostTracking(models.AbstractModel):
     def ingest_webhook(self, kind, payload):
         """Apply one inbound webhook. Never raises; caller logs and returns 200.
 
-        Tariff / charge keys in the payload are ignored on purpose: India Post
-        must not be able to set what a seller is billed.
+        Charge keys in the payload never rewrite ``delivery_charges_total``.
+        Weight / dimension / tariff figures are stored for a later scan
+        adjustment; the wallet line is posted only from tracking poll / cron
+        (tariff re-quote) or the ops button, not from this HTTP request.
         """
         self._ip_log_webhook_keys(kind, payload)
         settings = self.env['logistics.indiapost.client']._ip_settings()
@@ -748,6 +947,8 @@ class IndiapostTracking(models.AbstractModel):
             tracking_record = {
                 'del_status': record.get('del_status'),
                 'tracking_details': record.get('tracking_details') or [],
+                'booking_details': record.get('booking_details') or {},
+                'payload': record.get('payload') or {},
             }
             self._ip_apply_tracking(shipment, tracking_record)
             if kind == 'booking':

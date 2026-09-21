@@ -277,6 +277,11 @@
                             string="Sync India Post Tracking" class="btn-secondary"
                             invisible="not indiapost_article_number"
                             groups="keralariders_logistics.group_logistics_admin,keralariders_logistics.group_logistics_hub_manager"/>
+                    <button name="action_indiapost_apply_scan_adjustment" type="object"
+                            string="Apply India Post Scan Adjustment" class="btn-secondary"
+                            invisible="not is_indiapost or not wallet_transaction_id or is_return_journey"
+                            groups="keralariders_logistics.group_logistics_admin"
+                            confirm="Re-quote from India Post actuals (or the figures entered below) and post a wallet credit or debit for the difference against the pickup charge. Already-applied adjustments are not posted twice."/>
                     <button name="action_indiapost_switch_to_own_network" type="object"
                             string="Divert to Hub Network" class="btn-warning"
                             invisible="not is_indiapost or indiapost_article_number or state == 'cancelled'"
@@ -591,6 +596,54 @@
                                     <field name="indiapost_del_status"/>
                                     <field name="indiapost_last_tracking_sync"/>
                                     <field name="indiapost_tracking_ref" optional="hide"/>
+                                </group>
+                            </group>
+                            <group string="Scan reweigh / rate adjustment"
+                                   invisible="not wallet_transaction_id">
+                                <group string="Charged at pickup">
+                                    <field name="indiapost_orig_charge"/>
+                                    <field name="indiapost_orig_weight_g"/>
+                                    <label for="indiapost_orig_length_cm" string="Original dimensions (cm)"/>
+                                    <div class="o_row">
+                                        <field name="indiapost_orig_length_cm" class="oe_inline"/>
+                                        <span class="mx-1">x</span>
+                                        <field name="indiapost_orig_breadth_cm" class="oe_inline"/>
+                                        <span class="mx-1">x</span>
+                                        <field name="indiapost_orig_height_cm" class="oe_inline"/>
+                                    </div>
+                                    <field name="indiapost_orig_volumetric_g"/>
+                                </group>
+                                <group string="India Post after scan">
+                                    <div class="text-muted" colspan="2">
+                                        Live tracking does not currently return
+                                        actual weight or dimensions. Enter them
+                                        here if India Post reports a reweigh,
+                                        then Apply India Post Scan Adjustment.
+                                        A zero reported tariff is stored as empty.
+                                    </div>
+                                    <field name="indiapost_scan_weight_g"/>
+                                    <label for="indiapost_scan_length_cm" string="Actual dimensions (cm)"/>
+                                    <div class="o_row">
+                                        <field name="indiapost_scan_length_cm" class="oe_inline"/>
+                                        <span class="mx-1">x</span>
+                                        <field name="indiapost_scan_breadth_cm" class="oe_inline"/>
+                                        <span class="mx-1">x</span>
+                                        <field name="indiapost_scan_height_cm" class="oe_inline"/>
+                                    </div>
+                                    <field name="indiapost_scan_volumetric_g"/>
+                                    <field name="indiapost_scan_chargeable_g"/>
+                                    <field name="indiapost_scan_tariff_raw"/>
+                                    <field name="indiapost_scan_quote"/>
+                                    <field name="indiapost_scan_quote_source"/>
+                                    <field name="indiapost_scan_difference"/>
+                                    <field name="indiapost_scan_wallet_txn_id"/>
+                                    <field name="indiapost_scan_seen" invisible="1"/>
+                                    <field name="indiapost_scan_quote_pending"/>
+                                    <field name="indiapost_scan_adjusted"/>
+                                    <field name="indiapost_scan_notified" invisible="1"/>
+                                    <field name="indiapost_scan_tariff_trusted" invisible="1"/>
+                                    <field name="indiapost_scan_raw"
+                                           groups="keralariders_logistics.group_logistics_admin"/>
                                 </group>
                             </group>
                         </page>

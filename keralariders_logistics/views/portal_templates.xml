@@ -784,6 +784,11 @@
                                 <t t-else="">—</t>
                             </td>
                             <td class="text-end">
+                                <a t-attf-href="/my/shipments/#{shipment.id}"
+                                   class="btn btn-sm btn-outline-secondary me-1"
+                                   title="Details">
+                                    <i class="fa fa-eye"/>
+                                </a>
                                 <a t-if="shipment.state != 'order_added'"
                                    t-attf-href="/my/shipments/#{shipment.id}/print"
                                    class="btn btn-sm btn-outline-primary me-1 kx-print-awb"
@@ -820,6 +825,142 @@
                 </tbody>
             </t>
             <t t-call="keralariders_logistics.portal_print_shipping_label_modal"/>
+        </t>
+    </template>
+
+    <!-- Original vs India Post scan actuals. Hidden until a reweigh / tariff
+         is stored. India Post fulfilments only. -->
+    <template id="portal_indiapost_scan_adjustment" name="India Post Scan Adjustment">
+        <t t-if="ship.portal_indiapost_scan_visible()">
+            <div class="kx-ip-scan-adjust mt-3">
+                <div class="fw-semibold mb-2">India Post scan update</div>
+                <p class="small text-muted mb-2">
+                    India Post reweighed or remeasured this parcel after pickup.
+                    Figures they did not send are shown as not reported.
+                </p>
+                <div class="table-responsive">
+                    <table class="table table-sm table-bordered mb-2 kx-ip-scan-table">
+                        <thead>
+                            <tr>
+                                <th></th>
+                                <th>At pickup</th>
+                                <th>After scan</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <th scope="row">Weight</th>
+                                <td><t t-esc="ship._ip_format_weight_g(ship.indiapost_orig_weight_g)"/></td>
+                                <td><t t-esc="ship._ip_format_weight_g(ship.indiapost_scan_weight_g)"/></td>
+                            </tr>
+                            <tr>
+                                <th scope="row">Dimensions</th>
+                                <td><t t-esc="ship._ip_format_dims_cm(ship.indiapost_orig_length_cm, ship.indiapost_orig_breadth_cm, ship.indiapost_orig_height_cm)"/></td>
+                                <td><t t-esc="ship._ip_format_dims_cm(ship.indiapost_scan_length_cm, ship.indiapost_scan_breadth_cm, ship.indiapost_scan_height_cm)"/></td>
+                            </tr>
+                            <tr>
+                                <th scope="row">Volumetric</th>
+                                <td><t t-esc="ship._ip_format_weight_g(ship.indiapost_orig_volumetric_g)"/></td>
+                                <td><t t-esc="ship._ip_format_weight_g(ship.indiapost_scan_volumetric_g)"/></td>
+                            </tr>
+                            <tr>
+                                <th scope="row">Quoted charge</th>
+                                <td>
+                                    <span t-field="ship.indiapost_orig_charge"
+                                          t-options='{"widget": "monetary", "display_currency": ship.currency_id}'/>
+                                </td>
+                                <td>
+                                    <t t-if="ship.indiapost_scan_quote or ship.indiapost_scan_adjusted">
+                                        <span t-field="ship.indiapost_scan_quote"
+                                              t-options='{"widget": "monetary", "display_currency": ship.currency_id}'/>
+                                    </t>
+                                    <t t-else="">not yet available</t>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <t t-if="ship.indiapost_scan_wallet_txn_id">
+                    <p class="small mb-0">
+                        <t t-if="ship.indiapost_scan_difference &gt; 0">
+                            Wallet debit
+                            <span t-esc="ship._ip_format_money(ship.indiapost_scan_difference)"/>
+                            (India Post rate adjustment).
+                        </t>
+                        <t t-elif="ship.indiapost_scan_difference &lt; 0">
+                            Wallet credit
+                            <span t-esc="ship._ip_format_money(-ship.indiapost_scan_difference)"/>
+                            (India Post rate adjustment).
+                        </t>
+                    </p>
+                </t>
+                <t t-elif="ship.indiapost_scan_quote_pending">
+                    <p class="small text-muted mb-0">
+                        Waiting for the current India Post rate. Your wallet
+                        will be adjusted if the quote changes.
+                    </p>
+                </t>
+            </div>
+        </t>
+    </template>
+
+    <template id="portal_my_shipment_detail" name="Shipment Detail">
+        <t t-call="portal.portal_layout">
+            <t t-if="error">
+                <div class="alert alert-danger" role="alert"><t t-esc="error"/></div>
+            </t>
+            <div class="card shadow-sm mb-4 kx-portal-shipment-detail">
+                <div class="card-header bg-white py-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
+                    <h4 class="mb-0 text-break">
+                        Shipment: <span t-field="shipment.name"/>
+                    </h4>
+                    <t t-call="keralariders_logistics.portal_order_shipment_status">
+                        <t t-set="ship" t-value="shipment"/>
+                    </t>
+                </div>
+                <div class="card-body">
+                    <t t-set="arn" t-value="shipment.portal_indiapost_arn()"/>
+                    <div class="row g-3 mb-3">
+                        <div class="col-6 col-md-3">
+                            <div class="text-muted small">AWB</div>
+                            <div class="fw-semibold"><span t-field="shipment.name"/></div>
+                            <div t-if="arn" class="small text-muted">ARN: <t t-esc="arn"/></div>
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <div class="text-muted small">Customer</div>
+                            <div class="fw-semibold text-break"><span t-field="shipment.shipping_to_name"/></div>
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <div class="text-muted small">Weight</div>
+                            <div class="fw-semibold"><span t-field="shipment.total_weight"/> kg</div>
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <div class="text-muted small">Charges</div>
+                            <div class="fw-semibold">
+                                <span t-field="shipment.delivery_charges_total"
+                                      t-options='{"widget": "monetary", "display_currency": shipment.currency_id}'/>
+                            </div>
+                        </div>
+                    </div>
+                    <t t-if="shipment.is_indiapost">
+                        <p class="small text-muted">
+                            Package
+                            <t t-esc="'%d' % (shipment.length_cm or 0)"/> ×
+                            <t t-esc="'%d' % (shipment.breadth_cm or 0)"/> ×
+                            <t t-esc="'%d' % (shipment.height_cm or 0)"/> cm
+                            · volumetric <t t-esc="shipment.volumetric_weight_g"/> g
+                        </p>
+                    </t>
+                    <t t-call="keralariders_logistics.portal_indiapost_scan_adjustment">
+                        <t t-set="ship" t-value="shipment"/>
+                    </t>
+                    <div class="mt-3">
+                        <a t-attf-href="/track/#{shipment.tracking_token}" class="btn btn-outline-primary btn-sm me-2">Track</a>
+                        <a t-if="shipment.order_id" t-attf-href="/my/orders/#{shipment.order_id.id}"
+                           class="btn btn-outline-secondary btn-sm">Back to order</a>
+                    </div>
+                </div>
+            </div>
         </t>
     </template>
 

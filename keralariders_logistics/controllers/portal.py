@@ -1180,6 +1180,26 @@ class LogisticsPortal(CustomerPortal):
 
         return self._portal_apply_pickup_request(order, f'/my/orders/{order.id}')
 
+    @http.route(['/my/shipments/<int:shipment_id>'], type='http',
+                auth="user", website=True)
+    def portal_my_shipment_detail(self, shipment_id=None, **kw):
+        seller = self._portal_seller()
+        if not seller:
+            return request.redirect('/my')
+        shipment = request.env['logistics.shipment'].search([
+            ('id', '=', shipment_id),
+            ('seller_id', '=', seller.id),
+        ], limit=1)
+        if not shipment:
+            return request.redirect('/my/shipments')
+        values = {
+            'shipment': shipment,
+            'page_name': 'shipment',
+            'error': request.session.pop('error', None),
+        }
+        return request.render(
+            'keralariders_logistics.portal_my_shipment_detail', values)
+
     @http.route(
         ['/my/shipments/request_pickup',
          '/my/shipments/<int:shipment_id>/pickup'],

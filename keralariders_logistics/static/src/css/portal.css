@@ -48,3 +48,16 @@
         white-space: nowrap;
     }
 }
+
+.kx-ip-scan-adjust {
+    border: 1px solid #e5e7eb;
+    border-radius: 0.5rem;
+    padding: 0.75rem 0.9rem;
+    background: #f8fafc;
+}
+
+.kx-ip-scan-table th,
+.kx-ip-scan-table td {
+    font-size: 0.85rem;
+    vertical-align: middle;
+}
