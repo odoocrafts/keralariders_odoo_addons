@@ -123,12 +123,15 @@
             
             <div class="row mt-4 mb-5">
                 <div class="col-md-4">
-                    <div class="card bg-primary text-white shadow-sm mb-4">
+                    <div class="card shadow-sm mb-4 kx-wallet-balance-card">
                         <div class="card-body text-center">
                             <h5>Available Balance</h5>
                             <h2><span t-field="wallet.balance" t-options='{"widget": "monetary", "display_currency": wallet.currency_id}'/></h2>
-                            <button type="button" class="btn btn-light mt-3" data-bs-toggle="modal" data-bs-target="#rechargeModal">
-                                Request Recharge
+                            <button type="button"
+                                    class="btn btn-primary mt-3 kx-wallet-recharge-btn"
+                                    data-bs-toggle="modal"
+                                    data-bs-target="#rechargeModal">
+                                <i class="fa fa-plus me-1" aria-hidden="true"/> Recharge
                             </button>
                         </div>
                     </div>
