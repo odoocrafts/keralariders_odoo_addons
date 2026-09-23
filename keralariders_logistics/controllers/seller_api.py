@@ -467,7 +467,18 @@ class SellerApiController(http.Controller):
     def seller_api_pincode(self, pincode, **kw):
         def handler(credential, seller):
             pin = (pincode or '').strip()
-            info = request.env['logistics.district'].sudo().get_district_from_pincode(pin)
+            allow_indiapost = seller._ip_uses_indiapost()
+            try:
+                info = request.env['logistics.district'].sudo().resolve_destination_from_pincode(
+                    pin, allow_indiapost=allow_indiapost, raise_if_missing=False,
+                )
+            except UserError:
+                info = {
+                    'district_id': False,
+                    'state_id': False,
+                    'district_name': '',
+                    'state_name': '',
+                }
             district = info.get('district_id')
             hub = request.env['logistics.hub'].sudo().browse()
             if pin:
@@ -475,12 +486,26 @@ class SellerApiController(http.Controller):
                     hub = request.env['logistics.hub'].sudo().get_hub_from_pincode(pin)
                 except UserError:
                     hub = request.env['logistics.hub'].sudo().browse()
-            serviceable = bool(district and hub)
+            # Hub network still needs a district hub. India Post sellers only
+            # need a resolvable locality (local table or office cache).
+            if allow_indiapost:
+                serviceable = bool(district)
+            else:
+                serviceable = bool(district and hub)
+            state = info.get('state_id')
+            if not state and district:
+                state = district.state_id
             return self._ok({
                 'pincode': pin,
                 'serviceable': serviceable,
-                'district': district.name if district else (info.get('district_name') or False),
-                'state': (district.state_id.name if district and district.state_id else info.get('state_name') or False),
+                'district': (
+                    district.name if district
+                    else (info.get('district_name') or False)
+                ),
+                'state': (
+                    state.name if state
+                    else (info.get('state_name') or False)
+                ),
                 'hub': hub.name if hub else False,
             }, extra_headers=self._rate_headers())
         return self._dispatch(API_PREFIX + '/pincodes/<pincode>', handler)

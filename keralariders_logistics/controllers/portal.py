@@ -361,13 +361,15 @@ class LogisticsPortal(CustomerPortal):
             'max_total_dimension_cm': 300,
         }
 
-    def _portal_destination_from_post(self, post, pincode, require_known_pincode=False):
+    def _portal_destination_from_post(self, post, pincode, require_known_pincode=False,
+                                      seller=None):
         """Resolve destination district/state from the form, preferring the pincode.
 
-        Bulk upload already looks the district up from the pincode; the web
-        form offers a dropdown as a fallback. Unknown pincodes fail the order
-        flow the same way a CSV row does, so a charge cannot be computed from
-        an empty district pair.
+        Hub sellers stay on the Kerala ``logistics.pincode`` table. India Post
+        sellers fall through to the office cache / pincode-search on a miss.
+        The web form still offers a Kerala district dropdown as a soft
+        fallback when ``require_known_pincode`` is off; unknown pins fail the
+        order flow the same way a CSV row does when it is on.
         """
         def _optional_int(key):
             raw = post.get(key)
@@ -380,11 +382,17 @@ class LogisticsPortal(CustomerPortal):
 
         district_id = _optional_int('shipping_to_district_id')
         state_id = _optional_int('shipping_to_state_id')
-        pincode_info = request.env['logistics.district'].sudo().get_district_from_pincode(pincode)
-        looked_up = pincode_info.get('district_id') if pincode_info else False
+        allow_indiapost = bool(seller and seller._ip_uses_indiapost())
+        resolved = request.env['logistics.district'].sudo().resolve_destination_from_pincode(
+            pincode,
+            allow_indiapost=allow_indiapost,
+            raise_if_missing=bool(require_known_pincode and not district_id),
+        )
+        looked_up = resolved.get('district_id') if resolved else False
         if looked_up:
             district_id = district_id or looked_up.id
-            state_id = state_id or looked_up.state_id.id
+            state = resolved.get('state_id') or looked_up.state_id
+            state_id = state_id or (state.id if state else False)
         elif require_known_pincode and not district_id:
             raise UserError(_("Unknown pincode %s") % pincode)
         return district_id, state_id
@@ -430,6 +438,7 @@ class LogisticsPortal(CustomerPortal):
 
         district_id, state_id = self._portal_destination_from_post(
             post, shipping_to_zip, require_known_pincode=require_known_pincode,
+            seller=seller,
         )
 
         payment_type = (post.get('order_payment_type') or 'prepaid').strip().lower()
@@ -996,15 +1005,28 @@ class LogisticsPortal(CustomerPortal):
                     
                 district_id = False
                 state_id = False
-                pincode_info = request.env['logistics.district'].sudo().get_district_from_pincode(pincode)
-                if pincode_info and pincode_info.get('district_id'):
-                    district_id = pincode_info['district_id'].id
-                    state_id = pincode_info['district_id'].state_id.id
-                else:
+                try:
+                    resolved = request.env['logistics.district'].sudo().resolve_destination_from_pincode(
+                        pincode,
+                        allow_indiapost=seller._ip_uses_indiapost(),
+                        raise_if_missing=True,
+                    )
+                except UserError as exc:
+                    failed_count += 1
+                    if len(failure_reasons) < 5:
+                        failure_reasons.append(
+                            f"Row {row_num}: {exc.args[0] if exc.args else exc}"
+                        )
+                    continue
+                district = resolved.get('district_id')
+                if not district:
                     failed_count += 1
                     if len(failure_reasons) < 5:
                         failure_reasons.append(f"Row {row_num}: unknown pincode {pincode}")
                     continue
+                district_id = district.id
+                state = resolved.get('state_id') or district.state_id
+                state_id = state.id if state else False
                     
                 if payment_type not in ['prepaid', 'cod']:
                     payment_type = 'prepaid'

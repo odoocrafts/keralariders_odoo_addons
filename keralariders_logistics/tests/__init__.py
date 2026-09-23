@@ -1,3 +1,4 @@
+from . import test_hybrid_pincode
 from . import test_delivery_charge_integrity
 from . import test_indiapost_barcode
 from . import test_indiapost_contract
