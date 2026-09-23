@@ -198,14 +198,17 @@ class Hub(models.Model):
         }
 
     @api.model
-    def get_hub_from_pincode(self, pincode):
+    def get_hub_from_pincode(self, pincode, raise_if_missing=True):
         """Resolve hub for a pincode string.
 
         Looks up logistics.pincode by name, then finds a hub that includes it.
-        Falls back to the hub for the pincode's district. Raises UserError if none.
+        Falls back to the hub for the pincode's district. Raises UserError if
+        none unless ``raise_if_missing`` is False (India Post national dest).
         """
         if not pincode:
-            raise UserError(_("Cannot resolve hub: pincode is missing."))
+            if raise_if_missing:
+                raise UserError(_("Cannot resolve hub: pincode is missing."))
+            return self.browse()
 
         pincode_str = str(pincode).strip()
         pincode_rec = self.env['logistics.pincode'].search([('name', '=', pincode_str)], limit=1)
@@ -228,6 +231,8 @@ class Hub(models.Model):
             if hub:
                 return hub
 
+        if not raise_if_missing:
+            return self.browse()
         raise UserError(
             _("Cannot find any Hub assigned to pincode '%s' or its district. "
               "Please ensure hubs are seeded and pincodes are assigned.")

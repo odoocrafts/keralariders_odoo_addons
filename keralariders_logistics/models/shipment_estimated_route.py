@@ -26,7 +26,10 @@ class ShipmentInherit(models.Model):
         store=True,
     )
 
-    @api.depends('shipping_from_zip', 'shipping_to_zip', 'is_return_journey')
+    @api.depends(
+        'shipping_from_zip', 'shipping_to_zip', 'is_return_journey',
+        'fulfilment_method',
+    )
     def _compute_estimated_route_ids(self):
         """Plan route: same hub = pickup→delivery; different hubs = pickup→hub_transfer→delivery.
 
@@ -35,7 +38,13 @@ class ShipmentInherit(models.Model):
         is recorded as an event when the physical path crosses that area.
 
         Return journeys reverse the path: pickup at consignee → hubs → delivery to seller.
+
+        India Post outbound parcels may leave Kerala: the destination pincode
+        then has no district hub. Do not invent one — keep the seller-side
+        origin hub and skip the dest-hub requirement. Own-network still needs
+        both hubs.
         """
+        Hub = self.env['logistics.hub']
         for rec in self:
             force_rebuild = self.env.context.get('rebuild_return_route') or self.env.context.get('force_route_recompute')
             # Preserve planned route after ops have started (unless explicitly rebuilding)
@@ -62,8 +71,17 @@ class ShipmentInherit(models.Model):
                 pickup_from_label = 'Pickup from Source Address'
                 delivery_to_label = 'Delivery at Consignee Address'
 
-            source_hub = self.env['logistics.hub'].get_hub_from_pincode(pickup_zip)
-            final_hub = self.env['logistics.hub'].get_hub_from_pincode(delivery_zip)
+            is_ip = rec.fulfilment_method == 'indiapost'
+            # Outbound IP: national dest may have no Kerala hub.
+            # Return IP: consignee pickup may be outside the hub network.
+            source_hub = Hub.get_hub_from_pincode(
+                pickup_zip,
+                raise_if_missing=not (is_ip and rec.is_return_journey),
+            )
+            final_hub = Hub.get_hub_from_pincode(
+                delivery_zip,
+                raise_if_missing=not (is_ip and not rec.is_return_journey),
+            )
             DE = self.env['logistics.delivery.executive']
 
             # The planned route is still drawn for India Post shipments (the
@@ -76,6 +94,52 @@ class ShipmentInherit(models.Model):
                 if rec._needs_keralaxpress_pickup() else DE.browse()
             )
             delivery_exec = DE.get_assigned_executive_for_pincode(delivery_zip, 'delivery')
+
+            if not source_hub and not final_hub:
+                rec.estimated_route_ids = [(5, 0, 0)]
+                rec.source_hub_id = False
+                rec.destination_hub_id = False
+                continue
+
+            if not final_hub:
+                # India Post to a non-hub PIN: origin hub only, no fake dest.
+                lines = [
+                    (0, 0, {
+                        'sequence': 1,
+                        'name': f'{pickup_from_label} --> {source_hub.name}',
+                        'source_location_name': pickup_from_label,
+                        'destination_location_name': f'{source_hub.name}',
+                        'from_hub_id': False,
+                        'to_hub_id': source_hub.id,
+                        'executive1_id': pickup_exec.id if pickup_exec else False,
+                        'operation_type': 'pickup',
+                        'state': 'planned',
+                    }),
+                ]
+                rec.estimated_route_ids = [(5, 0, 0)] + lines
+                rec.source_hub_id = source_hub.id
+                rec.destination_hub_id = False
+                continue
+
+            if not source_hub:
+                # India Post return from a non-hub PIN: seller-side hub only.
+                lines = [
+                    (0, 0, {
+                        'sequence': 1,
+                        'name': f'{final_hub.name} --> {delivery_to_label}',
+                        'source_location_name': f'{final_hub.name}',
+                        'destination_location_name': delivery_to_label,
+                        'from_hub_id': final_hub.id,
+                        'to_hub_id': False,
+                        'executive1_id': delivery_exec.id if delivery_exec else False,
+                        'operation_type': 'delivery',
+                        'state': 'planned',
+                    }),
+                ]
+                rec.estimated_route_ids = [(5, 0, 0)] + lines
+                rec.source_hub_id = False
+                rec.destination_hub_id = final_hub.id
+                continue
 
             if source_hub == final_hub:
                 # Same hub / same district: pickup → delivery (2 legs)

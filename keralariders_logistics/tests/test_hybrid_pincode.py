@@ -164,3 +164,65 @@ class TestHybridPincodeLookup(IndiapostHermeticMixin, TransactionCase):
     def test_seller_fulfilment_flags_match_allow_indiapost(self):
         self.assertTrue(self.ip_seller._ip_uses_indiapost())
         self.assertFalse(self.hub_seller._ip_uses_indiapost())
+
+    def _shipment_vals(self, seller, dest_zip, **overrides):
+        vals = {
+            'seller_id': seller.id,
+            'shipping_to_name': 'National Customer',
+            'shipping_to_address': '12 Kodambakkam High Road',
+            'shipping_to_zip': dest_zip,
+            'shipping_to_mobile': '9876543210',
+            'item_description': 'Test article',
+            'total_weight': 1.5,
+            'length_cm': 30,
+            'breadth_cm': 20,
+            'height_cm': 15,
+        }
+        vals.update(overrides)
+        return vals
+
+    def test_ip_seller_creates_shipment_to_national_pin_without_hub(self):
+        """India Post + Chennai PIN: order/shipment save; no fake dest hub."""
+        self._clear_chennai_cache()
+        with patch.object(
+            self.OfficeModel, '_ip_fetch_offices', return_value=CHENNAI_OFFICES,
+        ):
+            self.District.resolve_destination_from_pincode(
+                CHENNAI_PIN, allow_indiapost=True, raise_if_missing=True,
+            )
+            shipment = self.env['logistics.shipment'].create(
+                self._shipment_vals(self.ip_seller, CHENNAI_PIN),
+            )
+        self.assertEqual(shipment.fulfilment_method, 'indiapost')
+        self.assertEqual(shipment.shipping_to_zip, CHENNAI_PIN)
+        self.assertTrue(shipment.source_hub_id, 'seller-side Kerala hub expected')
+        self.assertFalse(
+            shipment.destination_hub_id,
+            'must not invent a hub for a non-Kerala India Post destination',
+        )
+        with self.assertRaises(UserError) as err:
+            self.env['logistics.hub'].get_hub_from_pincode(CHENNAI_PIN)
+        self.assertIn('Cannot find any Hub assigned to pincode', str(err.exception))
+
+    def test_own_network_seller_still_requires_dest_hub(self):
+        """Own-network create still raises when the destination has no hub."""
+        # A Kerala-table PIN whose district has no hub (not a national IP pin).
+        orphan_district = self.District.create({
+            'name': 'Hubless Test District',
+            'state_id': self.env.ref('base.state_in_kl').id,
+        })
+        orphan_pin = '699991'
+        self.assertFalse(self.env['logistics.hub'].search([
+            ('district_id', '=', orphan_district.id),
+        ]))
+        self.Pincode.create({
+            'name': orphan_pin,
+            'district_name': 'Hubless Test District',
+            'state_name': 'Kerala',
+        })
+        with self.assertRaises(UserError) as err:
+            self.env['logistics.shipment'].create(
+                self._shipment_vals(self.hub_seller, orphan_pin),
+            )
+        self.assertIn('Cannot find any Hub assigned to pincode', str(err.exception))
+        self.assertIn(orphan_pin, str(err.exception))
