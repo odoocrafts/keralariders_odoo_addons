@@ -246,8 +246,9 @@ class IndiapostBarcodeRange(models.Model):
         the shipment no longer matches the prefix (the EY Business Parcel
         bookings that predate product-bound ranges).
 
-        Barcodes released by a pre-scan seller cancel (``state=available``)
-        are preferred over minting a new serial from the range counter.
+        Only ``available`` pool rows are reused; barcodes voided by a
+        pre-scan cancel are never allocated again (India Post rejects
+        duplicate article numbers).
         """
         Barcode = self.env['logistics.indiapost.barcode'].sudo()
         if shipment:
@@ -353,26 +354,24 @@ class IndiapostBarcode(models.Model):
     def _ip_mark_rejected(self, note=None):
         self.write({'state': 'rejected', 'note': (note or '')[:255]})
 
-    def _ip_release_to_pool(self, note=None):
-        """Return barcodes to the allocatable pool for reuse.
+    def _ip_void_on_cancel(self, note=None):
+        """Retire barcodes so they cannot be allocated again.
 
-        Used only for seller/admin cancel before India Post has scanned the
-        ARN. Idempotent: already-available rows with no shipment stay put and
-        are never duplicated.
+        Pre-scan cancel must not return the ARN to ``available``: India Post
+        rejects the same article number on a later booking. Keeps
+        ``shipment_id`` for audit; ``allocate()`` only picks ``available``.
+        Idempotent if already void.
         """
-        release_note = (note or _('Released by pre-scan cancel'))[:255]
+        void_note = (note or _('Voided by pre-scan cancel'))[:255]
         for record in self:
-            if record.state == 'available' and not record.shipment_id:
-                continue
             if record.state == 'void':
-                raise UserError(_(
-                    'Barcode %s is void and cannot return to the pool.'
-                ) % record.barcode)
+                if void_note and record.note != void_note:
+                    record.write({'note': void_note})
+                continue
             record.write({
-                'shipment_id': False,
-                'state': 'available',
+                'state': 'void',
                 'booked_on': False,
-                'note': release_note,
+                'note': void_note,
             })
 
     def action_ip_void(self):

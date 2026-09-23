@@ -2452,7 +2452,11 @@ class Shipment(models.Model):
         return transaction, True
 
     def _ip_release_arn_on_cancel(self):
-        """Clear ARN on the shipment and return the barcode row to the pool."""
+        """Clear ARN display on the shipment; void the barcode (do not reuse).
+
+        India Post rejects duplicate article numbers, so cancelled ARNs stay
+        ``void`` and are never returned to the allocatable pool.
+        """
         self.ensure_one()
         barcode = self.indiapost_barcode_id
         article = (self.indiapost_article_number or '').strip()
@@ -2461,8 +2465,8 @@ class Shipment(models.Model):
                 ('barcode', '=', article),
             ], limit=1)
         if barcode:
-            barcode.sudo()._ip_release_to_pool(
-                note=_('Released by pre-scan cancel of %s') % (self.name or ''),
+            barcode.sudo()._ip_void_on_cancel(
+                note=_('Voided by pre-scan cancel of %s') % (self.name or ''),
             )
         self.sudo().write({
             'indiapost_article_number': False,
@@ -2506,8 +2510,8 @@ class Shipment(models.Model):
     def action_indiapost_cancel_pre_scan(self):
         """Cancel an India Post shipment before the pickup agent scans the ARN.
 
-        Credits the seller wallet for the Request Pickup debit, returns the
-        ARN to the local barcode pool, and marks the shipment cancelled.
+        Credits the seller wallet for the Request Pickup debit, voids the ARN
+        so it cannot be reallocated, and marks the shipment cancelled.
         Does not call any India Post cancel API (none exists on beextcustomer).
         Idempotent on retry.
         """

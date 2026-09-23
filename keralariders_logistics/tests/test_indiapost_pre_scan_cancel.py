@@ -1,4 +1,4 @@
-"""Pre-scan India Post cancel: wallet credit, ARN pool reuse, no live API."""
+"""Pre-scan India Post cancel: wallet credit, void ARN (no pool reuse)."""
 
 from odoo import fields as odoo_fields
 from odoo.exceptions import UserError
@@ -114,7 +114,7 @@ class TestIndiapostPreScanCancel(IndiapostHermeticMixin, TransactionCase):
             ('subject', 'ilike', 'booking cancelled'),
         ])
 
-    def test_pre_scan_cancel_credits_releases_arn_and_mails(self):
+    def test_pre_scan_cancel_credits_voids_arn_and_mails(self):
         shipment = self._new_ip_shipment()
         debit = abs(shipment.wallet_transaction_id.amount)
         arn = shipment.indiapost_article_number
@@ -128,8 +128,9 @@ class TestIndiapostPreScanCancel(IndiapostHermeticMixin, TransactionCase):
         self.assertFalse(shipment.indiapost_article_number)
         self.assertFalse(shipment.indiapost_barcode_id)
         barcode.invalidate_recordset()
-        self.assertEqual(barcode.state, 'available')
-        self.assertFalse(barcode.shipment_id)
+        self.assertEqual(barcode.state, 'void')
+        self.assertEqual(barcode.shipment_id, shipment)
+        self.assertIn('pre-scan cancel', (barcode.note or '').lower())
 
         credits = self._cancel_lines(shipment)
         self.assertEqual(len(credits), 1)
@@ -145,7 +146,7 @@ class TestIndiapostPreScanCancel(IndiapostHermeticMixin, TransactionCase):
         self.assertIn(awb, body)
         self.assertIn('returned', body.lower())
 
-        # Released ARN is preferred over minting a new serial on the same range.
+        # Cancelled ARN must not be reused; next allocate mints a new serial.
         others = self.Range.search([
             ('id', '!=', self.tt_range.id),
             ('environment', '=', 'sandbox'),
@@ -156,22 +157,23 @@ class TestIndiapostPreScanCancel(IndiapostHermeticMixin, TransactionCase):
             next_ship = self.env['logistics.shipment'].create({
                 'order_id': self.order.id,
                 'seller_id': self.seller.id,
-                'shipping_to_name': 'Reuse Customer',
-                'shipping_to_address': '99 Reuse Road',
+                'shipping_to_name': 'New Customer',
+                'shipping_to_address': '99 New Road',
                 'shipping_to_zip': '695001',
                 'shipping_to_mobile': '9876543211',
-                'item_description': 'Reuse article',
+                'item_description': 'New article',
                 'total_weight': 1.0,
                 'length_cm': 30,
                 'breadth_cm': 20,
                 'height_cm': 15,
             })
-            reused = self.Range.allocate(
+            allocated = self.Range.allocate(
                 shipment=next_ship, environment='sandbox')
-            self.assertEqual(reused, barcode)
-            self.assertEqual(reused.barcode, arn)
-            self.assertEqual(reused.state, 'reserved')
-            self.assertEqual(reused.shipment_id, next_ship)
+            self.assertNotEqual(allocated, barcode)
+            self.assertNotEqual(allocated.barcode, arn)
+            self.assertEqual(allocated.state, 'reserved')
+            self.assertEqual(allocated.shipment_id, next_ship)
+            self.assertEqual(barcode.state, 'void')
         finally:
             others.write({'active': True})
 
@@ -187,6 +189,8 @@ class TestIndiapostPreScanCancel(IndiapostHermeticMixin, TransactionCase):
         self.assertAlmostEqual(self.wallet.balance, balance, places=2)
         self.assertEqual(
             self.Barcode.search_count([('barcode', '=', article)]), 1)
+        barcode.invalidate_recordset()
+        self.assertEqual(barcode.state, 'void')
         self.assertEqual(len(self._outgoing_cancel_mails(shipment)), 1)
 
     def test_after_pickup_scan_event_refused(self):
