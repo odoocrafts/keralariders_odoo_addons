@@ -67,3 +67,18 @@
     white-space: nowrap;
     max-width: 100%;
 }
+
+/* /my/shipments Action column: portal tables clip cells (max-width 10rem +
+   ellipsis). Let primary buttons wrap onto a second line instead of hiding. */
+.o_portal_wrap .o_portal_my_doc_table td.kx-shipment-actions {
+    max-width: none;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: unset;
+}
+
+.o_portal_wrap .o_portal_my_doc_table td.kx-shipment-actions .btn,
+.o_portal_wrap .o_portal_my_doc_table td.kx-shipment-actions form {
+    margin-bottom: 0.25rem;
+    vertical-align: middle;
+}

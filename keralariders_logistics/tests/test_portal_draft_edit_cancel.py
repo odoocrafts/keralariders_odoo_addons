@@ -201,8 +201,15 @@ class TestPortalDraftEditCancel(IndiapostHermeticMixin, HttpCase):
             page.text,
             r'Cancel this draft shipment\? Nothing has been charged',
         )
-        # Request Pickup still present for drafts.
+        # Request Pickup visible for drafts (not clipped behind cell ellipsis)
+        # and requires a wallet-debit confirm before submit.
         self.assertIn('Request Pickup', page.text)
+        self.assertIn('action="/my/shipments/request_pickup"', page.text)
+        self.assertRegex(
+            page.text,
+            r"Request pickup for AWB %s\? .* will be deducted from your wallet\."
+            % re.escape(shipment.name),
+        )
 
     def test_portal_cancel_draft_no_wallet_credit(self):
         _order, shipment = self._create_draft()

@@ -260,8 +260,11 @@
                                     <a href="/my/wallet" class="btn btn-warning">Recharge Wallet</a>
                                 </t>
                                 <t t-else="">
+                                    <t t-set="pickup_confirm_amount"
+                                       t-value="'%s %.2f' % (order.currency_id.symbol, order.total_charges)"/>
                                     <form action="/my/orders/request_pickup" method="post"
-                                          class="kx-submit-once">
+                                          class="kx-submit-once"
+                                          t-attf-onsubmit="return confirm('Request pickup for {{order.name}}? {{pickup_confirm_amount}} will be deducted from your wallet.');">
                                         <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
                                         <input type="hidden" name="order_id" t-att-value="order.id"/>
                                         <input type="hidden" name="pickup_confirm_token" t-att-value="pickup_confirm_token"/>

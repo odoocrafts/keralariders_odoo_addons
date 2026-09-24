@@ -446,6 +446,8 @@ class TestPortalManualOrder(IndiapostHermeticMixin, HttpCase):
         self.assertIn('Requesting pickup...', listing.text)
         self.assertIn('name="shipment_id"', listing.text)
         self.assertIn('value="%s"' % shipment.id, listing.text)
+        self.assertIn('will be deducted from your wallet.', listing.text)
+        self.assertIn('Request pickup for AWB %s?' % shipment.name, listing.text)
         self.assertNotIn('/my/shipments/%s/print' % shipment.id, listing.text)
 
         get_legacy = self._print_redirect(

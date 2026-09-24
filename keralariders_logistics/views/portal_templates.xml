@@ -816,19 +816,24 @@
                                 </t>
                                 <t t-else="">—</t>
                             </td>
-                            <td class="text-end">
-                                <a t-attf-href="/my/shipments/#{shipment.id}"
-                                   class="btn btn-sm btn-outline-secondary me-1"
-                                   title="Details">
-                                    <i class="fa fa-eye"/>
-                                </a>
-                                <a t-if="shipment.state != 'order_added'"
-                                   t-attf-href="/my/shipments/#{shipment.id}/print"
-                                   class="btn btn-sm btn-outline-primary me-1 kx-print-awb"
-                                   title="Print AWB">
-                                    <i class="fa fa-print"/>
-                                </a>
+                            <td class="text-end kx-shipment-actions">
+                                <!-- Primary actions first so portal table cell clipping
+                                     (max-width + ellipsis) never hides Request Pickup. -->
                                 <t t-if="shipment.portal_draft_edit_allowed()">
+                                    <t t-set="pickup_confirm_amount"
+                                       t-value="'%s %.2f' % (shipment.currency_id.symbol, shipment.delivery_charges_total)"/>
+                                    <form action="/my/shipments/request_pickup" method="post"
+                                          class="kx-submit-once me-1" style="display:inline;"
+                                          t-attf-onsubmit="return confirm('Request pickup for AWB {{shipment.name}}? {{pickup_confirm_amount}} will be deducted from your wallet.');">
+                                        <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                                        <input type="hidden" name="shipment_id" t-att-value="shipment.id"/>
+                                        <button type="submit" class="btn btn-sm btn-success">
+                                            <span class="kx-submit-once-label">Request Pickup</span>
+                                            <span class="kx-submit-once-loading d-none">
+                                                <i class="fa fa-spinner fa-spin me-1"/> Requesting pickup...
+                                            </span>
+                                        </button>
+                                    </form>
                                     <a t-attf-href="/my/shipments/#{shipment.id}/edit"
                                        class="btn btn-sm btn-outline-secondary me-1"
                                        title="Edit">
@@ -844,17 +849,6 @@
                                             <span class="kx-submit-once-label">Cancel</span>
                                             <span class="kx-submit-once-loading d-none">
                                                 <i class="fa fa-spinner fa-spin me-1"/> Cancelling...
-                                            </span>
-                                        </button>
-                                    </form>
-                                    <form action="/my/shipments/request_pickup" method="post"
-                                          class="kx-submit-once" style="display:inline;">
-                                        <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
-                                        <input type="hidden" name="shipment_id" t-att-value="shipment.id"/>
-                                        <button type="submit" class="btn btn-sm btn-success">
-                                            <span class="kx-submit-once-label">Request Pickup</span>
-                                            <span class="kx-submit-once-loading d-none">
-                                                <i class="fa fa-spinner fa-spin me-1"/> Requesting pickup...
                                             </span>
                                         </button>
                                     </form>
@@ -885,6 +879,17 @@
                                         </button>
                                     </form>
                                 </t>
+                                <a t-attf-href="/my/shipments/#{shipment.id}"
+                                   class="btn btn-sm btn-outline-secondary me-1"
+                                   title="Details">
+                                    <i class="fa fa-eye"/>
+                                </a>
+                                <a t-if="shipment.state != 'order_added'"
+                                   t-attf-href="/my/shipments/#{shipment.id}/print"
+                                   class="btn btn-sm btn-outline-primary me-1 kx-print-awb"
+                                   title="Print AWB">
+                                    <i class="fa fa-print"/>
+                                </a>
                             </td>
                         </tr>
                     </t>
