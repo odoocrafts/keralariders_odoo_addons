@@ -9,6 +9,11 @@ from odoo.http import request
 from odoo.exceptions import AccessError, UserError, ValidationError
 from odoo.tools.misc import format_date
 
+from odoo.addons.keralariders_logistics.models import indiapost_common as ipc
+from odoo.addons.keralariders_logistics.models.indiapost_client import (
+    IndiapostApiError,
+)
+
 _logger = logging.getLogger(__name__)
 
 # Seller-facing labels for /my/cod_settlements (backend transfer_type keys unchanged).
@@ -383,18 +388,25 @@ class LogisticsPortal(CustomerPortal):
         district_id = _optional_int('shipping_to_district_id')
         state_id = _optional_int('shipping_to_state_id')
         allow_indiapost = bool(seller and seller._ip_uses_indiapost())
+        # India Post sellers must resolve the PIN itself; a Kerala district
+        # dropdown selection must not mask an invalid destination pincode.
+        raise_if_missing = bool(
+            require_known_pincode and (allow_indiapost or not district_id)
+        )
         resolved = request.env['logistics.district'].sudo().resolve_destination_from_pincode(
             pincode,
             allow_indiapost=allow_indiapost,
-            raise_if_missing=bool(require_known_pincode and not district_id),
+            raise_if_missing=raise_if_missing,
         )
         looked_up = resolved.get('district_id') if resolved else False
         if looked_up:
             district_id = district_id or looked_up.id
             state = resolved.get('state_id') or looked_up.state_id
             state_id = state_id or (state.id if state else False)
-        elif require_known_pincode and not district_id:
-            raise UserError(_("Unknown pincode %s") % pincode)
+        elif require_known_pincode and (allow_indiapost or not district_id):
+            raise UserError(
+                _('%s is not a valid delivery pincode.') % pincode
+            )
         return district_id, state_id
 
     def _portal_draft_shipment_vals(self, seller, post, order=None,
@@ -592,14 +604,46 @@ class LogisticsPortal(CustomerPortal):
     def _shipment_quote_after_create(shipment):
         """Price an India Post shipment right after creation.
 
-        Returns a short message for the seller. A rate lookup failure must not
-        undo a valid shipment, so the record is kept and simply flagged as
-        needing a quote; the wallet debit at pickup time re-quotes anyway.
+        Returns a short message for the seller. Transient rate lookup failures
+        must not undo a valid shipment (the wallet debit at pickup re-quotes).
+        An unknown destination pincode is not transient: re-raise so create
+        rolls back and the portal flashes a pink warning.
         """
         if not shipment.is_indiapost:
             return ''
         try:
             shipment.sudo()._ip_quote_and_store()
+        except (UserError, ValidationError) as exc:
+            message = exc.args[0] if exc.args else str(exc)
+            if ipc.is_pincode_not_found_message(message):
+                pin = ipc.extract_pincode_from_message(
+                    message, shipment.shipping_to_zip)
+                raise UserError(
+                    _('%s is not a valid delivery pincode.') % pin
+                ) from exc
+            _logger.warning(
+                'India Post rate lookup failed for new shipment %s: %s',
+                shipment.name, message,
+            )
+            return _(
+                'India Post rates could not be fetched just now, so the '
+                'delivery charge will be confirmed when you request pickup.'
+            )
+        except IndiapostApiError as exc:
+            if ipc.is_pincode_not_found_message(exc.message):
+                pin = ipc.extract_pincode_from_message(
+                    exc.message, shipment.shipping_to_zip)
+                raise UserError(
+                    _('%s is not a valid delivery pincode.') % pin
+                ) from exc
+            _logger.warning(
+                'India Post rate lookup failed for new shipment %s',
+                shipment.name, exc_info=True,
+            )
+            return _(
+                'India Post rates could not be fetched just now, so the '
+                'delivery charge will be confirmed when you request pickup.'
+            )
         except Exception:
             _logger.warning(
                 'India Post rate lookup failed for new shipment %s',

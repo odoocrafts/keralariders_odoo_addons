@@ -240,7 +240,7 @@ X-Api-Secret: YOUR_API_SECRET</pre>
                                 <tr><td>401</td><td>unauthorized</td><td>Missing, invalid, disabled or revoked key</td></tr>
                                 <tr><td>402</td><td>insufficient_wallet</td><td>Recharge before requesting pickup</td></tr>
                                 <tr><td>400</td><td>validation_error</td><td>Missing/invalid fields</td></tr>
-                                <tr><td>400</td><td>not_serviceable</td><td>Unknown pincode</td></tr>
+                                <tr><td>400</td><td>not_serviceable</td><td>Invalid delivery pincode</td></tr>
                                 <tr><td>404</td><td>not_found</td><td>AWB does not belong to this seller</td></tr>
                                 <tr><td>409</td><td>conflict / not_eligible</td><td>Idempotency mismatch, or pickup/return not allowed in this state</td></tr>
                                 <tr><td>429</td><td>rate_limited</td><td>Daily key cap reached</td></tr>

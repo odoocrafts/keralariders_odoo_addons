@@ -1569,7 +1569,16 @@ class Shipment(models.Model):
                     'Shipment %s is fulfilled through the KeralaXpress hub '
                     'network, so there is no India Post rate to fetch.'
                 ) % record.name)
-            record._ip_quote_and_store(use_cache=False)
+            try:
+                record._ip_quote_and_store(use_cache=False)
+            except IndiapostApiError as exc:
+                if ipc.is_pincode_not_found_message(exc.message):
+                    pin = ipc.extract_pincode_from_message(
+                        exc.message, record.shipping_to_zip)
+                    raise UserError(
+                        _('%s is not a valid delivery pincode.') % pin
+                    ) from exc
+                raise UserError(exc.user_message()) from exc
         return self._ip_notify(
             _('Rates refreshed'),
             _('Fetched live India Post rates for %s shipment(s).') % len(self),

@@ -122,7 +122,7 @@ class TestHybridPincodeLookup(IndiapostHermeticMixin, TransactionCase):
                 self.District.resolve_destination_from_pincode(
                     CHENNAI_PIN, allow_indiapost=False, raise_if_missing=True,
                 )
-            self.assertIn('Unknown pincode', str(err.exception))
+            self.assertIn('not a valid delivery pincode', str(err.exception))
             self.assertEqual(fetch.call_count, 0)
         self.assertFalse(self.Office.search([('pincode', '=', CHENNAI_PIN)]))
         self.assertFalse(self.Pincode.search([('name', '=', CHENNAI_PIN)]))
@@ -150,7 +150,7 @@ class TestHybridPincodeLookup(IndiapostHermeticMixin, TransactionCase):
                 self.District.resolve_destination_from_pincode(
                     CHENNAI_PIN, allow_indiapost=True, raise_if_missing=True,
                 )
-        self.assertIn('Unknown pincode', str(err.exception))
+        self.assertIn('not a valid delivery pincode', str(err.exception))
         self.assertEqual(self.District.search_count([]), before)
         self.assertFalse(self.Pincode.search([('name', '=', CHENNAI_PIN)]))
 

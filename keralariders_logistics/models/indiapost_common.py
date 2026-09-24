@@ -462,6 +462,42 @@ def normalize_pincode(value, label='Pincode'):
     return pincode
 
 
+def invalid_delivery_pincode_message(pincode):
+    """Seller-facing sentence when India Post rejects a destination PIN."""
+    digits = re.sub(r'\D', '', str(pincode or ''))
+    if PINCODE_RE.match(digits):
+        return '%s is not a valid delivery pincode.' % digits
+    return 'That is not a valid delivery pincode.'
+
+
+def extract_pincode_from_message(message, fallback=''):
+    """Best 6-digit PIN mentioned in an India Post / lookup error string."""
+    match = re.search(r'\b(\d{6})\b', message or '')
+    if match:
+        return match.group(1)
+    digits = re.sub(r'\D', '', str(fallback or ''))
+    return digits if PINCODE_RE.match(digits) else ''
+
+
+def is_pincode_not_found_message(message):
+    """True when the failure is an unknown / unserviceable Indian PIN.
+
+    Format-valid six-digit pins still fail when India Post has no office
+    (``Destination pincode 656875 not found``) or our lookup finds nothing
+    (``Unknown pincode …`` / empty pincode-search).
+    """
+    text = (message or '').lower()
+    if 'not a valid delivery pincode' in text:
+        return True
+    if 'unknown pincode' in text:
+        return True
+    if 'no bookable post office' in text:
+        return True
+    if 'pincode' in text and 'not found' in text:
+        return True
+    return False
+
+
 def normalize_mobile(value, label='Mobile number'):
     """Ten digits starting 6-9, tolerating +91 / 0 prefixes and separators."""
     digits = re.sub(r'\D', '', str(value or ''))

@@ -239,7 +239,7 @@ class District(models.Model):
         }
         if not pin:
             if raise_if_missing:
-                raise UserError(_('Unknown pincode %s') % (pincode or ''))
+                raise UserError(_('%s is not a valid delivery pincode.') % (pincode or ''))
             return empty
 
         local = self.get_district_from_pincode(pin)
@@ -258,7 +258,7 @@ class District(models.Model):
 
         if not allow_indiapost:
             if raise_if_missing:
-                raise UserError(_('Unknown pincode %s') % pin)
+                raise UserError(_('%s is not a valid delivery pincode.') % pin)
             return empty
 
         from . import indiapost_common as ipc
@@ -278,6 +278,10 @@ class District(models.Model):
             _logger.warning(
                 'India Post pincode-search failed for %s: %s', pin, exc)
             if raise_if_missing:
+                if ipc.is_pincode_not_found_message(exc.message or str(exc)):
+                    raise UserError(
+                        _('%s is not a valid delivery pincode.') % pin
+                    ) from exc
                 raise UserError(_(
                     'India Post could not verify pincode %s (service '
                     'unavailable). Try again later.'
@@ -290,12 +294,18 @@ class District(models.Model):
                 message = str(exc.args[0] if exc.args else exc)
                 if 'could not verify' in message.lower():
                     raise
-                raise UserError(_('Unknown pincode %s') % pin) from exc
+                if ipc.is_pincode_not_found_message(message):
+                    raise UserError(
+                        _('%s is not a valid delivery pincode.') % pin
+                    ) from exc
+                raise UserError(
+                    _('%s is not a valid delivery pincode.') % pin
+                ) from exc
             return empty
 
         if not office:
             if raise_if_missing:
-                raise UserError(_('Unknown pincode %s') % pin)
+                raise UserError(_('%s is not a valid delivery pincode.') % pin)
             return empty
 
         city = (office.city_name or office.taluk_name or '').strip()

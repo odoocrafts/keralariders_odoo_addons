@@ -234,14 +234,18 @@ class IndiapostTariff(models.AbstractModel):
 
         cached = bool(entry)
         if not entry:
-            response = self.env['logistics.indiapost.client'].call(
-                'GET', self._ip_tariff_path(article_type),
-                params=self._ip_tariff_params(
-                    source_pincode, destination_pincode, billed_g, length,
-                    breadth, height, insurance_value=insurance_value,
-                    article_type=article_type, **flags),
-                operation='tariff', shipment=shipment, settings=settings,
-            )
+            try:
+                response = self.env['logistics.indiapost.client'].call(
+                    'GET', self._ip_tariff_path(article_type),
+                    params=self._ip_tariff_params(
+                        source_pincode, destination_pincode, billed_g, length,
+                        breadth, height, insurance_value=insurance_value,
+                        article_type=article_type, **flags),
+                    operation='tariff', shipment=shipment, settings=settings,
+                )
+            except IndiapostApiError as exc:
+                self._ip_raise_quote_api_error(
+                    exc, source_pincode, destination_pincode)
             entry = self._ip_store_quote(
                 cache_key, source_pincode, destination_pincode, billed_g,
                 length, breadth, height, vas_key,
@@ -276,6 +280,27 @@ class IndiapostTariff(models.AbstractModel):
         return quote
 
     @api.model
+    def _ip_raise_quote_api_error(self, exc, source_pincode, destination_pincode):
+        """Turn India Post tariff failures into seller-safe errors when we can.
+
+        Unknown destination / origin PINs become a plain :class:`UserError` so
+        the portal flashes a pink warning and backend Get Quote shows a dialog
+        instead of an ``IndiapostApiError`` RPC traceback. Other API failures
+        re-raise unchanged for callers that soft-fail or wrap them.
+        """
+        message = exc.message or str(exc)
+        if ipc.is_pincode_not_found_message(message):
+            lower = message.lower()
+            fallback = destination_pincode
+            if 'origin' in lower or 'source' in lower:
+                fallback = source_pincode
+            pin = ipc.extract_pincode_from_message(message, fallback)
+            raise UserError(
+                _('%s is not a valid delivery pincode.') % pin
+            ) from exc
+        raise exc
+
+    @api.model
     def quote_safe(self, *args, **kwargs):
         """Like :meth:`quote` but never raises.
 
@@ -291,6 +316,15 @@ class IndiapostTariff(models.AbstractModel):
             return {'ok': False, 'error': message, 'blocking': True}
         except IndiapostApiError as exc:
             _logger.warning('India Post tariff lookup failed: %s', exc.message)
+            if ipc.is_pincode_not_found_message(exc.message):
+                pin = ipc.extract_pincode_from_message(
+                    exc.message, kwargs.get('destination_pincode') or (
+                        args[1] if len(args) > 1 else ''))
+                return {
+                    'ok': False,
+                    'error': _('%s is not a valid delivery pincode.') % pin,
+                    'blocking': True,
+                }
             # HTTP 422 means the article itself is not carriable and the message
             # is genuinely useful to the seller. Anything else is our problem,
             # not theirs.

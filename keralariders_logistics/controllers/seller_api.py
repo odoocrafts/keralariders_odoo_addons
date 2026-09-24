@@ -224,7 +224,8 @@ class SellerApiController(http.Controller):
         lower = (message or '').lower()
         if 'insufficient' in lower and 'wallet' in lower:
             return 'insufficient_wallet', 402
-        if 'unknown pincode' in lower or 'cannot find any hub' in lower:
+        if 'unknown pincode' in lower or 'not a valid delivery pincode' in lower \
+                or 'cannot find any hub' in lower:
             return 'not_serviceable', 400
         if 'only draft' in lower or 'not eligible' in lower or 'can only request' in lower:
             return 'not_eligible', 409
