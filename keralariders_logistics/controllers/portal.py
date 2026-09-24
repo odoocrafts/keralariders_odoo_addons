@@ -325,6 +325,7 @@ class LogisticsPortal(CustomerPortal):
             'seller': seller,
             'districts': districts,
             'states': states,
+            'shipment': False,
             'hide_indiapost_pickup_date': False,
             'error': request.session.pop('error', None),
             **self._shipment_form_indiapost_values(seller),
@@ -1316,12 +1317,17 @@ class LogisticsPortal(CustomerPortal):
 
         return self._portal_apply_pickup_request(order, '/my/shipments')
 
+    def _portal_shipment_cancel_redirect(self, shipment, fallback):
+        if shipment.order_id:
+            return request.redirect('/my/orders/%s' % shipment.order_id.id)
+        return request.redirect(fallback or '/my/shipments')
+
     @http.route(
         ['/my/shipments/<int:shipment_id>/cancel'],
         type='http', auth='user', website=True, methods=['POST'],
     )
     def portal_my_shipment_cancel(self, shipment_id=None, **post):
-        """Seller cancel of an India Post booking before ARN scan."""
+        """Seller cancel: draft (Order Added) or India Post pre-scan booking."""
         seller = self._portal_seller()
         if not seller:
             return request.redirect('/my')
@@ -1339,9 +1345,30 @@ class LogisticsPortal(CustomerPortal):
             request.session['success'] = _(
                 "Shipment %s is already cancelled."
             ) % shipment.name
-            if shipment.order_id:
-                return request.redirect('/my/orders/%s' % shipment.order_id.id)
-            return request.redirect(redirect)
+            return self._portal_shipment_cancel_redirect(shipment, redirect)
+
+        if shipment.portal_draft_cancel_allowed():
+            try:
+                had_debit = bool(shipment.wallet_transaction_id)
+                shipment.sudo().action_cancel_order_added()
+            except (UserError, AccessError) as exc:
+                request.session['error'] = (
+                    exc.args[0] if exc.args else str(exc)
+                )
+                return self._portal_shipment_cancel_redirect(
+                    shipment, redirect)
+            if had_debit:
+                request.session['success'] = _(
+                    "Shipment %s cancelled. An unexpected shipping charge "
+                    "was returned to your wallet."
+                ) % shipment.name
+            else:
+                request.session['success'] = _(
+                    "Shipment %s cancelled. Nothing was charged to your "
+                    "wallet."
+                ) % shipment.name
+            return self._portal_shipment_cancel_redirect(
+                shipment, '/my/shipments')
 
         if not shipment.portal_indiapost_cancel_allowed():
             request.session['error'] = _(
@@ -1349,9 +1376,7 @@ class LogisticsPortal(CustomerPortal):
                 "already have scanned the article, or pickup is past the "
                 "cancellable stage."
             )
-            if shipment.order_id:
-                return request.redirect('/my/orders/%s' % shipment.order_id.id)
-            return request.redirect(redirect)
+            return self._portal_shipment_cancel_redirect(shipment, redirect)
 
         try:
             # Ownership checked above as the portal user; wallet credit, ARN
@@ -1362,17 +1387,102 @@ class LogisticsPortal(CustomerPortal):
             ).action_indiapost_cancel_pre_scan()
         except (UserError, AccessError) as exc:
             request.session['error'] = exc.args[0] if exc.args else str(exc)
-            if shipment.order_id:
-                return request.redirect('/my/orders/%s' % shipment.order_id.id)
-            return request.redirect(redirect)
+            return self._portal_shipment_cancel_redirect(shipment, redirect)
 
         request.session['success'] = _(
             "Booking for %s cancelled. The shipping charge has been "
             "returned to your wallet."
         ) % shipment.name
-        if shipment.order_id:
-            return request.redirect('/my/orders/%s' % shipment.order_id.id)
-        return request.redirect('/my/shipments')
+        return self._portal_shipment_cancel_redirect(
+            shipment, '/my/shipments')
+
+    @http.route(
+        ['/my/shipments/<int:shipment_id>/edit'],
+        type='http', auth='user', website=True, methods=['GET', 'POST'],
+    )
+    def portal_my_shipment_edit(self, shipment_id=None, **post):
+        """Edit a draft (Order Added) shipment before Request Pickup."""
+        seller = self._portal_seller()
+        if not seller:
+            return request.redirect('/my')
+
+        shipment = request.env['logistics.shipment'].search([
+            ('id', '=', shipment_id),
+            ('seller_id', '=', seller.id),
+        ], limit=1)
+        if not shipment:
+            request.session['error'] = _("Shipment not found.")
+            return request.redirect('/my/shipments')
+
+        back = (
+            '/my/orders/%s' % shipment.order_id.id
+            if shipment.order_id else '/my/shipments'
+        )
+
+        if not shipment.portal_draft_edit_allowed():
+            request.session['error'] = _(
+                "Shipment %s can only be edited while status is Order Added."
+            ) % shipment.name
+            return request.redirect(back)
+
+        if request.httprequest.method == 'POST':
+            try:
+                warning = self._portal_update_draft_shipment(
+                    shipment, seller, post,
+                )
+                message = _("Shipment '%s' updated.") % shipment.name
+                request.session['success'] = (
+                    f"{message} {warning}".strip()
+                )
+                return request.redirect(back)
+            except (UserError, ValidationError) as exc:
+                request.session['error'] = (
+                    exc.args[0] if exc.args else str(exc)
+                )
+                return request.redirect(
+                    '/my/shipments/%s/edit' % shipment.id
+                )
+            except Exception as exc:
+                request.session['error'] = str(exc)
+                return request.redirect(
+                    '/my/shipments/%s/edit' % shipment.id
+                )
+
+        values = self._portal_shipment_form_values(
+            seller,
+            page_name='shipment_edit',
+            shipment=shipment,
+            hide_indiapost_pickup_date=bool(
+                shipment.order_id and shipment.is_indiapost
+            ),
+        )
+        return request.render(
+            'keralariders_logistics.portal_my_shipment_edit', values,
+        )
+
+    def _portal_update_draft_shipment(self, shipment, seller, post):
+        """Rewrite draft shipment fields and re-quote delivery charge."""
+        if shipment.state != 'order_added':
+            raise UserError(_(
+                "Shipment %s can only be edited while status is Order Added."
+            ) % shipment.name)
+        vals = self._portal_draft_shipment_vals(
+            seller, post, order=shipment.order_id or None,
+            require_known_pincode=True,
+        )
+        # Keep identity / lifecycle; never let the form retarget seller or state.
+        for key in ('seller_id', 'state', 'order_id', 'billing_same_as_shipping'):
+            vals.pop(key, None)
+        # Savepoint so an invalid India Post PIN (raised from re-quote) does
+        # not leave a bad destination on the draft.
+        with request.env.cr.savepoint():
+            shipment.sudo().write(vals)
+            if shipment.order_payment_type == 'cod':
+                shipment.sudo().cod_amount = shipment.total_order_value
+            else:
+                shipment.sudo().cod_amount = 0.0
+            warning = self._shipment_quote_after_create(shipment)
+        return warning
 
     @http.route(['/my/shipments/<int:shipment_id>/print'], type='http',
                 auth="user", website=True)

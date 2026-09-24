@@ -2333,13 +2333,70 @@ class Shipment(models.Model):
             shipment._lock_route()
         return True
 
+    def portal_draft_cancel_allowed(self):
+        """Seller portal: Cancel while still Order Added (pre-Request Pickup)."""
+        self.ensure_one()
+        return self.state == 'order_added'
+
+    def portal_draft_edit_allowed(self):
+        """Seller portal: Edit only while still Order Added."""
+        self.ensure_one()
+        return self.state == 'order_added'
+
+    def action_cancel_order_added(self):
+        """Cancel a draft (Order Added) shipment before Request Pickup.
+
+        Wallet is not normally debited yet. If a debit somehow exists, credit
+        it once with ``IP-CANCEL:{id}`` so funds are not stuck. A reserved
+        ARN is voided (not returned to the pool). Does not call India Post.
+        Idempotent on retry. Own-network drafts use the same path.
+        """
+        for record in self:
+            if record.state == 'cancelled':
+                continue
+            if record.state != 'order_added':
+                raise UserError(_(
+                    "Shipment %s can only be cancelled as a draft while "
+                    "status is Order Added (current status: %s)."
+                ) % (record.name, record.state))
+
+            self.env.cr.execute(
+                'SELECT id FROM logistics_shipment WHERE id = %s FOR UPDATE',
+                (record.id,),
+            )
+            record.invalidate_recordset()
+            if record.state == 'cancelled':
+                continue
+            if record.state != 'order_added':
+                raise UserError(_(
+                    "Shipment %s can only be cancelled as a draft while "
+                    "status is Order Added (current status: %s)."
+                ) % (record.name, record.state))
+
+            # Unexpected debit only — never invent a credit from the quote.
+            if record.wallet_transaction_id:
+                record._ip_credit_cancel_wallet()
+
+            if record.indiapost_article_number or record.indiapost_barcode_id:
+                record._ip_release_arn_on_cancel()
+
+            record._create_custody_event(
+                'status_override',
+                to_custodian=record.custodian_type,
+                note=_("Draft cancelled by %s before Request Pickup.")
+                % self.env.user.name,
+            )
+            record._write_with_state({'state': 'cancelled'})
+        return True
+
     def action_cancel_shipment(self):
         """Admin cancel — preferred over free statusbar clicks.
 
-        India Post shipments that are still awaiting the pickup scan use the
-        pre-scan path (wallet credit + ARN pool release). Own-network and
-        post-scan India Post cancels keep the historic behaviour (no automatic
-        refund).
+        Draft (Order Added) cancels void any reserved ARN and credit an
+        unexpected wallet debit. India Post shipments awaiting the pickup
+        scan use the pre-scan path (wallet credit + ARN void). Own-network
+        and post-scan India Post cancels keep the historic behaviour (no
+        automatic refund).
         """
         for shipment in self:
             if shipment.state in ('delivered', 'returned'):
@@ -2348,6 +2405,9 @@ class Shipment(models.Model):
                     % (shipment.name, shipment.state)
                 )
             if shipment.state == 'cancelled':
+                continue
+            if shipment.state == 'order_added':
+                shipment.action_cancel_order_added()
                 continue
             if (shipment.fulfilment_method == 'indiapost'
                     and shipment._ip_can_cancel_pre_scan()):
