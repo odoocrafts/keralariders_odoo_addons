@@ -268,16 +268,21 @@ class TestAwbPaperSize(IndiapostHermeticMixin, TransactionCase):
         self.assertIn('page_height">150<', source)
         self.assertIn('margin_right">3<', source)
         self.assertIn('width: 94mm', source)
+        self.assertIn('max-height: 144mm', source)
         self.assertIn('box-sizing: border-box', source)
         self.assertIn('max-width: 100%', source)
         self.assertNotIn('width: 96mm', source)
         self.assertNotIn('overflow: hidden; font-family', source)
+        self.assertIn('kx-label-item-text', source)
+        self.assertIn('-webkit-line-clamp: 2', source)
+        self.assertIn('_awb_label_item_description()', source)
         self.assertIn('kx-awb-money', source)
         self.assertIn('t-out="o._awb_format_money(o.cod_amount)"', source)
         self.assertNotIn('t-esc="o._awb_format_money', source)
         self.assertIn('docs._awb_money_font_css()', source)
         self.assertIn('<meta charset="utf-8"/>', source)
         self.assertNotIn('t-field="o.cod_amount"', source)
+        self.assertNotIn('t-field="o.item_description"', source)
         self.assertIn('portal_indiapost_arn()', source)
         self.assertIn('_awb_label_top_barcode_img_src()', source)
         self.assertIn('awb-indiapost-barcode', source)
@@ -320,6 +325,27 @@ class TestAwbPaperSize(IndiapostHermeticMixin, TransactionCase):
         self.assertNotIn('₹', html)
         self.assertNotIn('\u20b9', html)
         self.assertNotIn('&amp;#8377;', html)
+
+    def test_100x150_item_description_clamped_on_label(self):
+        long_desc = (
+            'BOAT BLUE wireless earbuds with charging case and extra long '
+            'product marketing copy that must not force a second thermal page'
+        )
+        shipment = self._new_shipment(
+            self.ip_seller,
+            item_description=long_desc + '\n\nsecond paragraph',
+        )
+        clamped = shipment._awb_label_item_description()
+        self.assertNotIn('\n', clamped)
+        self.assertLessEqual(len(clamped), 96)
+        self.assertTrue(clamped.endswith('…'))
+        self.assertIn('BOAT BLUE', clamped)
+        html = self._label_html(shipment)
+        self.assertIn('kx-label-item-text', html)
+        self.assertIn('BOAT BLUE', html)
+        self.assertNotIn('second paragraph', html)
+        self.assertIn('max-height: 144mm', html)
+        self.assertIn('-webkit-line-clamp: 2', html)
 
 
 @tagged('post_install', '-at_install')

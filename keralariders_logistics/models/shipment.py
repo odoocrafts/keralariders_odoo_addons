@@ -369,6 +369,18 @@ class Shipment(models.Model):
             return (label or 'INDIA POST').upper()
         return 'KERALAXPRESS'
 
+    def _awb_label_item_description(self, max_chars=96):
+        """Item line for the 100×150 label: single paragraph, hard length cap.
+
+        QWeb also CSS-clamps to two lines; this keeps unbroken strings from
+        blowing the thermal page height (wkhtmltopdf ignores td max-height).
+        """
+        self.ensure_one()
+        text = ' '.join((self.item_description or '').split())
+        if len(text) <= max_chars:
+            return text
+        return text[: max_chars - 1].rstrip(' ,.;:-') + '…'
+
     def _awb_html_currency_symbol(self):
         """ASCII-only currency mark for AWB HTML (numeric entities, never raw ₹).
 

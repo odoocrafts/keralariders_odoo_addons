@@ -23,35 +23,36 @@
         <t t-set="customer_phone" t-value="o._awb_customer_phone()"/>
         <t t-set="is_ip" t-value="o.fulfilment_method == 'indiapost'"/>
         <t t-set="arn" t-value="o.portal_indiapost_arn() or ''"/>
+        <t t-set="item_desc" t-value="o._awb_label_item_description()"/>
         <div class="page kx-label-100x150">
             <table>
                 <tr>
-                    <td class="kx-label-kx-logo" style="width: 50%; border-bottom: 2px solid #000; padding: 2mm 2mm 1.5mm 2mm; vertical-align: middle;">
-                        <img t-if="company.logo" t-att-src="image_data_uri(company.logo)" style="max-width: 36mm; max-height: 10mm;" alt="KeralaXpress"/>
-                        <span t-else="" class="kx-label-kx-name" style="font-size: 12px; font-weight: 900; letter-spacing: 0.4px;">KERALAXPRESS</span>
+                    <td class="kx-label-kx-logo" style="width: 50%; border-bottom: 2px solid #000; padding: 1mm 1.5mm; vertical-align: middle;">
+                        <img t-if="company.logo" t-att-src="image_data_uri(company.logo)" style="max-width: 34mm; max-height: 8mm;" alt="KeralaXpress"/>
+                        <span t-else="" class="kx-label-kx-name" style="font-size: 11px; font-weight: 900; letter-spacing: 0.4px;">KERALAXPRESS</span>
                     </td>
-                    <td style="width: 50%; border-bottom: 2px solid #000; padding: 2mm 2mm 1.5mm 2mm; text-align: right; vertical-align: middle;">
+                    <td style="width: 50%; border-bottom: 2px solid #000; padding: 1mm 1.5mm; text-align: right; vertical-align: middle;">
                         <img t-if="is_ip" t-att-src="o._awb_indiapost_logo_data_uri()"
                              class="awb-indiapost-logo"
-                             style="max-width: 36mm; max-height: 10mm;"
+                             style="max-width: 34mm; max-height: 8mm;"
                              alt="India Post"/>
                     </td>
                 </tr>
             </table>
             <table style="border-top: 0;">
                 <tr>
-                    <td class="kx-label-service" style="width: 22%; border-right: 2px solid #000; padding: 2mm; text-align: center; vertical-align: middle;">
-                        <div style="border: 2px solid #000; display: inline-block; min-width: 12mm; padding: 1mm 1.5mm; font-size: 22px; font-weight: 900; line-height: 1.1; letter-spacing: 1px;">
+                    <td class="kx-label-service" style="width: 22%; border-right: 2px solid #000; padding: 1mm; text-align: center; vertical-align: middle;">
+                        <div style="border: 2px solid #000; display: inline-block; min-width: 11mm; padding: 0.6mm 1.2mm; font-size: 20px; font-weight: 900; line-height: 1.05; letter-spacing: 1px;">
                             <t t-esc="o._awb_label_service_code()"/>
                         </div>
-                        <div style="font-size: 11px; font-weight: 900; margin-top: 1.5mm;" t-field="o.shipping_to_zip"/>
+                        <div style="font-size: 10px; font-weight: 900; margin-top: 1mm;" t-field="o.shipping_to_zip"/>
                     </td>
-                    <td style="width: 53%; padding: 1.5mm 1mm; text-align: center; vertical-align: middle;">
+                    <td style="width: 53%; padding: 1mm; text-align: center; vertical-align: middle;">
                         <img t-att-src="o._awb_label_top_barcode_img_src()"
                              class="awb-indiapost-barcode"
-                             style="width: 100%; max-width: 44mm; height: 12mm; margin: 0 auto; display: block;"
+                             style="width: 100%; max-width: 44mm; height: 10mm; margin: 0 auto; display: block;"
                              alt="Shipping Barcode"/>
-                        <div class="awb-indiapost-article" style="font-size: 8px; font-weight: 700; margin-top: 0.5mm; letter-spacing: 0.3px;">
+                        <div class="awb-indiapost-article" style="font-size: 8px; font-weight: 700; margin-top: 0.4mm; letter-spacing: 0.3px;">
                             <t t-if="arn">
                                 <span t-esc="arn"/>
                             </t>
@@ -60,23 +61,23 @@
                             </t>
                         </div>
                     </td>
-                    <td style="width: 25%; padding: 1.5mm 1mm; text-align: center; vertical-align: middle;">
+                    <td style="width: 25%; padding: 1mm; text-align: center; vertical-align: middle;">
                         <img t-att-src="o._awb_label_qr_img_src()"
                              class="kx-label-qr"
-                             style="width: 16mm; height: 16mm; margin: 0 auto; display: block;"
+                             style="width: 14mm; height: 14mm; margin: 0 auto; display: block;"
                              alt="Tracking QR"/>
                     </td>
                 </tr>
                 <tr>
-                    <td colspan="3" class="kx-label-service-name" style="border-top: 2px solid #000; padding: 1.2mm 2mm; font-size: 13px; font-weight: 900; letter-spacing: 0.6px; text-transform: uppercase;">
+                    <td colspan="3" class="kx-label-service-name" style="border-top: 2px solid #000; padding: 0.8mm 1.5mm; font-size: 11px; font-weight: 900; letter-spacing: 0.5px; text-transform: uppercase;">
                         <t t-esc="o._awb_label_service_name()"/>
                     </td>
                 </tr>
                 <tr>
-                    <td colspan="3" class="kx-label-from" style="border-top: 2px solid #000; padding: 1.5mm 2mm; font-size: 8px; line-height: 1.25; vertical-align: top;">
-                        <div style="font-size: 7px; font-weight: 700; letter-spacing: 0.4px; margin-bottom: 0.4mm;">FROM</div>
+                    <td colspan="3" class="kx-label-from" style="border-top: 2px solid #000; padding: 1mm 1.5mm; font-size: 7px; line-height: 1.2; vertical-align: top;">
+                        <div style="font-size: 6px; font-weight: 700; letter-spacing: 0.4px; margin-bottom: 0.3mm;">FROM</div>
                         <div class="text-uppercase" style="font-weight: 700;"><t t-esc="seller_addr['name']"/></div>
-                        <div>
+                        <div class="kx-label-from-addr">
                             <t t-esc="seller_addr['street']"/>
                             <t t-if="seller_addr['district']">, <t t-esc="seller_addr['district']"/></t>
                             <t t-if="seller_addr['state']">, <t t-esc="seller_addr['state']"/></t>
@@ -90,51 +91,51 @@
                     </td>
                 </tr>
                 <tr>
-                    <td colspan="3" class="kx-label-shipto" style="border-top: 2px solid #000; padding: 2mm; font-size: 11px; line-height: 1.3; vertical-align: top;">
-                        <div style="font-size: 7px; font-weight: 700; letter-spacing: 0.4px; margin-bottom: 0.6mm;">SHIP TO</div>
-                        <div class="text-uppercase" style="font-size: 14px; font-weight: 900;"><span t-field="o.shipping_to_name"/></div>
-                        <div>
+                    <td colspan="3" class="kx-label-shipto" style="border-top: 2px solid #000; padding: 1.2mm 1.5mm; font-size: 9px; line-height: 1.25; vertical-align: top;">
+                        <div style="font-size: 6px; font-weight: 700; letter-spacing: 0.4px; margin-bottom: 0.4mm;">SHIP TO</div>
+                        <div class="text-uppercase" style="font-size: 12px; font-weight: 900;"><span t-field="o.shipping_to_name"/></div>
+                        <div class="kx-label-shipto-addr">
                             <span t-field="o.shipping_to_address"/>
                             <t t-if="o.shipping_to_district_id">, <span t-field="o.shipping_to_district_id"/></t>
                             <t t-if="o.shipping_to_state_id">, <span t-field="o.shipping_to_state_id"/></t>
                         </div>
-                        <div style="font-size: 13px; font-weight: 900; margin-top: 0.8mm;">PIN <span t-field="o.shipping_to_zip"/></div>
+                        <div style="font-size: 11px; font-weight: 900; margin-top: 0.5mm;">PIN <span t-field="o.shipping_to_zip"/></div>
                         <t t-if="customer_phone">
-                            <div style="font-size: 12px; font-weight: 700; margin-top: 0.4mm;">Mob: <t t-esc="customer_phone"/></div>
+                            <div style="font-size: 10px; font-weight: 700; margin-top: 0.2mm;">Mob: <t t-esc="customer_phone"/></div>
                         </t>
                     </td>
                 </tr>
                 <tr>
-                    <td colspan="2" style="width: 62%; border-top: 2px solid #000; border-right: 2px solid #000; padding: 1.5mm 2mm; text-align: center; vertical-align: middle;">
+                    <td colspan="2" style="width: 62%; border-top: 2px solid #000; border-right: 2px solid #000; padding: 1mm 1.5mm; text-align: center; vertical-align: middle;">
                         <t t-if="o.order_payment_type == 'cod'">
-                            <div style="font-size: 16px; font-weight: 900; border: 2px solid #000; display: inline-block; padding: 0.8mm 3mm; letter-spacing: 1px;">COD</div>
-                            <div class="kx-awb-money" style="font-size: 12px; font-weight: 700; margin-top: 1mm;">
+                            <div style="font-size: 14px; font-weight: 900; border: 2px solid #000; display: inline-block; padding: 0.5mm 2.5mm; letter-spacing: 1px;">COD</div>
+                            <div class="kx-awb-money" style="font-size: 11px; font-weight: 700; margin-top: 0.6mm;">
                                 <t t-out="o._awb_format_money(o.cod_amount)"/>
                             </div>
                         </t>
                         <t t-else="">
-                            <div style="font-size: 16px; font-weight: 900; letter-spacing: 1px;">PREPAID</div>
+                            <div style="font-size: 14px; font-weight: 900; letter-spacing: 1px;">PREPAID</div>
                         </t>
                     </td>
-                    <td style="width: 38%; border-top: 2px solid #000; padding: 1.5mm 2mm; font-size: 8px; vertical-align: middle;">
+                    <td style="width: 38%; border-top: 2px solid #000; padding: 1mm 1.5mm; font-size: 8px; vertical-align: middle;">
                         <div><strong>Wt</strong> <span t-field="o.total_weight"/> kg</div>
                         <div><strong>Date</strong> <span t-field="o.order_date" t-options="{'widget': 'date'}"/></div>
                     </td>
                 </tr>
-                <tr t-if="o.item_description">
-                    <td colspan="3" class="kx-label-item" style="border-top: 2px solid #000; padding: 1mm 2mm; font-size: 8px; max-height: 8mm; overflow: hidden;">
-                        <span t-field="o.item_description"/>
+                <tr t-if="item_desc">
+                    <td colspan="3" class="kx-label-item" style="border-top: 2px solid #000; padding: 0.6mm 1.5mm; vertical-align: top;">
+                        <div class="kx-label-item-text"><t t-esc="item_desc"/></div>
                     </td>
                 </tr>
                 <!-- Hub/DE: bottom KX AWB Code128. India Post already has the
                      ARN barcode in the top cell — omit this strip so the
                      thermal label does not end in a duplicate/empty box. -->
                 <tr t-if="not is_ip">
-                    <td colspan="3" class="kx-label-awb-barcode" style="border-top: 2px solid #000; padding: 1.5mm 2mm 1mm 2mm; text-align: center;">
+                    <td colspan="3" class="kx-label-awb-barcode" style="border-top: 2px solid #000; padding: 1mm 1.5mm 0.8mm 1.5mm; text-align: center;">
                         <img t-att-src="o._awb_kx_barcode_img_src()"
-                             style="width: 100%; max-width: 80mm; height: 12mm; margin: 0 auto; display: block;"
+                             style="width: 100%; max-width: 80mm; height: 10mm; margin: 0 auto; display: block;"
                              alt="AWB Barcode"/>
-                        <div style="font-size: 10px; font-weight: 900; letter-spacing: 1px; margin-top: 0.6mm;">
+                        <div style="font-size: 9px; font-weight: 900; letter-spacing: 1px; margin-top: 0.4mm;">
                             AWB <span t-field="o.name"/>
                         </div>
                     </td>
@@ -176,8 +177,9 @@
                     font-size: 9px;
                     width: 94mm;
                     max-width: 100%;
-                    height: auto;
-                    overflow: visible;
+                    /* Usable height after 3 mm paperformat margins (150 − 6). */
+                    max-height: 144mm;
+                    overflow: hidden;
                     page-break-inside: avoid;
                     page-break-after: always;
                 }
@@ -190,18 +192,47 @@
                     border-collapse: collapse;
                     table-layout: fixed;
                     border: 2px solid #000;
+                    page-break-inside: avoid;
                 }
                 .kx-label-100x150 img {
                     max-width: 100%;
                 }
                 .kx-label-100x150 .kx-label-qr {
-                    width: 16mm;
-                    height: 16mm;
+                    width: 14mm;
+                    height: 14mm;
                     max-width: 100%;
                 }
                 .kx-label-100x150 .awb-indiapost-barcode,
                 .kx-label-100x150 .kx-label-awb-barcode img {
-                    height: 12mm;
+                    height: 10mm;
+                }
+                /* wkhtmltopdf ignores max-height on table cells; clamp in a block. */
+                .kx-label-100x150 .kx-label-from-addr,
+                .kx-label-100x150 .kx-label-shipto-addr {
+                    display: -webkit-box;
+                    -webkit-box-orient: vertical;
+                    overflow: hidden;
+                    word-wrap: break-word;
+                    overflow-wrap: break-word;
+                }
+                .kx-label-100x150 .kx-label-from-addr {
+                    -webkit-line-clamp: 2;
+                    max-height: 5.5mm;
+                }
+                .kx-label-100x150 .kx-label-shipto-addr {
+                    -webkit-line-clamp: 4;
+                    max-height: 14mm;
+                }
+                .kx-label-100x150 .kx-label-item-text {
+                    display: -webkit-box;
+                    -webkit-box-orient: vertical;
+                    -webkit-line-clamp: 2;
+                    overflow: hidden;
+                    max-height: 5mm;
+                    font-size: 7px;
+                    line-height: 1.2;
+                    word-wrap: break-word;
+                    overflow-wrap: break-word;
                 }
             </style>
             <t t-foreach="docs" t-as="o">
