@@ -37,6 +37,11 @@ _logger = logging.getLogger(__name__)
 BOOKING_PATH_TEMPLATE = '/process-articles/%s'  # note: no /v1 prefix
 LABEL_PATH = '/v1/label/create/domestic'
 
+# Outbound-only brand mark on India Post ``sender_name`` / ``sender_company``
+# (booking + CEPT label API). Never stored on the seller, never on our AWB /
+# 100x150 / delivery-slip QWeb — officers need to recognise KeralaXpress.
+IP_SENDER_BRAND_PREFIX = '[KeralaXpress] '
+
 # The file-upload variant of the booking endpoint takes 5000 articles; the JSON
 # body variant has no documented ceiling, so keep request bodies modest.
 BOOKING_CHUNK_SIZE = 200
@@ -1608,6 +1613,19 @@ class Shipment(models.Model):
         return (city or (fallback_city or '').strip(),
                 state or (fallback_state or '').strip())
 
+    def _ip_branded_sender_name(self, name):
+        """``[KeralaXpress] `` + seller name for India Post outbound only.
+
+        Idempotent so a prepare/book retry never double-prefixes. Truncates to
+        India Post's 80-char text limit after branding.
+        """
+        text = re.sub(r'\s+', ' ', str(name or '')).strip()
+        if not text:
+            return text
+        if not text.startswith(IP_SENDER_BRAND_PREFIX):
+            text = IP_SENDER_BRAND_PREFIX + text
+        return text[:ipc.TEXT_MAX_LEN]
+
     def _ip_sender_group(self, settings, parts=None):
         """Physical from-address: the seller, which India Post prints as SENDER.
 
@@ -1616,11 +1634,15 @@ class Shipment(models.Model):
         the pickup identity on both booking and the official CEPT label, so
         they must not be the company warehouse when a seller address exists.
         GSTIN / email remain the contract holder's, when configured.
+
+        ``sender_name`` / ``sender_company`` carry the ``[KeralaXpress] ``
+        brand prefix for officers; pickup / alt / our QWeb prints do not.
         """
         parts = parts or self._ip_seller_address_parts()
+        branded = self._ip_branded_sender_name(parts['name'])
         payload = {
-            'sender_name': parts['name'],
-            'sender_company': parts['company'],
+            'sender_name': branded,
+            'sender_company': branded,
             'sender_add_line_1': parts['address'][0],
             'sender_city': parts['city'],
             'sender_state': parts['state'],

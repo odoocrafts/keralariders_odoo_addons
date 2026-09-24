@@ -13,6 +13,7 @@ from . import test_indiapost_webhook
 from . import test_indiapost_tracking
 from . import test_indiapost_autobook
 from . import test_indiapost_pickup_address
+from . import test_indiapost_sender_brand
 from . import test_awb_print_layout
 from . import test_awb_paper_size
 from . import test_public_tracking
