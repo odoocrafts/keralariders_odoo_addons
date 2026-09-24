@@ -2,8 +2,55 @@ from odoo import models, fields, api, _
 from odoo.exceptions import UserError
 
 import logging
+import re
 
 _logger = logging.getLogger(__name__)
+
+# India Post ``state_name`` labels that do not exactly match Odoo
+# ``res.country.state`` names for India (``base`` / ``res.country.state.csv``).
+# Values are candidate Odoo names tried in order (first existing wins).
+_IN_STATE_ALIASES = {
+    'andaman and nicobar islands': ['Andaman and Nicobar'],
+    'andaman and nicobar': ['Andaman and Nicobar'],
+    'delhi': ['Delhi'],
+    'nct of delhi': ['Delhi'],
+    'national capital territory of delhi': ['Delhi'],
+    'pondicherry': ['Puducherry'],
+    'puducherry': ['Puducherry'],
+    'orissa': ['Odisha'],
+    'odisha': ['Odisha'],
+    'uttaranchal': ['Uttarakhand'],
+    'uttarakhand': ['Uttarakhand'],
+    'jammu & kashmir': ['Jammu and Kashmir'],
+    'jammu and kashmir': ['Jammu and Kashmir'],
+    'dadra and nagar haveli and daman and diu': [
+        'Dadra and Nagar Haveli and Daman and Diu',
+        'Dadra and Nagar Haveli',
+        'Daman and Diu',
+    ],
+    'dadra & nagar haveli and daman & diu': [
+        'Dadra and Nagar Haveli and Daman and Diu',
+        'Dadra and Nagar Haveli',
+        'Daman and Diu',
+    ],
+    'dadra and nagar haveli': ['Dadra and Nagar Haveli'],
+    'daman and diu': ['Daman and Diu'],
+    'lakshadweep': ['Lakshadweep'],
+    'lakshadweep islands': ['Lakshadweep'],
+    # Odoo 19 base may lack Ladakh; fall back to J&K when absent.
+    'ladakh': ['Ladakh', 'Jammu and Kashmir'],
+}
+
+
+def _normalize_in_state_label(name):
+    """Lowercase, ``&``→``and``, collapse space, strip trailing ``islands``."""
+    text = (name or '').strip().lower()
+    if not text:
+        return ''
+    text = text.replace('&', ' and ')
+    text = re.sub(r'\s+', ' ', text).strip()
+    text = re.sub(r'\s+islands$', '', text).strip()
+    return text
 
 north_kerala_districts = {
     'kerala_district_1': 'kasargod',
@@ -78,16 +125,58 @@ class District(models.Model):
 
     @api.model
     def _find_indian_state(self, state_name):
-        """Match India Post ``state_name`` onto ``res.country.state`` (India)."""
+        """Match India Post ``state_name`` onto ``res.country.state`` (India).
+
+        Order: alias table → case-insensitive exact name → light normalize
+        (strip ``Islands``, ``&`` vs ``and``) against existing India states.
+        Does not create ``res.country.state`` rows.
+        """
         name = (state_name or '').strip()
         if not name:
             return self.env['res.country.state'].browse()
         india = self.env.ref('base.in')
         State = self.env['res.country.state'].sudo()
-        return State.search([
-            ('country_id', '=', india.id),
-            ('name', 'ilike', name),
-        ], limit=1)
+        domain_in = [('country_id', '=', india.id)]
+
+        def _by_exact_name(label):
+            label = (label or '').strip()
+            if not label:
+                return State.browse()
+            return State.search(
+                domain_in + [('name', '=ilike', label)], limit=1,
+            )
+
+        # 1) Alias table (normalized key → candidate Odoo names).
+        normalized = _normalize_in_state_label(name)
+        for candidate in _IN_STATE_ALIASES.get(normalized, ()):
+            state = _by_exact_name(candidate)
+            if state:
+                return state
+
+        # 2) Case-insensitive exact match on the raw India Post label.
+        state = _by_exact_name(name)
+        if state:
+            return state
+
+        # 3) Light normalize: compare against every India state name.
+        if normalized:
+            for st in State.search(domain_in):
+                if _normalize_in_state_label(st.name) == normalized:
+                    return st
+            # Longest Odoo state name contained in the India Post label
+            # (e.g. merged Dadra/Daman UT → Dadra and Nagar Haveli).
+            best = State.browse()
+            best_len = 0
+            for st in State.search(domain_in):
+                st_norm = _normalize_in_state_label(st.name)
+                if not st_norm:
+                    continue
+                if st_norm in normalized and len(st_norm) > best_len:
+                    best = st
+                    best_len = len(st_norm)
+            if best:
+                return best
+        return State.browse()
 
     @api.model
     def _ensure_district_for_locality(self, city_name, state_name):

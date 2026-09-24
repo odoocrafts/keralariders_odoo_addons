@@ -18,6 +18,7 @@ from odoo.addons.keralariders_logistics.tests.common import IndiapostHermeticMix
 
 CHENNAI_PIN = '600044'
 KERALA_PIN = '695001'
+ANDAMAN_PIN = '744302'
 
 CHENNAI_OFFICES = [{
     'office_id': '22840111',
@@ -27,6 +28,18 @@ CHENNAI_OFFICES = [{
     'city_name': 'CHENNAI',
     'taluk_name': 'Chennai',
     'village_name': 'Kodambakkam',
+    'delivery_office_flag': True,
+    'is_rolled_out': True,
+}]
+
+ANDAMAN_OFFICES = [{
+    'office_id': '74430201',
+    'office_name': 'Bambooflat SO',
+    'office_type_code': 'SPO',
+    'state_name': 'Andaman and Nicobar Islands',
+    'city_name': 'SOUTH ANDAMAN',
+    'taluk_name': 'Ferrargunj',
+    'village_name': 'Bambooflat',
     'delivery_office_flag': True,
     'is_rolled_out': True,
 }]
@@ -226,3 +239,60 @@ class TestHybridPincodeLookup(IndiapostHermeticMixin, TransactionCase):
             )
         self.assertIn('Cannot find any Hub assigned to pincode', str(err.exception))
         self.assertIn(orphan_pin, str(err.exception))
+
+    def test_andaman_islands_state_alias_resolves(self):
+        """India Post 'Andaman and Nicobar Islands' → Odoo Andaman and Nicobar."""
+        self.Office.search([('pincode', '=', ANDAMAN_PIN)]).unlink()
+        an_state = self.env['res.country.state'].search([
+            ('country_id.code', '=', 'IN'),
+            ('name', '=ilike', 'Andaman and Nicobar'),
+        ], limit=1)
+        self.assertTrue(
+            an_state,
+            'Odoo India must include state Andaman and Nicobar',
+        )
+        self.District.search([
+            ('name', 'ilike', 'South Andaman'),
+            ('state_id', '=', an_state.id),
+        ]).unlink()
+        with patch.object(
+            self.OfficeModel, '_ip_fetch_offices', return_value=ANDAMAN_OFFICES,
+        ) as fetch:
+            resolved = self.District.resolve_destination_from_pincode(
+                ANDAMAN_PIN, allow_indiapost=True, raise_if_missing=True,
+            )
+            self.assertEqual(fetch.call_count, 1)
+        self.assertEqual(resolved['source'], 'indiapost')
+        self.assertEqual(resolved['state_id'], an_state)
+        self.assertEqual(
+            (resolved['state_id'].name or '').lower(),
+            'andaman and nicobar',
+        )
+        self.assertFalse(self.Pincode.search([('name', '=', ANDAMAN_PIN)]))
+
+    def test_unknown_indiapost_state_still_errors(self):
+        offices = [{
+            **CHENNAI_OFFICES[0],
+            'state_name': 'Atlantis Federated Islands',
+            'city_name': 'POSEIDON',
+        }]
+        self.Office.search([('pincode', '=', CHENNAI_PIN)]).unlink()
+        with patch.object(
+            self.OfficeModel, '_ip_fetch_offices', return_value=offices,
+        ):
+            with self.assertRaises(UserError) as err:
+                self.District.resolve_destination_from_pincode(
+                    CHENNAI_PIN, allow_indiapost=True, raise_if_missing=True,
+                )
+        self.assertIn('unrecognized state', str(err.exception).lower())
+        self.assertIn('Atlantis Federated Islands', str(err.exception))
+
+    def test_kerala_exact_state_match_without_alias(self):
+        """Plain Kerala label still resolves via exact match (no alias needed)."""
+        state = self.District._find_indian_state('Kerala')
+        self.assertTrue(state)
+        self.assertEqual(state.code, 'KL')
+        self.assertEqual(state.name, 'Kerala')
+        # Case-insensitive exact still works for India Post ALL-CAPS.
+        state_caps = self.District._find_indian_state('KERALA')
+        self.assertEqual(state_caps, state)
