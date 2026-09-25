@@ -117,23 +117,22 @@ class TestIndiapostPickupAddress(IndiapostHermeticMixin, TransactionCase):
         values = self._pickup_and_sender_values(article)
 
         self.assertEqual(article['pickup_address_flag'], 'TRUE')
-        self.assertEqual(values['pickup_addressee_name'], SELLER_NAME)
+        branded = '[KeralaXpress] ' + SELLER_NAME
+        self.assertEqual(values['pickup_addressee_name'], branded)
+        self.assertEqual(values['pickup_company_name'], branded)
         self.assertEqual(values['pickup_address_line1'], SELLER_STREET)
         self.assertEqual(values['pickup_address_line2'], SELLER_STREET2)
         self.assertEqual(values['pickup_pincode'], SELLER_PIN)
         self.assertEqual(values['pickup_mobile_no'], SELLER_MOBILE)
 
-        branded = '[KeralaXpress] ' + SELLER_NAME
         self.assertEqual(values['sender_name'], branded)
         self.assertEqual(values['sender_company'], branded)
         self.assertEqual(values['sender_add_line_1'], SELLER_STREET)
         self.assertEqual(values['sender_add_line_2'], SELLER_STREET2)
         self.assertEqual(values['sender_pincode'], SELLER_PIN)
         self.assertEqual(values['sender_mobile_no'], SELLER_MOBILE)
-        # Pickup / return contact stay the real seller name (no brand prefix).
-        self.assertEqual(values['pickup_company_name'], SELLER_NAME)
 
-        self.assertEqual(values['alt_addressee_name'], SELLER_NAME)
+        self.assertEqual(values['alt_addressee_name'], branded)
         self.assertEqual(values['alt_address_line1'], SELLER_STREET)
         self.assertEqual(values['alt_alternate_mobile_no'], SELLER_MOBILE)
 
@@ -175,7 +174,10 @@ class TestIndiapostPickupAddress(IndiapostHermeticMixin, TransactionCase):
         self.assertEqual(article['pickup_mobile_no'], SELLER_MOBILE)
         self.assertEqual(article['sender_add_line_1'], SELLER_STREET)
         self.assertEqual(article['sender_mobile_no'], SELLER_MOBILE)
-        self.assertEqual(article['sender_name'], '[KeralaXpress] ' + SELLER_NAME)
+        branded = '[KeralaXpress] ' + SELLER_NAME
+        self.assertEqual(article['sender_name'], branded)
+        self.assertEqual(article['pickup_addressee_name'], branded)
+        self.assertEqual(article['alt_addressee_name'], branded)
         self.assertNotEqual(article['sender_name'], COMPANY_NAME)
         self.assertFalse(self._company_leaks(
             self._pickup_and_sender_values(article).values()))
@@ -188,11 +190,12 @@ class TestIndiapostPickupAddress(IndiapostHermeticMixin, TransactionCase):
             'shipping_from_address': '99 Portal Pickup Lane\nFirst Floor',
         })
         article = shipment._ip_prepare_article(self.settings, 'TT900000024IN')
-        self.assertEqual(article['pickup_addressee_name'], 'Portal Pickup Contact')
+        branded = '[KeralaXpress] Portal Pickup Contact'
+        self.assertEqual(article['pickup_addressee_name'], branded)
         self.assertEqual(article['pickup_address_line1'], '99 Portal Pickup Lane')
         self.assertEqual(article['pickup_address_line2'], 'First Floor')
-        self.assertEqual(
-            article['sender_name'], '[KeralaXpress] Portal Pickup Contact')
+        self.assertEqual(article['sender_name'], branded)
+        self.assertEqual(article['alt_addressee_name'], branded)
         self.assertEqual(article['sender_add_line_1'], '99 Portal Pickup Lane')
         self.assertEqual(article['pickup_mobile_no'], SELLER_MOBILE)
 

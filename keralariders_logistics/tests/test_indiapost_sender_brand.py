@@ -1,7 +1,9 @@
-"""India Post booking/label sender name carries a KeralaXpress brand prefix.
+"""India Post booking/label sender names carry a KeralaXpress brand prefix.
 
-The prefix is outbound-only (process-articles + /v1/label/create/domestic).
-Our AWB / 100x150 QWeb and the seller record stay unprefixed.
+The prefix is outbound-only on every sender-side name field
+(process-articles + /v1/label/create/domestic): sender, pickup addressee,
+and alt addressee. Our AWB / 100x150 QWeb and the seller record stay
+unprefixed.
 """
 from pathlib import Path
 
@@ -15,6 +17,7 @@ from odoo.addons.keralariders_logistics.tests.common import (
 )
 
 SELLER_NAME = 'Brand Prefix Seller'
+RECEIVER_NAME = 'Brand Customer'
 
 
 @tagged('post_install', '-at_install')
@@ -47,7 +50,7 @@ class TestIndiapostSenderBrand(IndiapostHermeticMixin, TransactionCase):
     def _new_shipment(self, seller, **overrides):
         vals = {
             'seller_id': seller.id,
-            'shipping_to_name': 'Brand Customer',
+            'shipping_to_name': RECEIVER_NAME,
             'shipping_to_address': '12 Test Road, Test Nagar',
             'shipping_to_zip': '695001',
             'shipping_to_mobile': '9876543210',
@@ -66,8 +69,17 @@ class TestIndiapostSenderBrand(IndiapostHermeticMixin, TransactionCase):
         expected = IP_SENDER_BRAND_PREFIX + SELLER_NAME
         self.assertEqual(article['sender_name'], expected)
         self.assertEqual(article['sender_company'], expected)
-        self.assertEqual(article['pickup_addressee_name'], SELLER_NAME)
-        self.assertEqual(article['alt_addressee_name'], SELLER_NAME)
+        self.assertEqual(article['pickup_addressee_name'], expected)
+        self.assertEqual(article['pickup_company_name'], expected)
+        self.assertEqual(article['alt_addressee_name'], expected)
+        self.assertEqual(article['alt_company_name'], expected)
+        self.assertEqual(article['receiver_name'], RECEIVER_NAME)
+        self.assertFalse(
+            article['receiver_name'].startswith(IP_SENDER_BRAND_PREFIX))
+        self.assertFalse(
+            article['sender_add_line_1'].startswith(IP_SENDER_BRAND_PREFIX))
+        self.assertFalse(
+            article['pickup_address_line1'].startswith(IP_SENDER_BRAND_PREFIX))
 
     def test_label_payload_sender_name_is_branded(self):
         shipment = self._new_shipment(self.ip_seller)
@@ -75,16 +87,24 @@ class TestIndiapostSenderBrand(IndiapostHermeticMixin, TransactionCase):
         payload = shipment._ip_label_payload(self.settings)
         self.assertEqual(
             payload['sender_name'], IP_SENDER_BRAND_PREFIX + SELLER_NAME)
+        self.assertEqual(payload['recipient_name'], RECEIVER_NAME)
+        self.assertFalse(
+            payload['recipient_name'].startswith(IP_SENDER_BRAND_PREFIX))
 
     def test_prepare_twice_does_not_double_prefix(self):
         shipment = self._new_shipment(self.ip_seller)
         first = shipment._ip_prepare_article(self.settings, 'TT900000103IN')
         second = shipment._ip_prepare_article(self.settings, 'TT900000104IN')
         expected = IP_SENDER_BRAND_PREFIX + SELLER_NAME
-        self.assertEqual(first['sender_name'], expected)
-        self.assertEqual(second['sender_name'], expected)
-        self.assertEqual(
-            second['sender_name'].count(IP_SENDER_BRAND_PREFIX.strip()), 1)
+        for key in (
+            'sender_name', 'sender_company',
+            'pickup_addressee_name', 'pickup_company_name',
+            'alt_addressee_name', 'alt_company_name',
+        ):
+            self.assertEqual(first[key], expected)
+            self.assertEqual(second[key], expected)
+            self.assertEqual(
+                second[key].count(IP_SENDER_BRAND_PREFIX.strip()), 1)
         # Helper is also idempotent when fed an already-branded string.
         again = shipment._ip_branded_sender_name(expected)
         self.assertEqual(again, expected)

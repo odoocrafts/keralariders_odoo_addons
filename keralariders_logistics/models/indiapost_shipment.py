@@ -37,7 +37,7 @@ _logger = logging.getLogger(__name__)
 BOOKING_PATH_TEMPLATE = '/process-articles/%s'  # note: no /v1 prefix
 LABEL_PATH = '/v1/label/create/domestic'
 
-# Outbound-only brand mark on India Post ``sender_name`` / ``sender_company``
+# Outbound-only brand mark on India Post sender / pickup / alt name fields
 # (booking + CEPT label API). Never stored on the seller, never on our AWB /
 # 100x150 / delivery-slip QWeb — officers need to recognise KeralaXpress.
 IP_SENDER_BRAND_PREFIX = '[KeralaXpress] '
@@ -1645,7 +1645,8 @@ class Shipment(models.Model):
         GSTIN / email remain the contract holder's, when configured.
 
         ``sender_name`` / ``sender_company`` carry the ``[KeralaXpress] ``
-        brand prefix for officers; pickup / alt / our QWeb prints do not.
+        brand prefix for officers (pickup / alt names do too). Our QWeb
+        prints stay unprefixed.
         """
         parts = parts or self._ip_seller_address_parts()
         branded = self._ip_branded_sender_name(parts['name'])
@@ -1777,15 +1778,22 @@ class Shipment(models.Model):
             raise UserError(str(exc)) from exc
 
     def _ip_pickup_group(self, parts):
-        """India Post collects from the seller, in one of two fixed slots."""
+        """India Post collects from the seller, in one of two fixed slots.
+
+        Customer Self Service ``Sender Name`` often shows
+        ``pickup_addressee_name``, so brand that (and company) like
+        ``sender_name``. Streets / city / phone stay plain.
+        """
         self.ensure_one()
         pickup_date = self.indiapost_pickup_date or self._ip_default_pickup_date()
         slot = self.indiapost_pickup_slot or ipc.PICKUP_SLOTS[0][0]
         moment = ipc.pickup_datetime(pickup_date, slot)
+        branded = self._ip_branded_sender_name(parts['name'])
+        branded_company = self._ip_branded_sender_name(parts['company'])
         payload = {
             'pickup_address_flag': 'TRUE',
-            'pickup_addressee_name': parts['name'],
-            'pickup_company_name': parts['company'],
+            'pickup_addressee_name': branded,
+            'pickup_company_name': branded_company,
             'pickup_address_line1': parts['address'][0],
             'pickup_city': parts['city'],
             'pickup_state': parts['state'],
@@ -1804,12 +1812,15 @@ class Shipment(models.Model):
         """Returns go to the seller, not to KeralaXpress.
 
         Without ``alt_address_flag`` every undelivered article would come back
-        to the consignor of record, which is us.
+        to the consignor of record, which is us. Brand addressee / company
+        names the same way as ``sender_name``; address lines stay plain.
         """
+        branded = self._ip_branded_sender_name(parts['name'])
+        branded_company = self._ip_branded_sender_name(parts['company'])
         payload = {
             'alt_address_flag': 'TRUE',
-            'alt_addressee_name': parts['name'],
-            'alt_company_name': parts['company'],
+            'alt_addressee_name': branded,
+            'alt_company_name': branded_company,
             'alt_address_line1': parts['address'][0],
             'alt_city': parts['city'],
             'alt_state': parts['state'],
