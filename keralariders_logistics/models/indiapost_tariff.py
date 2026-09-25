@@ -7,8 +7,8 @@ Post. Quotes are therefore cached on
 dimensions, VAS flags) for a configurable number of minutes.
 
 Speed Post is priced on ``/v1/speed-post/tariffs`` with
-``product-code=SP_INLAND_PARCEL`` (including articles below 501 g, so India
-Post does not auto-classify them as documents). Business Parcel is a
+``product-code=SP_INLAND_PARCEL`` (from 500 g inclusive; lighter Speed Post
+selections are redirected to Business Parcel). Business Parcel is a
 different table: production answers on ``/v1/business-parcel-tariff/calculate``
 with ``product-code=BP``, and the Speed Post path still returns HTTP 422
 "No matching domestic speed post tariff found … product: BUSINESS_PARCEL".
@@ -126,12 +126,13 @@ class IndiapostTariff(models.AbstractModel):
     def _ip_tariff_product_code(self, article_type=ipc.ARTICLE_TYPE_SPEED_POST):
         """``product-code`` query value for the tariff GET.
 
-        Speed Post: request inland parcel even below 501 g so India Post does
-        not auto-classify the article as ``SP_INLAND_DOC``. Booking still
-        sends ``article_type=SP`` (the only Speed Post article type the
-        booking API accepts) with ``shape_of_article=NROL``.
+        Speed Post (500 g and above after any light-weight redirect): request
+        inland parcel so India Post does not auto-classify as
+        ``SP_INLAND_DOC``. Booking still sends ``article_type=SP`` with
+        ``shape_of_article=NROL``.
 
-        Business Parcel stays ``BP`` on ``/v1/business-parcel-tariff/calculate``.
+        Business Parcel (including Speed Post redirected below 500 g) stays
+        ``BP`` on ``/v1/business-parcel-tariff/calculate``.
         """
         if article_type == ipc.ARTICLE_TYPE_BUSINESS_PARCEL:
             return ipc.ARTICLE_TYPE_BUSINESS_PARCEL
@@ -208,6 +209,9 @@ class IndiapostTariff(models.AbstractModel):
         actual_g = int(weight_g) if weight_g else ipc.kg_to_grams(weight_kg)
         if actual_g < 1:
             raise ValidationError(_('Enter a weight greater than zero.'))
+        # Light Speed Post (< 500 g) becomes Business Parcel here so calculator,
+        # portal create, bulk, seller API and booking all share one rule.
+        article_type = ipc.resolve_article_type(article_type, actual_g)
         length = ipc.cm_to_int(length_cm)
         breadth = ipc.cm_to_int(breadth_cm)
         height = ipc.cm_to_int(height_cm)

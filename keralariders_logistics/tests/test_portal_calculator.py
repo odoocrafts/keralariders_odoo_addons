@@ -77,8 +77,9 @@ class TestPortalCalculator(IndiapostHermeticMixin, HttpCase):
         self.assertIn('Business Parcel', page.text)
         self.assertIn('normal parcel', page.text)
         self.assertNotIn('India Post Speed Post', page.text)
-        self.assertIn('quoted as inland parcels, not documents', page.text)
-        self.assertNotIn('500 g and above', page.text)
+        self.assertIn('Below 500 g', page.text)
+        self.assertIn('Business Parcel (normal parcel)', page.text)
+        self.assertNotIn('quoted as inland parcels, not documents', page.text)
 
     def test_calculator_posts_business_parcel_to_the_shared_quote_helper(self):
         captured = []

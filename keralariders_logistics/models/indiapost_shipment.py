@@ -191,9 +191,16 @@ class Shipment(models.Model):
             record.is_indiapost = record.fulfilment_method == 'indiapost'
 
     def _ip_product(self):
-        """This shipment's India Post product, defaulting to Speed Post."""
+        """This shipment's effective India Post product for quote and booking.
+
+        Light Speed Post selections (physical weight strictly below 500 g) are
+        routed to Business Parcel; explicit Business Parcel is left alone.
+        """
         self.ensure_one()
-        return self.indiapost_article_type or ipc.ARTICLE_TYPE_SPEED_POST
+        return ipc.resolve_article_type(
+            self.indiapost_article_type or ipc.ARTICLE_TYPE_SPEED_POST,
+            ipc.kg_to_grams(self.total_weight),
+        )
 
     def _ip_contract_id(self, settings):
         """The contract id this shipment has to be booked against."""
@@ -246,14 +253,14 @@ class Shipment(models.Model):
         string='Chargeable Weight (g)', compute='_compute_indiapost_package',
         store=True,
         help='What India Post bills: the greater of actual and volumetric '
-             'weight (length x breadth x height / 5). Speed Post is quoted '
-             'as inland parcel at every weight.',
+             'weight (length x breadth x height / 5).',
     )
     indiapost_product_code = fields.Char(
         string='Speed Post Product Code', compute='_compute_indiapost_package',
         store=True,
-        help='Speed Post inland parcel (SP_INLAND_PARCEL), including items '
-             'below 501 g. Booking sends article_type=SP with shape NROL.',
+        help='When the shipment stays on Speed Post: inland parcel '
+             '(SP_INLAND_PARCEL). Below 500 g, Speed Post is routed to '
+             'Business Parcel (BP) instead; booking then uses article_type=BP.',
     )
     indiapost_shape = fields.Char(
         string='Shape Code', compute='_compute_indiapost_package', store=True,
@@ -1859,8 +1866,9 @@ class Shipment(models.Model):
             # "Physical weight must be a whole number".
             'physical_weight': grams,
             # Booking only accepts article_type SP/BP. Parcel vs document is
-            # this shape: NROL (or ROLL) so a light Speed Post article is not
-            # booked as a document after being quoted as SP_INLAND_PARCEL.
+            # this shape: NROL (or ROLL) so a Speed Post article at 500 g+ is
+            # not booked as a document after being quoted as SP_INLAND_PARCEL.
+            # Below 500 g, _ip_product() already redirected to Business Parcel.
             'shape_of_article': ipc.resolve_shape(
                 grams, cylindrical=self.is_cylindrical),
             'length': ipc.cm_to_int(self.length_cm),

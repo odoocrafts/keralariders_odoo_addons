@@ -246,7 +246,7 @@ class TestIndiapostDeliveryCharge(IndiapostHermeticMixin, TransactionCase):
 
 @tagged('post_install', '-at_install')
 class TestIndiapostSpeedPostParcelMapping(IndiapostHermeticMixin, TransactionCase):
-    """Speed Post below 501 g is inland parcel, not the document slab."""
+    """Speed Post at 500 g+ stays inland parcel; below 500 g becomes BP."""
 
     @classmethod
     def setUpClass(cls):
@@ -272,6 +272,23 @@ class TestIndiapostSpeedPostParcelMapping(IndiapostHermeticMixin, TransactionCas
             self.assertNotEqual(
                 ipc.resolve_product_code(grams), ipc.PRODUCT_DOC, grams)
 
+    def test_resolve_article_type_redirects_speed_post_below_500_g(self):
+        self.assertEqual(
+            ipc.resolve_article_type(ipc.ARTICLE_TYPE_SPEED_POST, 499),
+            ipc.ARTICLE_TYPE_BUSINESS_PARCEL)
+        self.assertEqual(
+            ipc.resolve_article_type(ipc.ARTICLE_TYPE_SPEED_POST, 0.499 * 1000),
+            ipc.ARTICLE_TYPE_BUSINESS_PARCEL)
+        self.assertEqual(
+            ipc.resolve_article_type(ipc.ARTICLE_TYPE_SPEED_POST, 500),
+            ipc.ARTICLE_TYPE_SPEED_POST)
+        self.assertEqual(
+            ipc.resolve_article_type(ipc.ARTICLE_TYPE_BUSINESS_PARCEL, 200),
+            ipc.ARTICLE_TYPE_BUSINESS_PARCEL)
+        self.assertEqual(
+            ipc.resolve_article_type(ipc.ARTICLE_TYPE_BUSINESS_PARCEL, 1500),
+            ipc.ARTICLE_TYPE_BUSINESS_PARCEL)
+
     def test_light_article_uses_parcel_shape_and_volumetric_weight(self):
         self.assertEqual(ipc.resolve_shape(250), ipc.SHAPE_RECTANGULAR)
         self.assertEqual(ipc.resolve_shape(500, cylindrical=True),
@@ -290,7 +307,7 @@ class TestIndiapostSpeedPostParcelMapping(IndiapostHermeticMixin, TransactionCas
         self.assertFalse(errors)
         self.assertFalse(any('document' in warning.lower() for warning in warnings))
 
-    def test_booking_a_light_speed_post_article_sends_parcel_shape(self):
+    def test_booking_500_g_speed_post_stays_speed_post_parcel_shape(self):
         shipment = self.env['logistics.shipment'].create({
             'seller_id': self.seller.id,
             'shipping_to_name': 'India Post Customer',
@@ -302,12 +319,89 @@ class TestIndiapostSpeedPostParcelMapping(IndiapostHermeticMixin, TransactionCas
             'length_cm': 14,
             'breadth_cm': 9,
             'height_cm': 1,
+            'indiapost_article_type': ipc.ARTICLE_TYPE_SPEED_POST,
         })
         self.assertEqual(shipment.indiapost_product_code, ipc.PRODUCT_PARCEL)
         self.assertEqual(shipment.indiapost_shape, ipc.SHAPE_RECTANGULAR)
+        self.assertEqual(shipment._ip_product(), ipc.ARTICLE_TYPE_SPEED_POST)
 
         article = shipment._ip_prepare_article(self.settings, 'ET214330016IN')
         self.assertEqual(article['article_type'], ipc.ARTICLE_TYPE_SPEED_POST)
         self.assertEqual(article['shape_of_article'], ipc.SHAPE_RECTANGULAR)
         self.assertNotEqual(article['shape_of_article'], ipc.SHAPE_DOC)
         self.assertEqual(article['physical_weight'], 500)
+
+    def test_booking_below_500_g_speed_post_becomes_business_parcel(self):
+        shipment = self.env['logistics.shipment'].create({
+            'seller_id': self.seller.id,
+            'shipping_to_name': 'India Post Customer',
+            'shipping_to_address': '12 Test Road, Test Nagar',
+            'shipping_to_zip': '695001',
+            'shipping_to_mobile': '9876543210',
+            'item_description': 'Sub-500 Speed Post',
+            'total_weight': 0.499,
+            'length_cm': 14,
+            'breadth_cm': 9,
+            'height_cm': 1,
+            'indiapost_article_type': ipc.ARTICLE_TYPE_SPEED_POST,
+        })
+        self.assertEqual(shipment._ip_product(), ipc.ARTICLE_TYPE_BUSINESS_PARCEL)
+        article = shipment._ip_prepare_article(self.settings, 'CX214330016IN')
+        self.assertEqual(article['article_type'], ipc.ARTICLE_TYPE_BUSINESS_PARCEL)
+        self.assertEqual(article['shape_of_article'], ipc.SHAPE_RECTANGULAR)
+        self.assertEqual(article['physical_weight'], 499)
+
+    def test_booking_explicit_business_parcel_stays_below_500_g(self):
+        shipment = self.env['logistics.shipment'].create({
+            'seller_id': self.seller.id,
+            'shipping_to_name': 'India Post Customer',
+            'shipping_to_address': '12 Test Road, Test Nagar',
+            'shipping_to_zip': '695001',
+            'shipping_to_mobile': '9876543210',
+            'item_description': 'Chosen Business Parcel',
+            'total_weight': 0.2,
+            'length_cm': 14,
+            'breadth_cm': 9,
+            'height_cm': 1,
+            'indiapost_article_type': ipc.ARTICLE_TYPE_BUSINESS_PARCEL,
+        })
+        self.assertEqual(shipment._ip_product(), ipc.ARTICLE_TYPE_BUSINESS_PARCEL)
+        article = shipment._ip_prepare_article(self.settings, 'CX214330017IN')
+        self.assertEqual(article['article_type'], ipc.ARTICLE_TYPE_BUSINESS_PARCEL)
+
+    def test_quote_and_booking_article_agree_below_500_g(self):
+        from unittest.mock import patch
+        from odoo.addons.keralariders_logistics.models.indiapost_tariff import (
+            BUSINESS_PARCEL_TARIFF_PATH,
+        )
+        from odoo.addons.keralariders_logistics.tests.test_indiapost_tariff import (
+            BP_PAYLOAD, _response,
+        )
+
+        shipment = self.env['logistics.shipment'].create({
+            'seller_id': self.seller.id,
+            'shipping_to_name': 'India Post Customer',
+            'shipping_to_address': '12 Test Road, Test Nagar',
+            'shipping_to_zip': '695001',
+            'shipping_to_mobile': '9876543210',
+            'item_description': 'Agree quote book',
+            'total_weight': 0.499,
+            'length_cm': 14,
+            'breadth_cm': 9,
+            'height_cm': 1,
+            'indiapost_article_type': ipc.ARTICLE_TYPE_SPEED_POST,
+        })
+        captured = []
+
+        def fake_call(this, method, path, params=None, **kwargs):
+            captured.append({'path': path, 'params': params})
+            return _response(BP_PAYLOAD)
+
+        with patch.object(self.registry['logistics.indiapost.client'],
+                          'call', fake_call):
+            quote = shipment._ip_quote_and_store(use_cache=False)
+        article = shipment._ip_prepare_article(self.settings, 'CX214330018IN')
+
+        self.assertEqual(captured[0]['path'], BUSINESS_PARCEL_TARIFF_PATH)
+        self.assertEqual(quote['article_type'], ipc.ARTICLE_TYPE_BUSINESS_PARCEL)
+        self.assertEqual(article['article_type'], quote['article_type'])

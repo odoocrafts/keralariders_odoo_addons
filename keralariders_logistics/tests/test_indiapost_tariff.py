@@ -133,8 +133,8 @@ class TestIndiapostTariff(IndiapostHermeticMixin, TransactionCase):
         self.assertEqual(quote['vas_charges'], 68)
         self.assertEqual(quote['final_amount'], 304)
 
-    def test_quote_requests_inland_parcel_below_501_g(self):
-        """Light Speed Post must not be sent as product-code=SP (document slab)."""
+    def test_quote_requests_inland_parcel_at_500_g(self):
+        """500 g Speed Post stays on Speed Post inland parcel (not document)."""
         captured = []
 
         def fake_call(this, method, path, params=None, **kwargs):
@@ -157,3 +157,43 @@ class TestIndiapostTariff(IndiapostHermeticMixin, TransactionCase):
         self.assertEqual(captured[0]['params']['weight'], 500)
         self.assertFalse(quote['is_document'])
         self.assertEqual(quote['article_type'], ipc.ARTICLE_TYPE_SPEED_POST)
+
+    def test_quote_redirects_speed_post_below_500_g_to_business_parcel(self):
+        """499 g requested as Speed Post must use the Business Parcel path."""
+        captured = []
+
+        def fake_call(this, method, path, params=None, **kwargs):
+            captured.append({'method': method, 'path': path, 'params': params})
+            return _response(BP_PAYLOAD)
+
+        with patch.object(self.registry['logistics.indiapost.client'],
+                          'call', fake_call):
+            quote = self.Tariff.quote(
+                '676552', '683544', weight_g=499, length_cm=14,
+                breadth_cm=9, height_cm=1,
+                article_type=ipc.ARTICLE_TYPE_SPEED_POST, use_cache=False,
+            )
+
+        self.assertEqual(captured[0]['path'], BUSINESS_PARCEL_TARIFF_PATH)
+        self.assertEqual(captured[0]['params']['product-code'],
+                         ipc.ARTICLE_TYPE_BUSINESS_PARCEL)
+        self.assertEqual(quote['article_type'], ipc.ARTICLE_TYPE_BUSINESS_PARCEL)
+        self.assertEqual(quote['article_type_label'], 'Business Parcel')
+
+    def test_quote_keeps_explicit_business_parcel_below_500_g(self):
+        captured = []
+
+        def fake_call(this, method, path, params=None, **kwargs):
+            captured.append({'path': path, 'params': params})
+            return _response(BP_PAYLOAD)
+
+        with patch.object(self.registry['logistics.indiapost.client'],
+                          'call', fake_call):
+            quote = self.Tariff.quote(
+                '676552', '683544', weight_g=200, length_cm=14,
+                breadth_cm=9, height_cm=1,
+                article_type=ipc.ARTICLE_TYPE_BUSINESS_PARCEL, use_cache=False,
+            )
+
+        self.assertEqual(captured[0]['path'], BUSINESS_PARCEL_TARIFF_PATH)
+        self.assertEqual(quote['article_type'], ipc.ARTICLE_TYPE_BUSINESS_PARCEL)

@@ -1192,6 +1192,11 @@
                                             </div>
                                         </t>
                                     </div>
+                                    <p class="text-muted small mb-0 mt-1">
+                                        Below 500 g, Speed Post is priced and booked as Business
+                                        Parcel (normal parcel). From 500 g up, Speed Post stays
+                                        Speed Post.
+                                    </p>
                                 </div>
                                 <div class="row">
                                     <div class="col-4 mb-3">
@@ -1239,8 +1244,9 @@
                                     Speed Post and Business Parcel both charge on volumetric
                                     weight and must measure at least
                                     <t t-esc="parcel_min_length_cm"/> x
-                                    <t t-esc="parcel_min_breadth_cm"/> x 1 cm at every weight,
-                                    including items below 501 g. Pad small items or India Post
+                                    <t t-esc="parcel_min_breadth_cm"/> x 1 cm at every weight.
+                                    Below 500 g, a Speed Post selection is priced and booked as
+                                    Business Parcel (normal parcel). Pad small items or India Post
                                     will refuse them. Length + breadth + height must stay within
                                     <t t-esc="max_total_dimension_cm"/> cm.
                                 </div>
@@ -1606,6 +1612,11 @@
                                                     </div>
                                                 </t>
                                             </div>
+                                            <p class="text-muted small mb-0 mt-1">
+                                                Below 500 g, Speed Post is priced as Business Parcel
+                                                (normal parcel). From 500 g up, Speed Post stays
+                                                Speed Post.
+                                            </p>
                                         </div>
                                         <div class="row">
                                             <div class="col-md-6 mb-3">
@@ -1656,10 +1667,12 @@
                                         <div class="alert alert-info py-2" role="alert" id="kx_calc_help_sp">
                                             <i class="fa fa-info-circle me-1"/>
                                             Speed Post prices on whichever is greater: the actual
-                                            weight or length x breadth x height / 5. Items below
-                                            501 g are quoted as inland parcels, not documents.
-                                            Parcels must measure at least 14 x 9 x 1 cm, and
-                                            length + breadth + height must not exceed 300 cm.
+                                            weight or length x breadth x height / 5. Below 500 g,
+                                            a Speed Post selection is priced and booked as Business
+                                            Parcel (normal parcel). From 500 g up, Speed Post stays
+                                            Speed Post inland parcel (not a document). Parcels must
+                                            measure at least 14 x 9 x 1 cm, and length + breadth +
+                                            height must not exceed 300 cm.
                                         </div>
                                         <div class="alert alert-info py-2 d-none" role="alert" id="kx_calc_help_bp">
                                             <i class="fa fa-info-circle me-1"/>

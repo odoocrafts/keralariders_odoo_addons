@@ -484,7 +484,9 @@
                                     </div>
                                     <p class="text-muted small mb-0 mt-2">
                                         This choice applies to every row in the CSV. Speed Post and
-                                        Business Parcel are priced and booked separately.
+                                        Business Parcel are priced and booked separately. Below
+                                        500 g, Speed Post rows are routed to Business Parcel
+                                        automatically.
                                     </p>
                                 </div>
 
@@ -523,8 +525,10 @@
                                         The selected service is used for every
                                         row: charges, booking, and barcodes
                                         (EY for Speed Post, CX for Business Parcel).
-                                        Length, breadth and height are required
-                                        because India Post prices on package size.
+                                        Below 500 g, Speed Post is routed to Business
+                                        Parcel automatically. Length, breadth and
+                                        height are required because India Post prices
+                                        on package size.
                                     </li>
                                     <li class="mb-2">Upload the file here.</li>
                                     <li class="mb-2">We will parse the file and calculate the total delivery charges. Rows missing required fields are skipped with an error summary.</li>
