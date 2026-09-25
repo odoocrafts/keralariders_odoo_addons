@@ -223,6 +223,7 @@ class LogisticsPortal(CustomerPortal):
                 return request.render("keralariders_logistics.portal_my_wallet_recharge_pay", {
                     'amount': amount,
                     'qr_url': qr_url,
+                    'upi_uri': upi_uri,
                     'wallet': wallet,
                     'page_name': 'wallet',
                     'recharge_token': recharge_token,

@@ -234,6 +234,15 @@
                     <div class="mb-4">
                         <img t-att-src="qr_url" alt="UPI QR Code" style="max-width: 250px; border: 1px solid #ddd; border-radius: 10px; padding: 10px;"/>
                     </div>
+
+                    <div class="kx-upi-app-pay mb-4">
+                        <a t-att-href="upi_uri" class="btn btn-primary kx-upi-app-pay-btn" id="wallet_recharge_upi_app_btn">
+                            <i class="fa fa-mobile me-1"/> Pay with UPI apps
+                        </a>
+                        <p class="text-muted small mt-2 mb-0">
+                            On your phone this opens GPay, PhonePe, or another UPI app.
+                        </p>
+                    </div>
                     
                     <p class="text-muted mb-4">
                         Once you have successfully completed the payment on your UPI app, click the button below to confirm.

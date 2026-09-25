@@ -22,6 +22,8 @@ is the model guard rather than a row filter.
 """
 
 import re
+import urllib.parse
+from html import unescape
 
 from odoo.exceptions import AccessError, UserError
 from odoo.tests import HttpCase, TransactionCase, tagged
@@ -477,6 +479,57 @@ class TestPortalRechargeJourney(HttpCase, RechargeCase):
             r'name="%s"[^>]*\bvalue="([^"]*)"' % re.escape(name), html)
         self.assertTrue(match, 'no %s in the rendered page' % name)
         return match.group(1)
+
+    def test_scan_and_pay_exposes_same_upi_uri_on_qr_and_button(self):
+        """QR image and Pay with UPI apps must encode the same pa/am."""
+        self.authenticate('kx_recharge_journey', 'kx_recharge_journey')
+
+        wallet_page = self.url_open('/my/wallet')
+        pay_page = self.url_open('/my/wallet/recharge', data={
+            'amount': '455.00',
+            'csrf_token': self._hidden_value(wallet_page.text, 'csrf_token'),
+        })
+        self.assertEqual(pay_page.status_code, 200)
+        html = pay_page.text
+        self.assertIn('Scan and Pay', html)
+        self.assertIn('Pay with UPI apps', html)
+
+        btn = re.search(
+            r'id="wallet_recharge_upi_app_btn"[^>]*\bhref="([^"]+)"'
+            r'|href="([^"]+)"[^>]*\bid="wallet_recharge_upi_app_btn"',
+            html,
+        )
+        self.assertTrue(btn, 'Pay with UPI apps button missing href')
+        button_href = unescape(btn.group(1) or btn.group(2))
+        self.assertTrue(
+            button_href.startswith('upi://pay?'),
+            'button must open the same upi://pay URI the QR encodes',
+        )
+
+        qr_src = re.search(
+            r'<img[^>]*(?:alt="UPI QR Code"[^>]*\bsrc="([^"]+)"'
+            r'|\bsrc="([^"]+)"[^>]*alt="UPI QR Code")',
+            html,
+        )
+        self.assertTrue(qr_src, 'UPI QR image missing')
+        qr_url = unescape(qr_src.group(1) or qr_src.group(2))
+        self.assertIn('upi', qr_url.lower())
+        self.assertIn('pay', urllib.parse.unquote(qr_url).lower())
+
+        # parse_qs already percent-decodes; do not unquote_plus (that turns '+' into space).
+        qr_data = urllib.parse.parse_qs(
+            urllib.parse.urlparse(qr_url).query).get('data', [''])[0]
+        qr_upi = qr_data
+        self.assertTrue(qr_upi.startswith('upi://pay?'),
+                        'QR data is not a UPI pay URI')
+
+        button_qs = urllib.parse.parse_qs(
+            urllib.parse.urlparse(button_href).query)
+        qr_qs = urllib.parse.parse_qs(urllib.parse.urlparse(qr_upi).query)
+        self.assertEqual(button_qs.get('pa'), qr_qs.get('pa'))
+        self.assertEqual(button_qs.get('am'), qr_qs.get('am'))
+        self.assertEqual(button_qs.get('am'), ['455.00'])
+        self.assertEqual(button_qs.get('pa'), ['keralaxpress@upi'])
 
     def test_the_portal_recharge_journey_still_works(self):
         self.authenticate('kx_recharge_journey', 'kx_recharge_journey')

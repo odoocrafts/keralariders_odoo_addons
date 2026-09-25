@@ -68,6 +68,19 @@
     max-width: 100%;
 }
 
+/* Scan and Pay — tap-to-open UPI apps (one-phone flow); full-width on phones. */
+.kx-upi-app-pay .kx-upi-app-pay-btn {
+    white-space: nowrap;
+}
+
+@media (max-width: 575.98px) {
+    .kx-upi-app-pay .kx-upi-app-pay-btn {
+        display: block;
+        width: 100%;
+        white-space: normal;
+    }
+}
+
 /* /my/shipments Action column: portal tables clip cells (max-width 10rem +
    ellipsis). Let primary buttons wrap onto a second line instead of hiding. */
 .o_portal_wrap .o_portal_my_doc_table td.kx-shipment-actions {
