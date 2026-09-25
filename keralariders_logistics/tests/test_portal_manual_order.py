@@ -401,6 +401,58 @@ class TestPortalManualOrder(IndiapostHermeticMixin, HttpCase):
             ship_allowed.headers.get('Location', ''),
         )
 
+    def test_cancelled_hides_print_and_rejects_print_url(self):
+        self.authenticate(self.portal_login, self.portal_login)
+        order = self._create_own_network_order()
+        shipment = order.shipment_ids
+
+        detail = self.url_open('/my/orders/%s' % order.id)
+        self.url_open('/my/orders/request_pickup', data={
+            'csrf_token': self._csrf(detail.text),
+            'order_id': str(order.id),
+            'pickup_confirm_token': self._hidden_value(
+                detail.text, 'pickup_confirm_token'),
+        })
+        self.env.invalidate_all()
+        self.assertTrue(order.portal_awb_printable())
+        self.assertTrue(shipment.portal_awb_printable())
+
+        shipment.sudo().write({'state': 'cancelled'})
+        order.sudo().write({'state': 'cancelled'})
+        self.env.invalidate_all()
+        self.assertFalse(order.portal_awb_printable())
+        self.assertFalse(shipment.portal_awb_printable())
+
+        listing = self.url_open('/my/orders')
+        self.assertNotIn('/my/orders/%s/print' % order.id, listing.text)
+
+        order_detail = self.url_open('/my/orders/%s' % order.id)
+        self.assertNotIn('Print AWBs', order_detail.text)
+        self.assertNotIn('/my/orders/%s/print' % order.id, order_detail.text)
+
+        shipments = self.url_open('/my/shipments')
+        self.assertNotIn('/my/shipments/%s/print' % shipment.id, shipments.text)
+
+        ship_detail = self.url_open('/my/shipments/%s' % shipment.id)
+        self.assertNotIn('Print AWB', ship_detail.text)
+        self.assertNotIn('/my/shipments/%s/print' % shipment.id, ship_detail.text)
+
+        denied = self._print_redirect('/my/orders/%s/print' % order.id)
+        self.assertIn(denied.status_code, (301, 302, 303, 307))
+        self.assertIn('/my/orders/%s' % order.id, denied.headers.get('Location', ''))
+        self.assertNotIn('/report/pdf', denied.headers.get('Location', ''))
+
+        follow = self.url_open('/my/orders/%s/print' % order.id)
+        self.assertIn('after you request pickup', follow.text)
+        self.assertNotIn(
+            'application/pdf', follow.headers.get('Content-Type', ''))
+
+        ship_denied = self._print_redirect(
+            '/my/shipments/%s/print' % shipment.id)
+        self.assertIn(ship_denied.status_code, (301, 302, 303, 307))
+        self.assertIn('/my/shipments', ship_denied.headers.get('Location', ''))
+        self.assertNotIn('/report/pdf', ship_denied.headers.get('Location', ''))
+
     def test_order_detail_uses_phone_layout_without_hiding_print(self):
         self.authenticate(self.portal_login, self.portal_login)
         order = self._create_own_network_order()

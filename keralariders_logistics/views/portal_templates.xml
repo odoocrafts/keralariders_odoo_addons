@@ -893,7 +893,7 @@
                                    title="Details">
                                     <i class="fa fa-eye"/>
                                 </a>
-                                <a t-if="shipment.state != 'order_added'"
+                                <a t-if="shipment.portal_awb_printable()"
                                    t-attf-href="/my/shipments/#{shipment.id}/print"
                                    class="btn btn-sm btn-outline-primary me-1 kx-print-awb"
                                    title="Print AWB">
@@ -1039,6 +1039,11 @@
                     </t>
                     <div class="mt-3">
                         <a t-attf-href="/track/#{shipment.tracking_token}" class="btn btn-outline-primary btn-sm me-2">Track</a>
+                        <a t-if="shipment.portal_awb_printable()"
+                           t-attf-href="/my/shipments/#{shipment.id}/print"
+                           class="btn btn-outline-primary btn-sm me-2 kx-print-awb">
+                            <i class="fa fa-print me-1"/> Print AWB
+                        </a>
                         <a t-if="shipment.order_id" t-attf-href="/my/orders/#{shipment.order_id.id}"
                            class="btn btn-outline-secondary btn-sm me-2">Back to order</a>
                         <a t-if="shipment.portal_draft_edit_allowed()"
@@ -1073,6 +1078,7 @@
                     </div>
                 </div>
             </div>
+            <t t-call="keralariders_logistics.portal_print_shipping_label_modal"/>
         </t>
     </template>
 

@@ -3321,10 +3321,13 @@ class Shipment(models.Model):
         ]
 
     def portal_awb_printable(self):
-        """Seller portal may print AWBs only after pickup has been requested."""
+        """Seller portal may print AWBs only after pickup, never for drafts/cancelled."""
         if not self:
             return False
-        return all(shipment.state != 'order_added' for shipment in self)
+        return all(
+            shipment.state not in ('order_added', 'cancelled')
+            for shipment in self
+        )
 
     wallet_transaction_id = fields.Many2one("logistics.wallet.transaction", string="Wallet Transaction (Legacy)")
 

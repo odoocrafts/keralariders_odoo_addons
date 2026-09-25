@@ -19,7 +19,7 @@ class IrActionsReport(models.Model):
     _inherit = 'ir.actions.report'
 
     def _kx_portal_forbid_draft_awb(self, report_ref, res_ids):
-        """Sellers cannot download AWB PDFs for unbooked / draft shipments."""
+        """Sellers cannot download AWB PDFs for unbooked, draft, or cancelled shipments."""
         if not res_ids or not self.env.user.share:
             return
         try:
