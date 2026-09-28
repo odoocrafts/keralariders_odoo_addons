@@ -2034,6 +2034,9 @@ class Shipment(models.Model):
             # Recording it per shipment (rather than raising) keeps the barcode
             # reservations and the diagnostics on the records.
             message = exc.user_message()
+            if ipc.is_pincode_not_found_message(exc.message):
+                message = ipc.invalid_delivery_pincode_message(
+                    ipc.extract_pincode_from_message(exc.message))
             for shipment in prepared:
                 shipment._ip_record_booking_error(message)
             errors.append(_('India Post rejected the whole batch: %s') % message)

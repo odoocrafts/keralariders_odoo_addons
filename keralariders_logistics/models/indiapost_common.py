@@ -516,8 +516,9 @@ def is_pincode_not_found_message(message):
     """True when the failure is an unknown / unserviceable Indian PIN.
 
     Format-valid six-digit pins still fail when India Post has no office
-    (``Destination pincode 656875 not found``) or our lookup finds nothing
-    (``Unknown pincode …`` / empty pincode-search).
+    (``Destination pincode 656875 not found``, ``Destination pincode 695030
+    is not serviceable — no active delivery office configured``) or our
+    lookup finds nothing (``Unknown pincode …`` / empty pincode-search).
     """
     text = (message or '').lower()
     if 'not a valid delivery pincode' in text:
@@ -526,7 +527,9 @@ def is_pincode_not_found_message(message):
         return True
     if 'no bookable post office' in text:
         return True
-    if 'pincode' in text and 'not found' in text:
+    if 'no active delivery office' in text:
+        return True
+    if 'pincode' in text and ('not found' in text or 'not serviceable' in text):
         return True
     return False
 
