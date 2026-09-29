@@ -177,11 +177,15 @@ class Order(models.Model):
             raise UserError(_('No shipments to print.'))
         return self.env['logistics.awb.print.wizard']._action_open(shipments)
 
-    def portal_awb_printable(self):
-        """Seller portal may print AWBs only after pickup, never for drafts/cancelled."""
+    def portal_awb_print_state(self):
+        """See ``logistics.shipment.portal_awb_print_state``."""
         if not self:
             return False
         self.ensure_one()
         if self.state in ('draft', 'cancelled'):
             return False
-        return bool(self.shipment_ids) and self.shipment_ids.portal_awb_printable()
+        return self.shipment_ids.portal_awb_print_state()
+
+    def portal_awb_printable(self):
+        """Seller portal may print AWBs only after pickup, never for drafts/cancelled."""
+        return self.portal_awb_print_state() == 'ready'

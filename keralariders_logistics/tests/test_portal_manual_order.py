@@ -252,7 +252,7 @@ class TestPortalManualOrder(IndiapostHermeticMixin, HttpCase):
         self.assertEqual(shipment.length_cm, 30.0)
         self.assertEqual(
             shipment.indiapost_article_type, 'SP',
-            'the order form must still default to Speed Post',
+            'a POST without the service radio falls back to Speed Post',
         )
         self.assertNotAlmostEqual(shipment.delivery_charges_total, 1.0, places=2)
 

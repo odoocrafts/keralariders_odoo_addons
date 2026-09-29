@@ -194,7 +194,7 @@ class TestPortalBulkUpload(IndiapostHermeticMixin, HttpCase):
             captured,
         )
 
-    def test_indiapost_bulk_defaults_to_speed_post(self):
+    def test_indiapost_bulk_without_service_falls_back_to_speed_post(self):
         captured = []
         self.authenticate(self.ip_login, self.ip_login)
         form = self.url_open('/my/orders/new')

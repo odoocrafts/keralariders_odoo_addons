@@ -33,7 +33,13 @@ class IrActionsReport(models.Model):
         if not seller:
             return
         shipments = self.env['logistics.shipment'].browse(res_ids).exists()
-        if shipments.filtered(lambda s: not s.portal_awb_printable()):
+        state = shipments.portal_awb_print_state()
+        if state in ('pending', 'failed'):
+            raise AccessError(_(
+                'India Post booking is still in progress. Print the label once '
+                'the India Post article number is allocated.'
+            ))
+        if shipments and state != 'ready':
             raise AccessError(_(
                 'AWB labels are available after you request pickup.'
             ))

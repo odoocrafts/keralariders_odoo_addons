@@ -54,12 +54,13 @@
                                 </span>
                             </td>
                             <td class="text-end">
-                                <a t-if="order.portal_awb_printable()"
-                                   t-attf-href="/my/orders/#{order.id}/print"
-                                   class="btn btn-sm btn-outline-primary kx-print-awb"
-                                   title="Print All AWBs">
-                                    <i class="fa fa-print"/> Print
-                                </a>
+                                <t t-call="keralariders_logistics.portal_print_awb_control">
+                                    <t t-set="print_record" t-value="order"/>
+                                    <t t-set="print_kind" t-value="'order'"/>
+                                    <t t-set="print_class" t-value="'btn btn-sm btn-outline-primary'"/>
+                                    <t t-set="print_text" t-value="'Print'"/>
+                                    <t t-set="print_title" t-value="'Print All AWBs'"/>
+                                </t>
                             </td>
                         </tr>
                     </t>
@@ -217,11 +218,13 @@
                                class="btn btn-primary">
                                 <i class="fa fa-plus me-1"/> Add Shipment
                             </a>
-                            <a t-if="order.portal_awb_printable()"
-                               t-attf-href="/my/orders/#{order.id}/print"
-                               class="btn btn-outline-primary kx-print-awb">
-                                <i class="fa fa-print me-1"/> Print AWBs
-                            </a>
+                            <t t-call="keralariders_logistics.portal_print_awb_control">
+                                <t t-set="print_record" t-value="order"/>
+                                <t t-set="print_kind" t-value="'order'"/>
+                                <t t-set="print_class" t-value="'btn btn-outline-primary'"/>
+                                <t t-set="print_text" t-value="'Print AWBs'"/>
+                                <t t-set="print_title" t-value="False"/>
+                            </t>
                         </div>
                     </div>
                 </div>
@@ -471,7 +474,7 @@
                                                        t-att-id="'kx_bulk_article_%s' % product['code']"
                                                        name="indiapost_article_type"
                                                        t-att-value="product['code']"
-                                                       t-att-checked="'checked' if product['code'] == 'SP' else None"/>
+                                                       t-att-checked="'checked' if product['code'] == 'BP' else None"/>
                                                 <label class="form-check-label"
                                                        t-att-for="'kx_bulk_article_%s' % product['code']">
                                                     <t t-esc="product['label']"/>

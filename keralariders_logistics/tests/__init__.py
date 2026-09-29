@@ -30,3 +30,4 @@ from . import test_indiapost_pre_scan_cancel
 from . import test_order_pickup_state
 from . import test_portal_draft_edit_cancel
 from . import test_indiapost_unserviceable_pincode
+from . import test_portal_print_ready

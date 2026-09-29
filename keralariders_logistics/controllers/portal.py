@@ -319,13 +319,16 @@ class LogisticsPortal(CustomerPortal):
     def _portal_shipment_form_values(self, seller, **extra):
         """Shared context for the standalone shipment form and the order forms."""
         districts = request.env['logistics.district'].sudo().search([])
+        country = request.env.company.country_id or request.env.ref(
+            'base.in', raise_if_not_found=False)
         states = request.env['res.country.state'].sudo().search(
-            [('country_id', '=', request.env.company.country_id.id)]
+            [('country_id', '=', country.id if country else False)]
         )
         values = {
             'seller': seller,
             'districts': districts,
             'states': states,
+            'default_state': self._portal_default_state(states),
             'shipment': False,
             'hide_indiapost_pickup_date': False,
             'error': request.session.pop('error', None),
@@ -333,6 +336,14 @@ class LogisticsPortal(CustomerPortal):
         }
         values.update(extra)
         return values
+
+    @staticmethod
+    def _portal_default_state(states):
+        """Kerala, pre-selected when the shipment has no destination state yet."""
+        return (
+            states.filtered(lambda s: s.country_id.code == 'IN' and s.code == 'KL')[:1]
+            or states.filtered(lambda s: (s.name or '').strip().lower() == 'kerala')[:1]
+        )
 
     @http.route(['/my/shipments/new'], type='http', auth="user", website=True)
     def portal_my_shipments_new(self, **kw):
@@ -781,11 +792,56 @@ class LogisticsPortal(CustomerPortal):
             )
         return request.render("keralariders_logistics.portal_my_order_detail", values)
 
-    def _portal_print_awb_denied(self, redirect_url):
-        request.session['error'] = _(
-            'AWB labels are available after you request pickup.'
-        )
+    def _portal_print_awb_denied(self, redirect_url, print_state=False):
+        if print_state in ('pending', 'failed'):
+            request.session['error'] = _(
+                'India Post booking is still in progress. Print will be '
+                'available once the India Post article number is allocated.'
+            )
+        else:
+            request.session['error'] = _(
+                'AWB labels are available after you request pickup.'
+            )
         return request.redirect(redirect_url)
+
+    @staticmethod
+    def _portal_print_status_ids(raw):
+        ids = []
+        for part in (raw or '').split(',')[:200]:
+            part = part.strip()
+            if part.isdigit():
+                ids.append(int(part))
+        return ids
+
+    @http.route(['/my/print_status'], type='http', auth="user",
+                methods=['GET'])
+    def portal_my_print_status(self, shipments=None, orders=None, **kw):
+        """Print control state for the seller's own shipments / orders.
+
+        Polled by the portal while an India Post booking is still storing
+        its article number, so Print flips to ready without a reload.
+        """
+        seller = self._portal_seller()
+        result = {'shipments': {}, 'orders': {}}
+        if not seller:
+            return request.make_json_response(result, status=403)
+        shipment_ids = self._portal_print_status_ids(shipments)
+        if shipment_ids:
+            for shipment in request.env['logistics.shipment'].search([
+                ('id', 'in', shipment_ids),
+                ('seller_id', '=', seller.id),
+            ]):
+                result['shipments'][str(shipment.id)] = \
+                    shipment.portal_awb_print_state()
+        order_ids = self._portal_print_status_ids(orders)
+        if order_ids:
+            for order in request.env['logistics.order'].search([
+                ('id', 'in', order_ids),
+                ('seller_id', '=', seller.id),
+            ]):
+                result['orders'][str(order.id)] = order.portal_awb_print_state()
+        return request.make_json_response(
+            result, headers=[('Cache-Control', 'no-store')])
 
     def _portal_awb_pdf_redirect(self, shipment_ids, paper=None):
         xmlid = request.env['logistics.shipment']._awb_report_xmlid_for_paper(
@@ -810,8 +866,10 @@ class LogisticsPortal(CustomerPortal):
         if not order:
             return request.redirect('/my/orders')
 
-        if not order.portal_awb_printable():
-            return self._portal_print_awb_denied(f'/my/orders/{order.id}')
+        print_state = order.portal_awb_print_state()
+        if print_state != 'ready':
+            return self._portal_print_awb_denied(
+                f'/my/orders/{order.id}', print_state)
             
         shipment_ids = order.shipment_ids.ids
         if not shipment_ids:
@@ -1497,8 +1555,9 @@ class LogisticsPortal(CustomerPortal):
         ], limit=1)
         if not shipment:
             return request.redirect('/my/shipments')
-        if not shipment.portal_awb_printable():
-            return self._portal_print_awb_denied('/my/shipments')
+        print_state = shipment.portal_awb_print_state()
+        if print_state != 'ready':
+            return self._portal_print_awb_denied('/my/shipments', print_state)
         return self._portal_awb_pdf_redirect([shipment.id], kw.get('paper'))
 
     @http.route(['/my/shipments/<int:shipment_id>/indiapost_label'], type='http',
@@ -1631,7 +1690,7 @@ class LogisticsPortal(CustomerPortal):
         if method == 'indiapost' and seller and not form.get('origin_pincode'):
             form['origin_pincode'] = (seller.zip or '').strip()
         if method == 'indiapost' and not form.get('indiapost_article_type'):
-            form['indiapost_article_type'] = 'SP'
+            form['indiapost_article_type'] = 'BP'
         article_field = request.env['logistics.shipment']._fields[
             'indiapost_article_type']
         return {

@@ -3320,14 +3320,41 @@ class Shipment(models.Model):
             ('order_id.state', '!=', 'draft'),
         ]
 
-    def portal_awb_printable(self):
-        """Seller portal may print AWBs only after pickup, never for drafts/cancelled."""
+    def _portal_awb_print_state_one(self):
+        self.ensure_one()
+        if self.state in ('order_added', 'cancelled'):
+            return False
+        if self.fulfilment_method == 'indiapost' and not self.portal_indiapost_arn():
+            # Booking runs after Request Pickup; the label would fall back to
+            # the KX AWB barcode, which India Post cannot scan.
+            if self.indiapost_booking_state == 'error' \
+                    and not self.indiapost_booking_in_progress:
+                return 'failed'
+            return 'pending'
+        return 'ready'
+
+    def portal_awb_print_state(self):
+        """Seller portal Print control state for this set of shipments.
+
+        ``'ready'``: every AWB can print. ``'pending'``: an India Post booking
+        has not stored its article number yet (poll). ``'failed'``: the last
+        India Post booking attempt errored (stop polling). ``False``: draft or
+        cancelled, never printable.
+        """
         if not self:
             return False
-        return all(
-            shipment.state not in ('order_added', 'cancelled')
-            for shipment in self
-        )
+        states = {shipment._portal_awb_print_state_one() for shipment in self}
+        if False in states:
+            return False
+        for state in ('pending', 'failed'):
+            if state in states:
+                return state
+        return 'ready'
+
+    def portal_awb_printable(self):
+        """Seller portal may print AWBs only after pickup, never for drafts/cancelled,
+        and India Post only once the article number (ARN) is stored."""
+        return self.portal_awb_print_state() == 'ready'
 
     wallet_transaction_id = fields.Many2one("logistics.wallet.transaction", string="Wallet Transaction (Legacy)")
 

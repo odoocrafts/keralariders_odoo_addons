@@ -761,6 +761,43 @@
         </script>
     </template>
 
+    <!-- Seller Print AWB control. India Post shipments stay a disabled
+         spinner until booking stores the ARN (portal_print_ready.js polls
+         /my/print_status and swaps in the live link), so the 100x150 label
+         never goes out with the KX AWB barcode in the carrier slot.
+         Params: print_record, print_kind ('shipment' | 'order'),
+         print_class, print_text (optional), print_title (optional). -->
+    <template id="portal_print_awb_control" name="Portal Print AWB control">
+        <t t-set="print_state" t-value="print_record.portal_awb_print_state()"/>
+        <a t-if="print_state == 'ready'"
+           t-attf-href="/my/#{'orders' if print_kind == 'order' else 'shipments'}/#{print_record.id}/print"
+           t-attf-class="#{print_class} kx-print-awb"
+           t-att-title="print_title or None">
+            <i t-attf-class="fa fa-print#{' me-1' if print_text else ''}"/><t t-if="print_text"> <t t-esc="print_text"/></t>
+        </a>
+        <button t-elif="print_state in ('pending', 'failed')"
+                type="button" disabled="disabled"
+                t-attf-class="#{print_class} kx-print-awb-pending"
+                t-att-data-kx-print-kind="print_kind"
+                t-att-data-kx-print-id="print_record.id"
+                t-att-data-kx-print-state="print_state"
+                t-att-data-kx-print-text="print_text or None"
+                t-att-data-kx-print-title="print_title or None"
+                t-att-aria-busy="'true' if print_state == 'pending' else None"
+                title="India Post booking is still in progress">
+            <span t-attf-class="kx-print-pending-loading#{'' if print_state == 'pending' else ' d-none'}">
+                <i t-attf-class="fa fa-spinner fa-spin#{' me-1' if print_text else ''}"/>
+                <t t-if="print_text">Preparing label...</t>
+                <span t-else="" class="visually-hidden">Preparing label...</span>
+            </span>
+            <span t-attf-class="kx-print-pending-waiting#{'' if print_state == 'failed' else ' d-none'}">
+                <i t-attf-class="fa fa-clock-o#{' me-1' if print_text else ''}"/>
+                <t t-if="print_text">India Post booking is still in progress</t>
+                <span t-else="" class="visually-hidden">India Post booking is still in progress</span>
+            </span>
+        </button>
+    </template>
+
     <!-- AWB stays the main number; ARN is a second line so the column
          does not explode on mobile. Only India Post rows with an allocated
          article number show it. -->
@@ -893,12 +930,13 @@
                                    title="Details">
                                     <i class="fa fa-eye"/>
                                 </a>
-                                <a t-if="shipment.portal_awb_printable()"
-                                   t-attf-href="/my/shipments/#{shipment.id}/print"
-                                   class="btn btn-sm btn-outline-primary me-1 kx-print-awb"
-                                   title="Print AWB">
-                                    <i class="fa fa-print"/>
-                                </a>
+                                <t t-call="keralariders_logistics.portal_print_awb_control">
+                                    <t t-set="print_record" t-value="shipment"/>
+                                    <t t-set="print_kind" t-value="'shipment'"/>
+                                    <t t-set="print_class" t-value="'btn btn-sm btn-outline-primary me-1'"/>
+                                    <t t-set="print_text" t-value="False"/>
+                                    <t t-set="print_title" t-value="'Print AWB'"/>
+                                </t>
                             </td>
                         </tr>
                     </t>
@@ -1039,11 +1077,13 @@
                     </t>
                     <div class="mt-3">
                         <a t-attf-href="/track/#{shipment.tracking_token}" class="btn btn-outline-primary btn-sm me-2">Track</a>
-                        <a t-if="shipment.portal_awb_printable()"
-                           t-attf-href="/my/shipments/#{shipment.id}/print"
-                           class="btn btn-outline-primary btn-sm me-2 kx-print-awb">
-                            <i class="fa fa-print me-1"/> Print AWB
-                        </a>
+                        <t t-call="keralariders_logistics.portal_print_awb_control">
+                            <t t-set="print_record" t-value="shipment"/>
+                            <t t-set="print_kind" t-value="'shipment'"/>
+                            <t t-set="print_class" t-value="'btn btn-outline-primary btn-sm me-2'"/>
+                            <t t-set="print_text" t-value="'Print AWB'"/>
+                            <t t-set="print_title" t-value="False"/>
+                        </t>
                         <a t-if="shipment.order_id" t-attf-href="/my/orders/#{shipment.order_id.id}"
                            class="btn btn-outline-secondary btn-sm me-2">Back to order</a>
                         <a t-if="shipment.portal_draft_edit_allowed()"
@@ -1124,10 +1164,12 @@
                                 </div>
                                 <div class="mb-3">
                                     <label class="form-label">State</label>
+                                    <t t-set="selected_state_id"
+                                       t-value="(shipment and shipment.shipping_to_state_id.id) or (default_state and default_state.id)"/>
                                     <select name="shipping_to_state_id" class="form-select">
                                         <t t-foreach="states" t-as="state">
                                             <option t-att-value="state.id"
-                                                    t-att-selected="'selected' if shipment and shipment.shipping_to_state_id.id == state.id else None">
+                                                    t-att-selected="'selected' if selected_state_id == state.id else None">
                                                 <t t-esc="state.name"/>
                                             </option>
                                         </t>
@@ -1181,7 +1223,7 @@
                                                        t-att-id="'kx_ship_article_%s' % product['code']"
                                                        name="indiapost_article_type"
                                                        t-att-value="product['code']"
-                                                       t-att-checked="'checked' if (shipment and shipment.indiapost_article_type == product['code']) or (not shipment and product['code'] == 'SP') else None"/>
+                                                       t-att-checked="'checked' if (shipment and shipment.indiapost_article_type == product['code']) or (not shipment and product['code'] == 'BP') else None"/>
                                                 <label class="form-check-label"
                                                        t-att-for="'kx_ship_article_%s' % product['code']">
                                                     <t t-esc="product['label']"/>
@@ -1602,7 +1644,7 @@
                                                                t-att-id="'kx_article_%s' % product['code']"
                                                                name="indiapost_article_type"
                                                                t-att-value="product['code']"
-                                                               t-att-checked="'checked' if form.get('indiapost_article_type', 'SP') == product['code'] else None"/>
+                                                               t-att-checked="'checked' if form.get('indiapost_article_type', 'BP') == product['code'] else None"/>
                                                         <label class="form-check-label" t-att-for="'kx_article_%s' % product['code']">
                                                             <t t-esc="product['label']"/>
                                                             <span t-if="product['code'] == 'BP'" class="text-muted small">
