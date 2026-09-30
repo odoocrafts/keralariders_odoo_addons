@@ -2,6 +2,10 @@ from odoo import models, fields, api, _
 from odoo.exceptions import ValidationError
 
 from . import indiapost_common as ipc
+from .account import (
+    COD_SETTLEMENT_CHARGE_PARAM,
+    DEFAULT_COD_SETTLEMENT_CHARGE_PERCENT,
+)
 from .indiapost_client import (
     CONFIG_PREFIX,
     DEFAULT_BASE_URL,
@@ -27,6 +31,19 @@ class ResConfigSettings(models.TransientModel):
         string="Company COD Settlement Account",
         domain="[('account_type', 'in', ('company', 'bank', 'cash'))]",
         help="Company account that receives hub banking and pays seller COD clearances.",
+    )
+    # Not a config_parameter field: the generic handler deletes the parameter
+    # when a float is saved as 0, which would turn a waived charge back into
+    # the 2% default.
+    cod_settlement_charge_percent = fields.Float(
+        string="COD settlement charge (%)",
+        digits=(5, 2),
+        default=DEFAULT_COD_SETTLEMENT_CHARGE_PERCENT,
+        help="Percent of each seller COD withdrawal kept as the settlement "
+             "charge. Enter 2 for 2%. The seller's pending balance drops by "
+             "the full requested amount; the requested amount minus this "
+             "charge is paid to their bank. Existing requests keep the rate "
+             "they were created with.",
     )
 
     # -------------------------------------------------------------------------
@@ -211,6 +228,9 @@ class ResConfigSettings(models.TransientModel):
             'keralariders_logistics.company_cod_account_id'
         )
         res['company_cod_account_id'] = int(account_id) if account_id else False
+        res['cod_settlement_charge_percent'] = (
+            self.env['logistics.account.transfer']._cod_settlement_charge_percent()
+        )
         # A missing config parameter must not uncheck the webhook switch:
         # Boolean config fields otherwise render as False and the next save
         # would disable a live India Post callback.
@@ -222,14 +242,27 @@ class ResConfigSettings(models.TransientModel):
         return res
 
     def set_values(self):
+        self._check_cod_settlement_charge()
         self._check_indiapost_settings()
         super().set_values()
         self.env['ir.config_parameter'].sudo().set_param(
             'keralariders_logistics.company_cod_account_id',
             self.company_cod_account_id.id if self.company_cod_account_id else '',
         )
+        self.env['ir.config_parameter'].sudo().set_param(
+            COD_SETTLEMENT_CHARGE_PARAM,
+            repr(float(self.cod_settlement_charge_percent or 0.0)),
+        )
         # Credentials may have changed, so drop any cached bearer token.
         self.env['logistics.indiapost.client']._ip_forget_token()
+
+    def _check_cod_settlement_charge(self):
+        for rec in self:
+            if not 0.0 <= rec.cod_settlement_charge_percent < 100.0:
+                raise ValidationError(_(
+                    "The COD settlement charge must be at least 0% and "
+                    "below 100%. Enter 2 for 2%."
+                ))
 
     def _check_indiapost_settings(self):
         """Validate the consignor identity before it can break a booking.

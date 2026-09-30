@@ -12,6 +12,10 @@ _logger = logging.getLogger(__name__)
 # Transfers that settle COD to the seller (reduce portal pending when posted).
 _COD_SETTLEMENT_TYPES = ('cod_clearance', 'cod_withdrawal', 'other')
 
+# Company-wide COD withdrawal charge, stored as a percent: 2.0 means 2%.
+COD_SETTLEMENT_CHARGE_PARAM = 'keralariders_logistics.cod_settlement_charge_percent'
+DEFAULT_COD_SETTLEMENT_CHARGE_PERCENT = 2.0
+
 _MONTH_ABBR = (
     '', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
     'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
@@ -175,6 +179,11 @@ class BankCashAccountTransfer(models.Model):
         for vals in vals_list:
             if vals.get('name', _('New')) == _('New'):
                 vals['name'] = self.env['ir.sequence'].next_by_code('logistics.account.transfer') or _('New')
+            if (
+                vals.get('transfer_type') == 'cod_withdrawal'
+                and 'cod_charge_percent' not in vals
+            ):
+                vals['cod_charge_percent'] = self._cod_settlement_charge_percent()
         recs = super().create(vals_list)
         for rec in recs:
             if rec.transfer_type == 'cod_clearance' and rec.cod_clearance_payment_transfer_ids:
@@ -630,8 +639,9 @@ class BankCashAccountTransfer(models.Model):
     # ------------------------------------------------------------------
     # COD withdrawal settlement cycle
     #
-    # A request is tied to the cycle of its request date (seller tz). Money is
-    # scheduled for a fixed settlement date — not "anytime / next 24 hours".
+    # A request is tied to the cycle of its request date (seller tz), which
+    # stamps a fixed settlement date on it. Once finance approves, the seller
+    # is told the net will be credited within 24 hours.
     # One open (draft or approved-unpaid) withdrawal per seller per cycle.
     # ------------------------------------------------------------------
     @api.model
@@ -808,6 +818,12 @@ class BankCashAccountTransfer(models.Model):
                 date=settle_label,
                 ref=open_same_cycle.name or '',
             ))
+        breakdown = self.get_cod_withdrawal_breakdown(amount)
+        if breakdown['net'] <= 0:
+            raise UserError(_(
+                "Withdrawal amount is too small: after the settlement charge "
+                "nothing would be credited to your account."
+            ))
         bank_ref = _(
             "%(name)s / %(number)s / %(ifsc)s / %(bank)s",
             name=seller.bank_account_name or '',
@@ -821,6 +837,7 @@ class BankCashAccountTransfer(models.Model):
             'from_account_id': company_account.id,
             'to_account_id': seller_account.id,
             'amount': amount,
+            'cod_charge_percent': breakdown['percent'],
             'transfer_date': request_date,
             'cod_settlement_date': settlement_date,
             'reference': _('COD Withdrawal — %s') % seller.name,
@@ -889,6 +906,123 @@ class BankCashAccountTransfer(models.Model):
             else:
                 rec.cod_payout_state = 'approved'
 
+    # ------------------------------------------------------------------
+    # COD settlement charge
+    #
+    # ``amount`` stays the gross the seller asked to settle. It is the one
+    # figure the ledger posts and ``_seller_cod_balance_parts`` subtracts, so
+    # the pending balance drops by the full gross and the charge is never
+    # deducted a second time. The charge is kept by the company: finance pays
+    # only the net to the seller bank. The percent is frozen on the request so
+    # a later settings change cannot rewrite what the seller was shown.
+    # ------------------------------------------------------------------
+    cod_charge_percent = fields.Float(
+        string='Settlement Charge (%)',
+        digits=(5, 2),
+        readonly=True,
+        copy=False,
+        tracking=True,
+        help='Percent of the requested amount kept as the COD settlement '
+             'charge (2.0 means 2%). Taken from Settings when the request is '
+             'created and not changed afterwards.',
+    )
+    cod_charge_amount = fields.Monetary(
+        string='Settlement Charge',
+        compute='_compute_cod_charge',
+        store=True,
+        currency_field='currency_id',
+    )
+    cod_net_amount = fields.Monetary(
+        string='Amount to Seller Bank',
+        compute='_compute_cod_charge',
+        store=True,
+        currency_field='currency_id',
+        help='Requested amount minus the settlement charge: what finance '
+             'transfers to the seller bank account.',
+    )
+    cod_charge_percent_label = fields.Char(
+        string='Charge Rate',
+        compute='_compute_cod_charge_percent_label',
+    )
+
+    @api.depends('transfer_type', 'amount', 'cod_charge_percent', 'currency_id')
+    def _compute_cod_charge(self):
+        for rec in self:
+            if rec.transfer_type != 'cod_withdrawal':
+                rec.cod_charge_amount = 0.0
+                rec.cod_net_amount = 0.0
+                continue
+            breakdown = rec._cod_charge_breakdown(
+                rec.amount, rec.cod_charge_percent, rec.currency_id)
+            rec.cod_charge_amount = breakdown['charge']
+            rec.cod_net_amount = breakdown['net']
+
+    @api.depends('cod_charge_percent')
+    def _compute_cod_charge_percent_label(self):
+        for rec in self:
+            rec.cod_charge_percent_label = self._format_cod_charge_percent(
+                rec.cod_charge_percent)
+
+    @api.model
+    def _cod_settlement_charge_percent(self):
+        """Current company-wide charge percent from Settings (2.0 means 2%)."""
+        raw = self.env['ir.config_parameter'].sudo().get_param(
+            COD_SETTLEMENT_CHARGE_PARAM)
+        if raw in (None, False, ''):
+            return DEFAULT_COD_SETTLEMENT_CHARGE_PERCENT
+        try:
+            percent = float(raw)
+        except (TypeError, ValueError):
+            percent = -1.0
+        if not 0.0 <= percent < 100.0:
+            _logger.warning(
+                'Invalid COD settlement charge %r; using %s%%.',
+                raw, DEFAULT_COD_SETTLEMENT_CHARGE_PERCENT,
+            )
+            return DEFAULT_COD_SETTLEMENT_CHARGE_PERCENT
+        return percent
+
+    @api.model
+    def _format_cod_charge_percent(self, percent):
+        """``2.0`` → ``2%``, ``2.5`` → ``2.5%``."""
+        text = ('%.2f' % (percent or 0.0)).rstrip('0').rstrip('.')
+        return '%s%%' % text
+
+    @api.model
+    def _cod_charge_breakdown(self, gross, percent, currency=None):
+        currency = currency or self.env.company.currency_id
+        gross = currency.round(float(gross or 0.0))
+        percent = float(percent or 0.0)
+        charge = currency.round(gross * percent / 100.0)
+        return {
+            'gross': gross,
+            'percent': percent,
+            'percent_label': self._format_cod_charge_percent(percent),
+            'charge': charge,
+            'net': currency.round(gross - charge),
+        }
+
+    @api.model
+    def get_cod_withdrawal_breakdown(self, gross, percent=None, currency=None):
+        """Gross / charge / net for a withdrawal of ``gross`` at the current rate."""
+        if percent is None:
+            percent = self._cod_settlement_charge_percent()
+        return self._cod_charge_breakdown(gross, percent, currency)
+
+    def _cod_breakdown_display(self):
+        """Formatted gross / charge / net of this withdrawal, for mails and notes."""
+        self.ensure_one()
+
+        def money(value):
+            return self.currency_id.format(value) if self.currency_id else value
+
+        return {
+            'gross': str(money(self.amount)),
+            'percent': self.cod_charge_percent_label,
+            'charge': str(money(self.cod_charge_amount)),
+            'net': str(money(self.cod_net_amount)),
+        }
+
     def action_mark_cod_paid(self):
         """Finance confirms the bank transfer promised at approval has gone out."""
         for rec in self:
@@ -937,15 +1071,20 @@ class BankCashAccountTransfer(models.Model):
             return self.env['mail.activity']
         activities = self.env['mail.activity']
         for transfer in self:
-            amount = transfer.currency_id.format(transfer.amount) if transfer.currency_id else transfer.amount
+            breakdown = transfer._cod_breakdown_display()
             note = _(
                 "Seller: %(seller)s<br/>"
-                "Amount: %(amount)s<br/>"
+                "Requested amount: %(gross)s<br/>"
+                "Settlement charge (%(percent)s): %(charge)s<br/>"
+                "Amount to seller bank: %(net)s<br/>"
                 "Reference: %(reference)s<br/>"
                 "Settlement date: %(settle)s<br/>"
                 "Bank: %(bank)s",
                 seller=transfer.related_seller_id.display_name or '',
-                amount=amount,
+                gross=breakdown['gross'],
+                percent=breakdown['percent'],
+                charge=breakdown['charge'],
+                net=breakdown['net'],
                 reference=transfer.name or '',
                 settle=format_date(
                     self.env, transfer.cod_settlement_date, date_format='d MMMM y'
@@ -1002,10 +1141,7 @@ class BankCashAccountTransfer(models.Model):
             list_url = '%s/odoo/action-%s' % (base, action.id)
         for transfer in self:
             try:
-                amount = (
-                    transfer.currency_id.format(transfer.amount)
-                    if transfer.currency_id else transfer.amount
-                )
+                breakdown = transfer._cod_breakdown_display()
                 seller_email = (
                     transfer.related_seller_id.email
                     or transfer.related_seller_id.partner_id.email
@@ -1022,7 +1158,9 @@ class BankCashAccountTransfer(models.Model):
                     '<p>A seller requested a COD withdrawal.</p>'
                     '<ul>'
                     '<li><strong>Seller:</strong> %s</li>'
-                    '<li><strong>Amount:</strong> %s</li>'
+                    '<li><strong>Requested amount:</strong> %s</li>'
+                    '<li><strong>Settlement charge (%s):</strong> %s</li>'
+                    '<li><strong>Amount to seller bank:</strong> %s</li>'
                     '<li><strong>Reference:</strong> %s</li>'
                     '<li><strong>Settlement date:</strong> %s</li>'
                     '<li><strong>Bank account:</strong> %s</li>'
@@ -1032,7 +1170,10 @@ class BankCashAccountTransfer(models.Model):
                     '<p>Please review and approve or cancel the draft transfer.</p>'
                 ) % (
                     html_escape(transfer.related_seller_id.display_name or ''),
-                    html_escape(str(amount)),
+                    html_escape(breakdown['gross']),
+                    html_escape(breakdown['percent']),
+                    html_escape(breakdown['charge']),
+                    html_escape(breakdown['net']),
                     html_escape(transfer.name or ''),
                     html_escape(settle_label),
                     html_escape(transfer._cod_bank_reference()),
@@ -1058,7 +1199,7 @@ class BankCashAccountTransfer(models.Model):
                 )
 
     def _notify_seller_cod_withdrawal_approved(self):
-        """Tell the seller the approved amount is scheduled for their bank.
+        """Tell the seller what will reach their bank, and that it is within 24 hours.
 
         Sent once, from :meth:`action_approve`, which refuses anything that is
         not still draft — so a second approve cannot produce a second mail.
@@ -1072,33 +1213,37 @@ class BankCashAccountTransfer(models.Model):
             if not email or '@' not in email:
                 continue
             try:
-                amount = (
-                    transfer.currency_id.format(transfer.amount)
-                    if transfer.currency_id else transfer.amount
-                )
-                settle_label = (
+                breakdown = transfer._cod_breakdown_display()
+                requested_on = (
                     format_date(
-                        self.env, transfer.cod_settlement_date, date_format='d MMMM y')
-                    if transfer.cod_settlement_date else _('Not set')
+                        self.env, transfer.transfer_date, date_format='d MMMM y')
+                    if transfer.transfer_date else _('Not set')
                 )
                 inner = Markup(
                     '<p>Hello %s,</p>'
-                    '<p>Your COD withdrawal request has been approved. The '
-                    'amount will be credited on %s.</p>'
+                    '<p>Your COD withdrawal request has been approved. '
+                    '<strong>%s will be credited to your account in the next '
+                    '24 hours.</strong></p>'
                     '<ul>'
                     '<li><strong>Request ref:</strong> %s</li>'
-                    '<li><strong>Amount approved:</strong> %s</li>'
-                    '<li><strong>Settlement date:</strong> %s</li>'
+                    '<li><strong>Requested on:</strong> %s</li>'
+                    '<li><strong>Requested amount:</strong> %s</li>'
+                    '<li><strong>Settlement charge (%s):</strong> %s</li>'
+                    '<li><strong>Amount to be credited to your account:</strong> %s</li>'
                     '<li><strong>Bank account:</strong> %s</li>'
                     '</ul>'
-                    '<p>You can follow the payout under COD Settlements in '
-                    'your seller portal.</p>'
+                    '<p>The amount will be credited in the next 24 hours. You '
+                    'can follow the payout under COD Settlements in your '
+                    'seller portal.</p>'
                 ) % (
                     html_escape(seller.display_name or ''),
-                    html_escape(settle_label),
+                    html_escape(breakdown['net']),
                     html_escape(transfer.name or ''),
-                    html_escape(str(amount)),
-                    html_escape(settle_label),
+                    html_escape(requested_on),
+                    html_escape(breakdown['gross']),
+                    html_escape(breakdown['percent']),
+                    html_escape(breakdown['charge']),
+                    html_escape(breakdown['net']),
                     html_escape(transfer._cod_bank_reference()),
                 )
                 Mail._kx_queue_mail(

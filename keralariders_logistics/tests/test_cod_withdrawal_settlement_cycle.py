@@ -160,9 +160,10 @@ class TestCodWithdrawalSettlementCycle(IndiapostHermeticMixin, TransactionCase):
         second = self._withdraw_on(date(2026, 10, 4), 100.0)
         self.assertEqual(second.cod_settlement_date, date(2026, 10, 10))
 
-    def test_approval_mail_names_settlement_date_not_24_hours(self):
+    def test_approval_mail_promises_24_hours_not_settlement_date(self):
         self._credit_cod('EYCYCLE000007IN', 100.0)
         transfer = self._withdraw_on(date(2026, 9, 7), 100.0)
+        self.assertEqual(transfer.cod_settlement_date, date(2026, 9, 20))
         transfer.action_approve()
 
         mails = self.Mail.sudo().search([
@@ -174,6 +175,8 @@ class TestCodWithdrawalSettlementCycle(IndiapostHermeticMixin, TransactionCase):
             and 'approved' in (m.subject or '').lower())
         self.assertEqual(len(mails), 1, mails.mapped('subject'))
         body = '%s %s' % (mails.body_html or '', mails.body or '')
-        self.assertNotIn('24 hours', body.lower())
-        self.assertIn('20 September 2026', body)
-        self.assertIn('will be credited on', body.lower())
+        self.assertIn('24 hours', body.lower())
+        self.assertNotIn('will be credited on', body.lower())
+        self.assertNotIn('20 September 2026', body)
+        # The cycle date stays on the request for the portal and the team.
+        self.assertEqual(transfer.cod_settlement_date, date(2026, 9, 20))

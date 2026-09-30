@@ -2687,20 +2687,25 @@ class LogisticsPortal(CustomerPortal):
             ('state', '=', 'draft'),
         ], order='transfer_date desc, id desc')
 
-        # Withdrawals the seller is still waiting on: requested (draft) or
-        # approved but not yet paid out to their bank.
+        # Every live withdrawal (requested, approved, paid) with its charge
+        # breakdown. Cancelled requests are left out.
         withdrawal_requests = Transfer.search([
             ('related_seller_id', '=', seller.id),
             ('transfer_type', '=', 'cod_withdrawal'),
             ('state', 'in', ['draft', 'posted']),
-        ], order='transfer_date desc, id desc', limit=5)
+        ], order='transfer_date desc, id desc', limit=10)
 
-        # Recent Settlements: posted clearances + withdrawals (+ legacy other payouts)
+        # Withdrawals are listed above with their breakdown, so this only
+        # carries finance-initiated clearances and legacy "other" payouts.
         recent_clearances = Transfer.search([
             ('related_seller_id', '=', seller.id),
-            ('transfer_type', 'in', ['cod_clearance', 'cod_withdrawal', 'other']),
+            ('transfer_type', 'in', ['cod_clearance', 'other']),
             ('state', '=', 'posted'),
         ], order='transfer_date desc, id desc', limit=5)
+
+        currency = seller.currency_id or request.env.company.currency_id
+        withdrawal_preview = Transfer.get_cod_withdrawal_breakdown(
+            withdrawable, currency=currency)
 
         has_bank_details = seller.has_cod_bank_details()
         
@@ -2718,7 +2723,8 @@ class LogisticsPortal(CustomerPortal):
             'has_bank_details': has_bank_details,
             'cod_cycle_info': cycle_info,
             'cod_cycle_blocked': cycle_blocked,
-            'currency_id': seller.currency_id or request.env.company.currency_id,
+            'withdrawal_preview': withdrawal_preview,
+            'currency_id': currency,
             'cod_type_label': self._cod_settlement_seller_type_label,
             'cod_type_badge': self._cod_settlement_seller_type_badge,
             'success': request.session.pop('success', None),
@@ -2744,12 +2750,18 @@ class LogisticsPortal(CustomerPortal):
                 format_date(request.env, settle, date_format='d MMMM y')
                 if settle else ''
             )
+            breakdown = transfer._cod_breakdown_display()
             request.session['success'] = _(
-                "COD withdrawal request %(ref)s for %(amount)s submitted. "
+                "COD withdrawal request %(ref)s submitted. "
+                "Requested amount %(gross)s, settlement charge (%(percent)s) "
+                "%(charge)s, amount to your account %(net)s. "
                 "Scheduled settlement date: %(settle)s. "
                 "It will remain in draft until a logistics admin approves it.",
                 ref=transfer.name,
-                amount=transfer.currency_id.format(transfer.amount) if transfer.currency_id else transfer.amount,
+                gross=breakdown['gross'],
+                percent=breakdown['percent'],
+                charge=breakdown['charge'],
+                net=breakdown['net'],
                 settle=settle_txt,
             )
         except (UserError, AccessError, ValueError) as e:

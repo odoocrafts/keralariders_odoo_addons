@@ -326,6 +326,9 @@
                                     <t t-esc="cod_cycle_info['summary']"/>
                                 </p>
                             </t>
+                            <p t-if="withdrawal_preview['percent']" class="mb-0 mt-2 small opacity-75">
+                                A <t t-esc="withdrawal_preview['percent_label']"/> settlement charge applies to each withdrawal.
+                            </p>
                             <t t-if="has_bank_details and withdrawable_balance &gt; 0 and not cod_cycle_blocked">
                                 <button type="button" class="btn btn-light mt-3" data-bs-toggle="modal" data-bs-target="#codWithdrawModal">
                                     Request COD Withdrawal
@@ -380,6 +383,58 @@
                                                    class="form-control" required="required"/>
                                             <label for="withdraw_amount">Amount</label>
                                         </div>
+                                        <div class="border rounded p-3 mb-3 bg-light" id="codWithdrawBreakdown"
+                                             t-att-data-charge-percent="withdrawal_preview['percent']"
+                                             t-att-data-currency-symbol="currency_id.symbol"
+                                             t-att-data-currency-position="currency_id.position">
+                                            <div class="d-flex justify-content-between small">
+                                                <span>Requested amount</span>
+                                                <span class="o_cod_bd_gross" t-esc="withdrawal_preview['gross']" t-options='{"widget": "monetary", "display_currency": currency_id}'/>
+                                            </div>
+                                            <div class="d-flex justify-content-between small text-muted">
+                                                <span>Settlement charge (<t t-esc="withdrawal_preview['percent_label']"/>)</span>
+                                                <span class="o_cod_bd_charge" t-esc="withdrawal_preview['charge']" t-options='{"widget": "monetary", "display_currency": currency_id}'/>
+                                            </div>
+                                            <hr class="my-2"/>
+                                            <div class="d-flex justify-content-between fw-bold">
+                                                <span>Amount to your account</span>
+                                                <span class="o_cod_bd_net" t-esc="withdrawal_preview['net']" t-options='{"widget": "monetary", "display_currency": currency_id}'/>
+                                            </div>
+                                            <p class="small text-muted mb-0 mt-2">
+                                                Your pending COD balance drops by the full requested amount.
+                                            </p>
+                                        </div>
+                                        <script>
+                                            (function () {
+                                                var box = document.getElementById('codWithdrawBreakdown');
+                                                var input = document.getElementById('withdraw_amount');
+                                                if (!box || !input) {
+                                                    return;
+                                                }
+                                                var percent = parseFloat(box.dataset.chargePercent) || 0;
+                                                var symbol = box.dataset.currencySymbol || '';
+                                                var after = box.dataset.currencyPosition === 'after';
+                                                function round2(value) {
+                                                    return Math.round((value + Number.EPSILON) * 100) / 100;
+                                                }
+                                                function fmt(value) {
+                                                    var text = value.toLocaleString('en-IN', {
+                                                        minimumFractionDigits: 2,
+                                                        maximumFractionDigits: 2,
+                                                    });
+                                                    return after ? text + ' ' + symbol : symbol + ' ' + text;
+                                                }
+                                                function update() {
+                                                    var gross = round2(Math.max(parseFloat(input.value) || 0, 0));
+                                                    var charge = round2(gross * percent / 100);
+                                                    box.querySelector('.o_cod_bd_gross').textContent = fmt(gross);
+                                                    box.querySelector('.o_cod_bd_charge').textContent = fmt(charge);
+                                                    box.querySelector('.o_cod_bd_net').textContent = fmt(round2(gross - charge));
+                                                }
+                                                input.addEventListener('input', update);
+                                                update();
+                                            })();
+                                        </script>
                                         <p class="small text-muted mb-0">
                                             Funds will be paid to
                                             <t t-esc="seller.bank_account_name"/> /
@@ -398,43 +453,68 @@
                         </div>
                     </div>
                     
-                    <div class="card shadow-sm mb-4" t-if="withdrawal_requests">
+                    <div class="card shadow-sm mb-4" id="cod_withdrawal_requests">
                         <div class="card-header bg-white">
                             <h5 class="mb-0">Withdrawal Requests</h5>
                         </div>
                         <ul class="list-group list-group-flush">
-                            <t t-foreach="withdrawal_requests" t-as="draft">
-                                <li class="list-group-item d-flex justify-content-between align-items-center">
-                                    <div>
-                                        <strong><span t-field="draft.name"/></strong><br/>
-                                        <small class="text-muted"><span t-field="draft.transfer_date" t-options='{"widget": "date"}'/></small>
-                                        <div class="small text-muted" t-if="draft.cod_settlement_date">
-                                            <t t-if="draft.cod_payout_state == 'approved'">
-                                                Approved — will be credited on
-                                                <span t-field="draft.cod_settlement_date" t-options='{"widget": "date"}'/>.
-                                            </t>
-                                            <t t-elif="draft.cod_payout_state == 'requested'">
-                                                Settlement date:
-                                                <span t-field="draft.cod_settlement_date" t-options='{"widget": "date"}'/>.
-                                            </t>
-                                            <t t-elif="draft.cod_payout_state == 'paid'">
-                                                Settled on
-                                                <span t-field="draft.cod_settlement_date" t-options='{"widget": "date"}'/>.
-                                            </t>
+                            <t t-foreach="withdrawal_requests" t-as="wr">
+                                <li class="list-group-item">
+                                    <div class="d-flex justify-content-between align-items-start">
+                                        <div>
+                                            <strong><span t-field="wr.name"/></strong><br/>
+                                            <small class="text-muted">
+                                                Requested <span t-field="wr.transfer_date" t-options='{"widget": "date"}'/>
+                                            </small>
+                                        </div>
+                                        <div class="text-end">
+                                            <span t-if="wr.cod_payout_state == 'requested'" class="badge bg-warning text-dark">Requested</span>
+                                            <span t-elif="wr.cod_payout_state == 'approved'" class="badge bg-info text-dark">Approved</span>
+                                            <span t-elif="wr.cod_payout_state == 'paid'" class="badge bg-success">Paid</span>
                                         </div>
                                     </div>
-                                    <div class="text-end">
-                                        <span class="fw-bold" t-field="draft.amount" t-options='{"widget": "monetary", "display_currency": draft.currency_id}'/><br/>
-                                        <span t-if="draft.cod_payout_state == 'requested'" class="badge bg-warning text-dark">Requested</span>
-                                        <span t-elif="draft.cod_payout_state == 'approved'" class="badge bg-info text-dark">Approved</span>
-                                        <span t-elif="draft.cod_payout_state == 'paid'" class="badge bg-success">Paid</span>
+                                    <table class="table table-sm table-borderless small mb-1 mt-2">
+                                        <tbody>
+                                            <tr>
+                                                <td class="ps-0 py-0">Requested amount</td>
+                                                <td class="pe-0 py-0 text-end">
+                                                    <span t-field="wr.amount" t-options='{"widget": "monetary", "display_currency": wr.currency_id}'/>
+                                                </td>
+                                            </tr>
+                                            <tr class="text-muted">
+                                                <td class="ps-0 py-0">Settlement charge (<t t-esc="wr.cod_charge_percent_label"/>)</td>
+                                                <td class="pe-0 py-0 text-end">
+                                                    <span t-field="wr.cod_charge_amount" t-options='{"widget": "monetary", "display_currency": wr.currency_id}'/>
+                                                </td>
+                                            </tr>
+                                            <tr class="fw-bold">
+                                                <td class="ps-0 py-0">Amount to your account</td>
+                                                <td class="pe-0 py-0 text-end">
+                                                    <span t-field="wr.cod_net_amount" t-options='{"widget": "monetary", "display_currency": wr.currency_id}'/>
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                    <div class="small text-muted">
+                                        <div t-if="wr.cod_payout_state == 'requested'">Awaiting approval.</div>
+                                        <div t-elif="wr.cod_payout_state == 'approved'">Approved — credited in the next 24 hours.</div>
+                                        <div t-elif="wr.cod_payout_state == 'paid'">
+                                            Paid to your bank<t t-if="wr.cod_paid_on"> on <span t-field="wr.cod_paid_on" t-options='{"widget": "date"}'/></t>.
+                                        </div>
+                                        <div t-if="wr.cod_settlement_date">
+                                            Settlement date:
+                                            <span t-field="wr.cod_settlement_date" t-options='{"widget": "date"}'/>
+                                        </div>
                                     </div>
                                 </li>
                             </t>
+                            <li t-if="not withdrawal_requests" class="list-group-item text-muted">
+                                You have not requested a COD withdrawal yet. Your requests and their breakdown will appear here.
+                            </li>
                         </ul>
                     </div>
 
-                    <div class="card shadow-sm mb-4">
+                    <div class="card shadow-sm mb-4" t-if="recent_clearances">
                         <div class="card-header bg-white">
                             <h5 class="mb-0">Recent Settlements</h5>
                         </div>
@@ -454,7 +534,6 @@
                                     </div>
                                 </li>
                             </t>
-                            <li t-if="not recent_clearances" class="list-group-item text-muted">No recent settlements.</li>
                         </ul>
                     </div>
                 </div>
@@ -479,6 +558,12 @@
                                     <td>
                                         <span t-esc="tx.reference or tx.name or '-'"/>
                                         <div class="small text-muted" t-if="tx.shipment_id">Shipment: <span t-field="tx.shipment_id.name"/></div>
+                                        <div class="small text-muted" t-if="tx.transfer_type == 'cod_withdrawal' and tx.cod_charge_amount">
+                                            Charge (<t t-esc="tx.cod_charge_percent_label"/>):
+                                            <span t-field="tx.cod_charge_amount" t-options='{"widget": "monetary", "display_currency": tx.currency_id}'/>
+                                            · To your bank:
+                                            <span t-field="tx.cod_net_amount" t-options='{"widget": "monetary", "display_currency": tx.currency_id}'/>
+                                        </div>
                                         <div class="small" t-if="tx.state == 'draft'">
                                             <span class="badge bg-warning text-dark">Awaiting approval</span>
                                         </div>

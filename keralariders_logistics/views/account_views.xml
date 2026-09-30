@@ -228,6 +228,15 @@
                 <field name="cod_clearance_transfer_id" column_invisible="1" width="100"/>
                 <field name="amount" width="100" string="Amount" sum="Amount" 
                     options='{"bg_color": "#e4ede4: cod_clearance_transfer_id != False;"}'/>
+                <field name="cod_charge_percent" width="70" string="Charge %"
+                         optional="show"
+                         invisible="transfer_type != 'cod_withdrawal'"/>
+                <field name="cod_charge_amount" width="90" string="Charge"
+                         sum="Charge" optional="show"
+                         invisible="transfer_type != 'cod_withdrawal'"/>
+                <field name="cod_net_amount" width="100" string="Net to Bank"
+                         sum="Net to Bank" optional="show"
+                         invisible="transfer_type != 'cod_withdrawal'"/>
                 <field name="reference" width="100" string="Transfer Ref"/>
                 <field name="currency_id" column_invisible="1"/>
 
@@ -271,6 +280,13 @@
                             <field name="from_account_id" readonly="state != 'draft'"/>
                             <field name="to_account_id" readonly="state != 'draft'"/>
                             <field name="amount" string="Amount" sum="Amount" readonly="state != 'draft'"/>
+                            <field name="cod_charge_percent"
+                                   invisible="transfer_type != 'cod_withdrawal'"/>
+                            <field name="cod_charge_amount"
+                                   invisible="transfer_type != 'cod_withdrawal'"/>
+                            <field name="cod_net_amount"
+                                   invisible="transfer_type != 'cod_withdrawal'"
+                                   class="fw-bold"/>
                             <field name="reference" readonly="state != 'draft'"/>
                             <field name="related_seller_id" readonly="state != 'draft'"/>
                             <field name="hub_id" invisible="transfer_type not in ('hub_deposit', 'hub_banking')" readonly="state != 'draft'"/>

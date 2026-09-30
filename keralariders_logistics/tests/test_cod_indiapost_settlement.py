@@ -4,8 +4,9 @@ India Post collects the cash and remits it to the company, so a delivered COD
 article has to credit the seller without any DE or hub custody leg. Delivery
 arrives twice in practice — a tracking poll and a hand-marked delivery — and a
 poll repeats, so the credit is asserted to happen exactly once whichever path
-ran. The payout side covers the two mails (team on request, seller on approval
-with the settlement-date promise) and the finance Mark Paid stamp.
+ran. The payout side covers the two mails (team on request with the settlement
+date, seller on approval with the 24-hour credit promise) and the finance Mark
+Paid stamp.
 """
 
 from odoo import fields
@@ -268,7 +269,7 @@ class TestIndiapostCodSettlement(IndiapostHermeticMixin, TransactionCase):
         self.assertIn('erp.keralaxpress.com', body, 'backend link is missing')
         self.assertIn('ipcod.seller@example.com', (mails.reply_to or '').lower())
 
-    def test_approval_mails_the_seller_the_settlement_date(self):
+    def test_approval_mails_the_seller_the_24_hour_credit(self):
         shipment = self._new_ip_cod_shipment(article='EY547878629IN')
         self._deliver(shipment)
         seller = self._withdrawable_seller()
@@ -284,10 +285,9 @@ class TestIndiapostCodSettlement(IndiapostHermeticMixin, TransactionCase):
         self.assertEqual(len(mails), 1, mails.mapped('subject'))
         self.assertIn('notifications@', (mails.email_from or '').lower())
         body = '%s %s' % (mails.body_html or '', mails.body or '')
-        self.assertNotIn('24 hours', body.lower())
-        self.assertIn('will be credited on', body.lower())
+        self.assertIn('24 hours', body.lower())
+        self.assertNotIn('will be credited on', body.lower())
         self.assertTrue(transfer.cod_settlement_date)
-        self.assertIn(str(transfer.cod_settlement_date.day), body)
         self.assertIn('299', body)
         self.assertEqual(
             self.Transfer.get_seller_cod_pending_balance(seller), 0.0,
