@@ -197,3 +197,145 @@ class TestIndiapostTariff(IndiapostHermeticMixin, TransactionCase):
 
         self.assertEqual(captured[0]['path'], BUSINESS_PARCEL_TARIFF_PATH)
         self.assertEqual(quote['article_type'], ipc.ARTICLE_TYPE_BUSINESS_PARCEL)
+
+
+def _lane_response(distance_km, base_tariff, total_tax, final_amount,
+                   product_code='SP_INLAND_PARCEL', cgst=None, sgst=None):
+    half = (total_tax / 2.0) if cgst is None else cgst
+    other = (total_tax - half) if sgst is None else sgst
+    return {
+        'success': True,
+        'product_code': product_code,
+        'chargeable_weight': 2950,
+        'is_local': False,
+        'distance_km': distance_km,
+        'base_tariff': base_tariff,
+        'vas_charges': 0,
+        'vas_details': {},
+        'cgst': half,
+        'sgst': other,
+        'total_tax': total_tax,
+        'final_amount': final_amount,
+        'delivery_type': 'Inter-city',
+    }
+
+
+# Live 2950 g Speed Post from 685606 on 2026-10-01.
+SP_WITHIN_STATE = _lane_response('WS', 111, 20, 131)
+SP_ZONE_METRO = _lane_response('ZM', 190, 34, 224)
+SP_OTHER_STATE = _lane_response('OS', 250, 46, 296)
+# Business Parcel does not return a zone. 400 g from the same origin:
+# Kochi / Lakshadweep direct 37, Chennai (ZM) 40, Mumbai (OS) 41.
+BP_WITHIN_STATE = _lane_response(
+    0, 31, 6, 37, product_code='BUSINESS_PARCEL', cgst=3, sgst=3)
+BP_ZONE_METRO = _lane_response(
+    0, 34, 6, 40, product_code='BUSINESS_PARCEL', cgst=3, sgst=3)
+
+
+@tagged('post_install', '-at_install')
+class TestLakshadweepMetroTariff(IndiapostHermeticMixin, TransactionCase):
+    """682552 is Lakshadweep but the tariff API prices it as within Kerala."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls._ip_make_hermetic(enabled=True)
+
+    def setUp(self):
+        super().setUp()
+        self._ip_enable_stub_credentials()
+        self.Tariff = self.env['logistics.indiapost.tariff']
+
+    def _quote(self, destination, article_type=ipc.ARTICLE_TYPE_SPEED_POST,
+               weight_g=2950, other_states=False):
+        captured = []
+
+        def fake_call(this, method, path, params=None, **kwargs):
+            params = params or {}
+            captured.append({'path': path, 'params': params})
+            dest = params.get('destination-pincode')
+            if 'business-parcel' in (path or ''):
+                if dest == '600001':
+                    return _response(BP_ZONE_METRO)
+                return _response(BP_WITHIN_STATE)
+            if dest == '600001':
+                return _response(SP_ZONE_METRO)
+            if dest == '682001':
+                return _response(SP_WITHIN_STATE)
+            if dest in ('682552', '682560') and other_states:
+                return _response(SP_OTHER_STATE)
+            return _response(SP_WITHIN_STATE)
+
+        with patch.object(self.registry['logistics.indiapost.client'],
+                          'call', fake_call):
+            quote = self.Tariff.quote(
+                '685606', destination, weight_g=weight_g, length_cm=43,
+                breadth_cm=26, height_cm=6, article_type=article_type,
+                use_cache=False,
+            )
+        return quote, captured
+
+    def test_lakshadweep_speed_post_uses_zone_metro_not_within_state(self):
+        quote, captured = self._quote('682552')
+        self.assertEqual(quote['destination_pincode'], '682552')
+        self.assertEqual(quote['distance_display'], 'ZM')
+        self.assertEqual(quote['base_tariff'], 190)
+        self.assertEqual(quote['total_tax'], 34)
+        self.assertEqual(quote['final_amount'], 224)
+        self.assertNotEqual(quote['distance_display'], 'WS')
+        self.assertNotEqual(quote['final_amount'], 131)
+        probed = [entry['params']['destination-pincode'] for entry in captured]
+        self.assertIn('600001', probed)
+
+    def test_kerala_pincode_keeps_the_within_state_api_result(self):
+        quote, captured = self._quote('682001')
+        self.assertEqual(len(captured), 1)
+        self.assertEqual(captured[0]['params']['destination-pincode'], '682001')
+        self.assertEqual(quote['distance_display'], 'WS')
+        self.assertEqual(quote['base_tariff'], 111)
+        self.assertEqual(quote['final_amount'], 131)
+
+    def test_lakshadweep_other_states_quote_is_not_replaced(self):
+        """Delhi to 682552 is already OS. Metro substitution is for WS only."""
+        quote, captured = self._quote('682552', other_states=True)
+        self.assertEqual(quote['distance_display'], 'OS')
+        self.assertEqual(quote['final_amount'], 296)
+        self.assertEqual(
+            [entry['params']['destination-pincode'] for entry in captured],
+            ['682552'],
+        )
+
+    def test_office_state_name_lakshadweep_uses_zone_metro(self):
+        self.env['logistics.indiapost.office'].sudo().create({
+            'pincode': '682560',
+            'office_id': 'ld-test-682560',
+            'office_name': 'Future Island SO',
+            'state_name': 'Lakshadweep',
+        })
+        quote, captured = self._quote('682560')
+        self.assertEqual(quote['destination_pincode'], '682560')
+        self.assertEqual(quote['distance_display'], 'ZM')
+        self.assertEqual(quote['final_amount'], 224)
+        self.assertIn(
+            '600001',
+            [entry['params']['destination-pincode'] for entry in captured],
+        )
+
+    def test_lakshadweep_business_parcel_uses_zone_metro_slab(self):
+        quote, captured = self._quote(
+            '682552', article_type=ipc.ARTICLE_TYPE_BUSINESS_PARCEL,
+            weight_g=400,
+        )
+        self.assertEqual(quote['article_type'], ipc.ARTICLE_TYPE_BUSINESS_PARCEL)
+        self.assertEqual(quote['destination_pincode'], '682552')
+        self.assertEqual(quote['base_tariff'], 34)
+        self.assertEqual(quote['final_amount'], 40)
+        self.assertNotEqual(quote['final_amount'], 37)
+        self.assertEqual(quote['distance_display'], 'ZM')
+        bp_destinations = [
+            entry['params']['destination-pincode']
+            for entry in captured
+            if 'business-parcel' in entry['path']
+        ]
+        self.assertEqual(bp_destinations, ['600001'])
+        self.assertNotIn('682552', bp_destinations)

@@ -901,9 +901,14 @@ class Shipment(models.Model):
             dest = ipc.normalize_pincode(dest, _('Destination pincode'))
         except ipc.IndiapostDataError:
             return None
+        from .indiapost_tariff import LAKSHADWEEP_ZONE_CODE
+        zone_code = (
+            LAKSHADWEEP_ZONE_CODE
+            if Tariff._ip_is_lakshadweep_pincode(dest) else '')
         cache_key = Tariff._ip_cache_key(
             origin, dest, billed_g, length, breadth, height, vas_key,
             settings['indiapost_environment'], article_type=self._ip_product(),
+            zone_code=zone_code,
         )
         entry = self.env['logistics.indiapost.tariff.cache'].sudo().search([
             ('cache_key', '=', cache_key),
