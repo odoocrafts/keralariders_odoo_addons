@@ -27,6 +27,7 @@ from . import test_cod_indiapost_settlement
 from . import test_cod_withdrawal_settlement_cycle
 from . import test_cod_settlement_charge
 from . import test_indiapost_scan_adjustment
+from . import test_indiapost_scan_import
 from . import test_indiapost_pre_scan_cancel
 from . import test_order_pickup_state
 from . import test_portal_draft_edit_cancel

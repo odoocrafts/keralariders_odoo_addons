@@ -22,6 +22,7 @@ from . import indiapost_barcode
 from . import indiapost_office
 from . import indiapost_tariff
 from . import indiapost_shipment
+from . import indiapost_scan_import
 from . import indiapost_tracking
 from . import indiapost_order
 from . import ir_actions_report

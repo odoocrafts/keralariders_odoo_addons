@@ -671,6 +671,7 @@ class Shipment(models.Model):
             ('tariff', 'Re-quoted from actuals'),
             ('booking_tariff', 'India Post tracking tariff'),
             ('ops', 'Entered by KeralaXpress'),
+            ('portal_bill', 'India Post seller portal bill'),
         ],
         string='Scan Quote Source', copy=False, readonly=True,
     )
@@ -1120,6 +1121,148 @@ class Shipment(models.Model):
             label=self._ip_scan_adj_label(),
         ))
         return transaction
+
+    def _ip_portal_adjustment_block(self):
+        """Why a seller-portal row must not post, or ``(False, False)``.
+
+        One adjustment per shipment. The slot is taken when the flag is set
+        or an ``IP-SCAN-ADJ:{id}`` wallet line already exists, including a
+        line that tracking posted. A zero-difference portal row does not set
+        the flag, so a later file with a real difference can still post.
+        """
+        self.ensure_one()
+        if self.indiapost_scan_adjusted or self._ip_existing_scan_wallet_line():
+            return 'skipped', 'already adjusted'
+        if self.fulfilment_method != 'indiapost':
+            return 'error', 'not an India Post shipment'
+        if self.is_return_journey:
+            return 'error', 'return journey'
+        if not self._ip_scan_eligible():
+            return 'error', 'no pickup charge'
+        return False, False
+
+    def _ip_portal_previous_charge(self):
+        """Pickup debit the scan adjustment is compared against."""
+        self.ensure_one()
+        if self.fulfilment_method != 'indiapost':
+            return 0.0
+        self._ip_snapshot_charged_package()
+        if self.indiapost_orig_charge:
+            return self._round_charge(self.indiapost_orig_charge)
+        if self.wallet_transaction_id:
+            return self._round_charge(abs(self.wallet_transaction_id.amount or 0.0))
+        return 0.0
+
+    def _ip_apply_portal_bill_adjustment(self, payable, weight_g=0, length_cm=0,
+                                         breadth_cm=0, height_cm=0,
+                                         source='portal_bill'):
+        """Post at most one scan adjustment for a seller-portal billed amount.
+
+        ``payable`` is what India Post collected (the spreadsheet ``tarrif``,
+        used as-is) or a tariff re-quote ``total_payable``. Compared with the
+        pickup wallet debit. Positive stored difference means the seller owes
+        more and the wallet line is a debit (negative amount); a negative
+        difference is a credit. Zero does not post and does not set
+        ``indiapost_scan_adjusted``.
+
+        Does not rebook and does not touch COD. Wallet posting goes through
+        :meth:`_ip_post_scan_wallet_line` (reference ``IP-SCAN-ADJ:{id}``)
+        and :meth:`_ip_queue_scan_adjustment_mail`.
+        """
+        self.ensure_one()
+        Wallet = self.env['logistics.wallet.transaction']
+        payable = self._round_charge(ipc.as_amount(payable))
+        previous = self._ip_portal_previous_charge()
+        difference = self._round_charge(payable - previous) if payable else 0.0
+        blocked, block_reason = self._ip_portal_adjustment_block()
+        if blocked:
+            return {
+                'state': blocked,
+                'reason': block_reason,
+                'previous': previous,
+                'payable': payable,
+                'difference': difference if payable else 0.0,
+                'wallet': self._ip_existing_scan_wallet_line() or Wallet,
+            }
+        if float_compare(payable, 0.0, precision_digits=2) <= 0:
+            return {
+                'state': 'error',
+                'reason': 'no amount and no weight',
+                'previous': previous,
+                'payable': 0.0,
+                'difference': 0.0,
+                'wallet': Wallet,
+            }
+        if float_compare(previous, 0.0, precision_digits=2) == 0:
+            return {
+                'state': 'error',
+                'reason': 'no pickup charge',
+                'previous': 0.0,
+                'payable': payable,
+                'difference': 0.0,
+                'wallet': Wallet,
+            }
+        if float_compare(difference, 0.0, precision_digits=2) == 0:
+            return {
+                'state': 'skipped',
+                'reason': 'zero difference',
+                'previous': previous,
+                'payable': payable,
+                'difference': 0.0,
+                'wallet': Wallet,
+            }
+
+        # Repeat the slot check immediately before the wallet create. A second
+        # row in the same upload, or a second upload, must not debit again.
+        if self.indiapost_scan_adjusted or self._ip_existing_scan_wallet_line():
+            return {
+                'state': 'skipped',
+                'reason': 'already adjusted',
+                'previous': previous,
+                'payable': payable,
+                'difference': difference,
+                'wallet': self._ip_existing_scan_wallet_line() or Wallet,
+            }
+
+        quote_source = source if source in ('portal_bill', 'tariff') else 'portal_bill'
+        wallet_amount = self._round_charge(-difference)
+        transaction = self._ip_post_scan_wallet_line(wallet_amount)
+        if not transaction:
+            return {
+                'state': 'error',
+                'reason': 'no seller wallet',
+                'previous': previous,
+                'payable': payable,
+                'difference': difference,
+                'wallet': Wallet,
+            }
+        extracted = {}
+        if int(weight_g or 0) > 0:
+            extracted['weight_g'] = int(weight_g)
+        if int(length_cm or 0) and int(breadth_cm or 0) and int(height_cm or 0):
+            extracted['length_cm'] = int(length_cm)
+            extracted['breadth_cm'] = int(breadth_cm)
+            extracted['height_cm'] = int(height_cm)
+        if extracted:
+            self._ip_merge_scan_actuals(extracted)
+        self.with_context(allow_delivery_charge_write=True).write({
+            'indiapost_scan_quote': payable,
+            'indiapost_scan_quote_source': quote_source,
+            'indiapost_scan_difference': difference,
+            'indiapost_scan_quote_pending': False,
+            'indiapost_scan_seen': True,
+            'indiapost_scan_adjusted': True,
+            'indiapost_scan_wallet_txn_id': transaction.id,
+        })
+        self._ip_queue_scan_adjustment_mail(wallet_amount=transaction.amount)
+        return {
+            'state': 'posted',
+            'reason': '',
+            'previous': previous,
+            'payable': payable,
+            'difference': difference,
+            'wallet': transaction,
+        }
 
     def _ip_format_money(self, amount):
         self.ensure_one()

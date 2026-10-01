@@ -1,0 +1,154 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+
+    <record id="view_indiapost_scan_import_list" model="ir.ui.view">
+        <field name="name">logistics.indiapost.scan.import.list</field>
+        <field name="model">logistics.indiapost.scan.import</field>
+        <field name="arch" type="xml">
+            <list string="Scan imports" create="0" delete="0">
+                <header>
+                    <button name="action_open_scan_import_wizard" type="object"
+                            string="Upload spreadsheet" class="btn-primary"
+                            display="always"/>
+                </header>
+                <field name="import_datetime"/>
+                <field name="file_name"/>
+                <field name="user_id"/>
+                <field name="row_count"/>
+                <field name="posted_count"/>
+                <field name="skipped_count"/>
+                <field name="error_count"/>
+                <field name="total_debit" sum="Debit"/>
+                <field name="total_credit" sum="Credit"/>
+                <field name="currency_id" column_invisible="1"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_indiapost_scan_import_form" model="ir.ui.view">
+        <field name="name">logistics.indiapost.scan.import.form</field>
+        <field name="model">logistics.indiapost.scan.import</field>
+        <field name="arch" type="xml">
+            <form string="Scan import" create="0" edit="0" delete="0">
+                <sheet>
+                    <div class="oe_title">
+                        <h1><field name="file_name"/></h1>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="user_id"/>
+                            <field name="import_datetime"/>
+                            <field name="row_count"/>
+                            <field name="posted_count"/>
+                            <field name="skipped_count"/>
+                            <field name="error_count"/>
+                        </group>
+                        <group>
+                            <field name="total_debit"/>
+                            <field name="total_credit"/>
+                            <field name="currency_id" invisible="1"/>
+                            <field name="file_data" filename="file_name"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Lines" name="lines">
+                            <field name="line_ids" readonly="1">
+                                <list create="0" delete="0" edit="0"
+                                      decoration-danger="state == 'error'"
+                                      decoration-muted="state == 'skipped'">
+                                    <field name="article_number"/>
+                                    <field name="shipment_id"/>
+                                    <field name="seller_id"/>
+                                    <field name="previous_charge"/>
+                                    <field name="file_amount"/>
+                                    <field name="difference"/>
+                                    <field name="wallet_amount" string="Wallet move"/>
+                                    <field name="wallet_txn_id" optional="hide"
+                                           groups="keralariders_logistics.group_logistics_admin"/>
+                                    <field name="state" widget="badge"
+                                           decoration-success="state == 'posted'"
+                                           decoration-warning="state == 'skipped'"
+                                           decoration-danger="state == 'error'"/>
+                                    <field name="reason"/>
+                                    <field name="booking_ref" optional="hide"/>
+                                    <field name="weight_g" optional="hide"/>
+                                    <field name="office_name" optional="hide"/>
+                                    <field name="booked_on" optional="hide"/>
+                                    <field name="amount_source" optional="hide"/>
+                                    <field name="currency_id" column_invisible="1"/>
+                                </list>
+                            </field>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_indiapost_scan_import_search" model="ir.ui.view">
+        <field name="name">logistics.indiapost.scan.import.search</field>
+        <field name="model">logistics.indiapost.scan.import</field>
+        <field name="arch" type="xml">
+            <search string="Scan imports">
+                <field name="file_name"/>
+                <field name="user_id"/>
+                <group>
+                    <filter name="group_user" string="Uploaded by"
+                            context="{'group_by': 'user_id'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_indiapost_scan_import" model="ir.actions.act_window">
+        <field name="name">Scan imports</field>
+        <field name="res_model">logistics.indiapost.scan.import</field>
+        <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="view_indiapost_scan_import_search"/>
+        <field name="context">{'create': False}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                No India Post scan imports yet.
+            </p>
+            <p>
+                Upload the seller-portal spreadsheet. Each article is compared
+                with the pickup charge already taken from the seller wallet,
+                and the difference is posted once.
+            </p>
+        </field>
+    </record>
+
+    <record id="view_indiapost_scan_import_wizard_form" model="ir.ui.view">
+        <field name="name">logistics.indiapost.scan.import.wizard.form</field>
+        <field name="model">logistics.indiapost.scan.import.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Upload scan spreadsheet">
+                <group>
+                    <field name="data_file" filename="filename"/>
+                    <field name="filename" invisible="1"/>
+                </group>
+                <div class="alert alert-info" role="alert">
+                    Upload the India Post seller-portal export (.xlsx). The
+                    <b>tarrif</b> column is what India Post billed. It is
+                    compared with the pickup debit on the seller wallet, and
+                    only the difference is posted. A shipment that already has
+                    an India Post scan adjustment is skipped. Uploading the
+                    same file again does not post a second time. COD is left
+                    unchanged.
+                </div>
+                <footer>
+                    <button name="action_import" type="object"
+                            string="Import and post adjustments" class="btn-primary"
+                            data-hotkey="q"/>
+                    <button string="Cancel" special="cancel" class="btn-secondary"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <menuitem id="menu_indiapost_scan_import" name="Scan imports"
+              parent="menu_indiapost_root" sequence="6"
+              action="action_indiapost_scan_import"
+              groups="keralariders_logistics.group_logistics_admin,keralariders_logistics.group_staff_indiapost"/>
+
+</odoo>
