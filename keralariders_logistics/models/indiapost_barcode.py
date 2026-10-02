@@ -246,15 +246,18 @@ class IndiapostBarcodeRange(models.Model):
         the shipment no longer matches the prefix (the EY Business Parcel
         bookings that predate product-bound ranges).
 
-        Only ``available`` pool rows are reused; barcodes voided by a
-        pre-scan cancel are never allocated again (India Post rejects
-        duplicate article numbers).
+        Only ``available`` pool rows are reused. A void barcode still pointing
+        at this shipment (pre-scan cancel keeps ``shipment_id`` for audit) is
+        detached and never returned — India Post rejects a duplicate article
+        number, and the unique shipment constraint would block a new row.
         """
         Barcode = self.env['logistics.indiapost.barcode'].sudo()
         if shipment:
             existing = Barcode.search([('shipment_id', '=', shipment.id)], limit=1)
-            if existing:
+            if existing and existing.state != 'void':
                 return existing
+            if existing and existing.state == 'void':
+                existing.write({'shipment_id': False})
 
         if not environment:
             environment = self.env['logistics.indiapost.client']._ip_settings()[

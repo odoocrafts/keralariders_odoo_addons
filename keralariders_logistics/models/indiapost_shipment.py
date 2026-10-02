@@ -2195,12 +2195,24 @@ class Shipment(models.Model):
         return booked, errors
 
     def _ip_reserve_barcode(self):
-        """The barcode for this shipment, allocating one on first use."""
+        """The barcode for this shipment, allocating one on first use.
+
+        A void ARN left on the shipment by pre-scan cancel is detached and
+        never sent to India Post. ``allocate`` only picks ``available`` rows.
+        """
         self.ensure_one()
         barcode = self.indiapost_barcode_id
+        if barcode and barcode.state == 'void':
+            barcode.sudo().write({'shipment_id': False})
+            self.sudo().write({'indiapost_barcode_id': False})
+            barcode = self.env['logistics.indiapost.barcode']
         if not barcode:
             barcode = self.env['logistics.indiapost.barcode.range'].sudo().allocate(
                 shipment=self, article_type=self._ip_product())
+            if barcode.state == 'void':
+                raise UserError(_(
+                    'Refusing to book %(awb)s with void article number %(arn)s.'
+                ) % {'awb': self.name or '', 'arn': barcode.barcode or ''})
             self.sudo().write({'indiapost_barcode_id': barcode.id})
         return barcode
 
@@ -2766,6 +2778,291 @@ class Shipment(models.Model):
                 'ref': record._ip_cancel_reference(),
             })
         return True
+
+    # ------------------------------------------------------------------
+    # Book a cancelled India Post shipment again
+    # ------------------------------------------------------------------
+    def _ip_rebook_shipping_debits(self):
+        """Wallet debits for this shipment, excluding scan adjustments."""
+        self.ensure_one()
+        lines = self.env['logistics.wallet.transaction'].sudo().search([
+            ('shipment_id', '=', self.id),
+            ('amount', '<', 0),
+        ])
+        scan_ref = self._ip_scan_adj_reference()
+        return lines.filtered(lambda line: (line.reference or '') != scan_ref)
+
+    def _ip_rebook_needs_debit(self):
+        """Whether this rebook should take one shipping debit.
+
+        Pre-scan cancel leaves the original debit in place and posts
+        ``IP-CANCEL:{id}``. That refund has to be charged again, once.
+        A debit that was never credited back is left alone. A shipment that
+        was never charged is billed through the normal pickup debit.
+        """
+        self.ensure_one()
+        cancel = self._ip_existing_cancel_wallet_line()
+        credited = bool(
+            cancel and float_compare(cancel.amount or 0.0, 0.0,
+                                      precision_digits=2) > 0
+        )
+        debits = self._ip_rebook_shipping_debits()
+        if credited:
+            # The pickup debit is older than the credit. A later debit means
+            # this rebook already charged the refund back.
+            return not any(line.id > cancel.id for line in debits)
+        if debits:
+            return False
+        return True
+
+    def _ip_rebook_wallet(self):
+        """The seller wallet that should fund a rebook debit."""
+        self.ensure_one()
+        cancel = self._ip_existing_cancel_wallet_line()
+        return (
+            self.seller_id.wallet_ids[:1]
+            or (self.wallet_transaction_id.wallet_id
+                if self.wallet_transaction_id else False)
+            or (cancel.wallet_id if cancel else False)
+        )
+
+    def _ip_rebook_take_debit(self):
+        """Debit once when the cancel refunded the charge. Returns the new line.
+
+        Empty when no new debit was posted. Uses the same reference as
+        ``action_add_wallet_transaction`` (the shipment display name) rather
+        than a new prefix. Scan-adjustment lines are not touched.
+        """
+        self.ensure_one()
+        if not self._ip_rebook_needs_debit():
+            return self.env['logistics.wallet.transaction']
+        cancel = self._ip_existing_cancel_wallet_line()
+        credited = bool(
+            cancel and float_compare(cancel.amount or 0.0, 0.0,
+                                      precision_digits=2) > 0
+        )
+        if credited:
+            amount = self._round_charge(abs(cancel.amount or 0.0))
+            wallet = self._ip_rebook_wallet()
+            if not wallet:
+                raise UserError(_(
+                    'Cannot charge the shipping amount for %s: no seller wallet.'
+                ) % self.name)
+            if float_compare(wallet.balance, amount, precision_digits=2) < 0:
+                raise UserError(_(
+                    'Insufficient balance available in your Wallet. Current '
+                    'balance is %s. Please recharge before proceeding.'
+                ) % wallet.currency_id.format(wallet.balance))
+            transaction = self.env['logistics.wallet.transaction'].sudo().create({
+                'wallet_id': wallet.id,
+                'amount': -amount,
+                'transaction_date': fields.Date.context_today(self),
+                'shipment_id': self.id,
+                'order_id': self.order_id.id if self.order_id else False,
+                'reference': self.display_name,
+                'description': _(
+                    'India Post booked again — shipping charge for AWB %s'
+                ) % (self.name or ''),
+            })
+            self.with_context(allow_delivery_charge_write=True).write({
+                'wallet_transaction_id': transaction.id,
+            })
+            return transaction
+        before = self.wallet_transaction_id
+        self.action_add_wallet_transaction()
+        current = self.wallet_transaction_id
+        if current and current != before:
+            return current
+        return self.env['logistics.wallet.transaction']
+
+    def _ip_detach_void_arns(self):
+        """Release void ARNs from this shipment without returning them to the pool.
+
+        ``allocate()`` would otherwise hand the void row back, because cancel
+        keeps ``shipment_id`` for audit and the barcode unique constraint
+        allows only one row per shipment.
+        """
+        self.ensure_one()
+        Barcode = self.env['logistics.indiapost.barcode'].sudo()
+        linked = Barcode.search([
+            ('shipment_id', '=', self.id),
+            ('state', '=', 'void'),
+        ])
+        current = self.indiapost_barcode_id
+        if current and current.state == 'void':
+            linked |= current
+        if linked:
+            linked.write({'shipment_id': False})
+        if current and current.state == 'void':
+            self.sudo().write({'indiapost_barcode_id': False})
+
+    def _ip_reset_booking_for_rebook(self):
+        """Make a cancelled shipment eligible for ``action_indiapost_book``.
+
+        Pre-scan cancel clears the article number but leaves
+        ``indiapost_booking_state`` as booked, which ``_ip_bookable`` skips.
+        The stored label belongs to the void ARN and must not be printed.
+        Scan-adjustment flags are left as they are.
+        """
+        self.ensure_one()
+        self.sudo().write({
+            'indiapost_booking_state': 'to_book',
+            'indiapost_article_number': False,
+            'indiapost_barcode_id': False,
+            'indiapost_booking_error': False,
+            'indiapost_booking_in_progress': False,
+            'indiapost_batch_id': False,
+            'indiapost_correlation_id': False,
+            'indiapost_mail_booking_dom_id': False,
+            'indiapost_offset_number': False,
+            'indiapost_block_number': False,
+            'indiapost_calculated_tariff': 0.0,
+            'indiapost_booked_on': False,
+            'indiapost_label_pdf': False,
+            'indiapost_label_filename': False,
+            'indiapost_label_fetched_on': False,
+            'indiapost_sort_code': False,
+        })
+
+    def _ip_rebook_abort(self, prior_wallet, new_debit, barcode, previous_pickup_on):
+        """Void a failed rebook ARN and undo a debit that has no booking.
+
+        The new article number stays ``void`` (not ``available``). The
+        shipment goes back to cancelled so Book again can try with another ARN.
+        """
+        self.ensure_one()
+        if barcode and barcode.exists() and barcode.state != 'booked':
+            if barcode.state != 'void':
+                barcode.sudo()._ip_void_on_cancel(
+                    note=_('Voided because India Post rejected rebook of %s')
+                    % (self.name or ''),
+                )
+            if barcode.shipment_id:
+                barcode.sudo().write({'shipment_id': False})
+        if new_debit and new_debit.exists() and new_debit != prior_wallet:
+            new_debit.sudo().unlink()
+        self.with_context(allow_delivery_charge_write=True).sudo().write({
+            'indiapost_article_number': False,
+            'indiapost_barcode_id': False,
+            'indiapost_booking_in_progress': False,
+            'wallet_transaction_id': prior_wallet.id if prior_wallet else False,
+        })
+        self._write_with_state({
+            'state': 'cancelled',
+            'pickup_requested_on': previous_pickup_on,
+        })
+        self.message_post(body=_(
+            'India Post did not accept the new booking (%(error)s). '
+            'The new article number was voided and no extra wallet debit '
+            'was kept.'
+        ) % {
+            'error': self.indiapost_booking_error or _('no details'),
+        })
+
+    def _ip_assert_rebook_allowed(self):
+        self.ensure_one()
+        if self.fulfilment_method != 'indiapost' or self.state != 'cancelled':
+            raise UserError(_(
+                'Shipment %(awb)s can only be booked again when it is a '
+                'cancelled India Post shipment (current status: %(state)s).'
+            ) % {'awb': self.name or '', 'state': self.state})
+
+    def action_indiapost_rebook(self):
+        """Book a cancelled India Post shipment again on a new ARN.
+
+        Admin only. Allocates a fresh barcode (void ARNs stay void), books
+        through ``action_indiapost_book``, and charges the shipping amount
+        again only when cancel had credited it. On an India Post rejection
+        the new ARN is voided and that debit is removed. The shipment returns
+        to Pickup Requested, the same state a successful Request Pickup leaves.
+        """
+        if not self.env.user.has_group(
+                'keralariders_logistics.group_logistics_admin'):
+            raise AccessError(_(
+                'Only a Logistics Administrator can book a cancelled '
+                'India Post shipment again.'
+            ))
+        booked = self.env['logistics.shipment']
+        failed = []
+        for record in self:
+            ok, message = record._ip_rebook_one()
+            if ok:
+                booked |= record
+            elif message:
+                failed.append('%s: %s' % (record.name, message))
+        if failed and not booked:
+            return self._ip_notify(
+                _('India Post did not accept the new booking'),
+                '\n'.join(failed[:10]),
+                kind='danger', sticky=True,
+            )
+        title = _('Booked again with India Post')
+        message = _('%s shipment(s) booked on a new article number.') % len(booked)
+        if failed:
+            title = _('Booked again, with errors')
+            message += '\n\n' + '\n'.join(failed[:10])
+        return self._ip_notify(
+            title, message,
+            kind='danger' if failed else 'success',
+            sticky=bool(failed),
+        )
+
+    def _ip_rebook_one(self):
+        """Rebook a single cancelled shipment. Returns ``(ok, error)``."""
+        self.ensure_one()
+        self._ip_assert_rebook_allowed()
+        self.env.cr.execute(
+            'SELECT id FROM logistics_shipment WHERE id = %s FOR UPDATE',
+            (self.id,),
+        )
+        self.invalidate_recordset()
+        self._ip_assert_rebook_allowed()
+
+        prior_wallet = self.wallet_transaction_id
+        previous_pickup_on = self.pickup_requested_on
+        self._ip_detach_void_arns()
+        self._ip_reset_booking_for_rebook()
+        new_debit = self._ip_rebook_take_debit()
+
+        self._write_with_state({
+            'state': 'pickup_requested',
+            'pickup_requested_on': fields.Datetime.now(),
+        })
+
+        def _linked_barcode():
+            barcode = self.indiapost_barcode_id
+            if barcode:
+                return barcode
+            return self.env['logistics.indiapost.barcode'].sudo().search([
+                ('shipment_id', '=', self.id),
+            ], limit=1)
+
+        try:
+            self.action_indiapost_book()
+        except Exception as exc:
+            barcode = _linked_barcode()
+            if barcode:
+                self._ip_rebook_abort(
+                    prior_wallet, new_debit, barcode, previous_pickup_on)
+                return False, str(exc)
+            raise
+
+        if (self.indiapost_booking_state != 'booked'
+                or not self.indiapost_article_number):
+            reason = self.indiapost_booking_error or _(
+                'India Post did not confirm the new article.')
+            self._ip_rebook_abort(
+                prior_wallet, new_debit, _linked_barcode(), previous_pickup_on)
+            return False, reason
+
+        try:
+            self.action_indiapost_fetch_label()
+        except Exception:
+            _logger.warning(
+                'India Post label fetch failed after rebook of %s',
+                self.name, exc_info=True,
+            )
+        return True, ''
 
     # ------------------------------------------------------------------
     # Escape hatch

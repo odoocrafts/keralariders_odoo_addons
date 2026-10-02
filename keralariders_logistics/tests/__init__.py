@@ -29,6 +29,7 @@ from . import test_cod_settlement_charge
 from . import test_indiapost_scan_adjustment
 from . import test_indiapost_scan_import
 from . import test_indiapost_pre_scan_cancel
+from . import test_indiapost_rebook
 from . import test_order_pickup_state
 from . import test_portal_draft_edit_cancel
 from . import test_indiapost_unserviceable_pincode

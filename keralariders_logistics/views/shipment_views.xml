@@ -282,6 +282,11 @@
                             invisible="not is_indiapost or not wallet_transaction_id or is_return_journey"
                             groups="keralariders_logistics.group_logistics_admin"
                             confirm="Re-quote from India Post actuals (or the figures entered below) and post a wallet credit or debit for the difference against the pickup charge. Already-applied adjustments are not posted twice."/>
+                    <button name="action_indiapost_rebook" type="object"
+                            string="Book again" class="btn-secondary"
+                            invisible="not is_indiapost or state != 'cancelled'"
+                            groups="keralariders_logistics.group_logistics_admin"
+                            confirm="Book this cancelled India Post shipment again? A new article number will be allocated and India Post will be called. The seller wallet is charged the shipping amount again only if the cancel refunded it."/>
                     <button name="action_indiapost_switch_to_own_network" type="object"
                             string="Divert to Hub Network" class="btn-warning"
                             invisible="not is_indiapost or indiapost_article_number or state == 'cancelled'"
