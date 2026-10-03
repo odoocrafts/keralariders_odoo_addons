@@ -31,64 +31,64 @@ class TestWhatsappOrderPaste(TransactionCase):
         self.assertEqual(len(blocks), 1)
         self.assertTrue(blocks[0]['ok'], blocks[0]['reason'])
         post = blocks[0]['post']
-        self.assertEqual(post['shipping_to_name'], 'Sainabi AC')
-        self.assertEqual(post['shipping_to_mobile'], '9496427718')
+        self.assertEqual(post['shipping_to_name'], 'Customer Name')
+        self.assertEqual(post['shipping_to_mobile'], '9800000000')
         self.assertEqual(
             post['shipping_to_address'],
-            'Awrechetta house, Near yousuf palli',
+            'House name, Street, Area',
         )
-        self.assertEqual(post['shipping_to_zip'], '682552')
+        self.assertEqual(post['shipping_to_zip'], '682001')
         self.assertEqual(post['total_weight'], '0.5')
-        self.assertEqual(post['length_cm'], '20')
-        self.assertEqual(post['breadth_cm'], '15')
+        self.assertEqual(post['length_cm'], '10')
+        self.assertEqual(post['breadth_cm'], '10')
         self.assertEqual(post['height_cm'], '10')
         self.assertEqual(post['order_payment_type'], 'prepaid')
         self.assertEqual(post['total_order_value'], '0')
-        self.assertEqual(post['item_description'], 'Clothes')
+        self.assertEqual(post['item_description'], 'Sample item')
         self.assertNotIn('shipping_to_state_name', post)
         self.assertNotIn('indiapost_article_type', post)
 
     def test_label_case_and_separator_still_parse(self):
         text = (
-            "name - Sainabi AC\n"
-            "MOBILE: 9496427718\n"
-            "Address: Awrechetta house\n"
-            "Near yousuf palli\n"
-            "Pin code : 682552\n"
+            "name - Customer Name\n"
+            "MOBILE: 9800000000\n"
+            "Address: House name\n"
+            "Street, Area\n"
+            "Pin code : 682001\n"
             "weight g: 500\n"
-            "Item - Clothes"
+            "Item - Sample item"
         )
         post = _ok_posts(text)[0]
-        self.assertEqual(post['shipping_to_name'], 'Sainabi AC')
-        self.assertEqual(post['shipping_to_mobile'], '9496427718')
+        self.assertEqual(post['shipping_to_name'], 'Customer Name')
+        self.assertEqual(post['shipping_to_mobile'], '9800000000')
         self.assertEqual(
             post['shipping_to_address'],
-            'Awrechetta house Near yousuf palli',
+            'House name Street, Area',
         )
-        self.assertEqual(post['shipping_to_zip'], '682552')
+        self.assertEqual(post['shipping_to_zip'], '682001')
         self.assertEqual(post['total_weight'], '0.5')
-        self.assertEqual(post['item_description'], 'Clothes')
+        self.assertEqual(post['item_description'], 'Sample item')
         self.assertEqual(post['order_payment_type'], 'prepaid')
 
     def test_blank_line_splits_two_messages(self):
         text = (
             WHATSAPP_ORDER_TEMPLATE
             + "\n\n"
-            + WHATSAPP_ORDER_TEMPLATE.replace('Sainabi AC', 'Second Customer')
+            + WHATSAPP_ORDER_TEMPLATE.replace('Customer Name', 'Second Customer')
         )
         blocks = parse_whatsapp_orders(text)
         self.assertEqual(len(blocks), 2)
         self.assertTrue(all(block['ok'] for block in blocks))
         self.assertEqual(
             [block['post']['shipping_to_name'] for block in blocks],
-            ['Sainabi AC', 'Second Customer'],
+            ['Customer Name', 'Second Customer'],
         )
 
     def test_rule_line_splits_two_messages(self):
         text = (
             WHATSAPP_ORDER_TEMPLATE
             + "\n---\n"
-            + WHATSAPP_ORDER_TEMPLATE.replace('Sainabi AC', 'Second Customer')
+            + WHATSAPP_ORDER_TEMPLATE.replace('Customer Name', 'Second Customer')
         )
         blocks = parse_whatsapp_orders(text)
         self.assertEqual(len(blocks), 2)
@@ -96,7 +96,7 @@ class TestWhatsappOrderPaste(TransactionCase):
         self.assertEqual(blocks[1]['post']['shipping_to_name'], 'Second Customer')
 
     def test_missing_mobile_is_reported_and_not_ok(self):
-        text = WHATSAPP_ORDER_TEMPLATE.replace('Mobile: 9496427718\n', '')
+        text = WHATSAPP_ORDER_TEMPLATE.replace('Mobile: 9800000000\n', '')
         blocks = parse_whatsapp_orders(text)
         self.assertEqual(len(blocks), 1)
         self.assertFalse(blocks[0]['ok'])
@@ -104,7 +104,7 @@ class TestWhatsappOrderPaste(TransactionCase):
         self.assertNotIn('shipping_to_mobile', blocks[0]['post'])
 
     def test_missing_pincode_is_reported_and_not_ok(self):
-        text = WHATSAPP_ORDER_TEMPLATE.replace('Pincode: 682552\n', '')
+        text = WHATSAPP_ORDER_TEMPLATE.replace('Pincode: 682001\n', '')
         blocks = parse_whatsapp_orders(text)
         self.assertEqual(len(blocks), 1)
         self.assertFalse(blocks[0]['ok'])

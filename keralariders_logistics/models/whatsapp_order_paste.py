@@ -12,17 +12,17 @@ import re
 # Exact text the portal "Copy WhatsApp template" button copies.
 # Weight is grams. The portal form stores kilograms (500 g -> 0.5 kg).
 WHATSAPP_ORDER_TEMPLATE = (
-    "Name: Sainabi AC\n"
-    "Mobile: 9496427718\n"
-    "Address: Awrechetta house, Near yousuf palli\n"
-    "Pincode: 682552\n"
+    "Name: Customer Name\n"
+    "Mobile: 9800000000\n"
+    "Address: House name, Street, Area\n"
+    "Pincode: 682001\n"
     "Weight g: 500\n"
-    "Length cm: 20\n"
-    "Breadth cm: 15\n"
+    "Length cm: 10\n"
+    "Breadth cm: 10\n"
     "Height cm: 10\n"
     "Payment: Prepaid\n"
     "COD amount: 0\n"
-    "Item: Clothes"
+    "Item: Sample item"
 )
 
 # How many pasted messages one bulk create will accept.
