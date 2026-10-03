@@ -326,41 +326,111 @@
         el.classList.add(ok ? 'text-success' : 'text-danger');
     }
 
-    function copyTemplate(button) {
-        var box = button.closest('.kx-wa-template');
-        var area = box && box.querySelector('.kx-wa-template-text');
-        var note = box && box.querySelector('.kx-wa-copy-status');
-        if (!area) {
-            return;
+    function copyWithExecCommand(text) {
+        var area = document.createElement('textarea');
+        area.value = text;
+        // A rendered textarea is required. display:none and visibility:hidden
+        // make execCommand('copy') fail.
+        area.setAttribute('aria-hidden', 'true');
+        area.style.position = 'fixed';
+        area.style.top = '0';
+        area.style.left = '0';
+        area.style.width = '2em';
+        area.style.height = '2em';
+        area.style.padding = '0';
+        area.style.border = 'none';
+        area.style.outline = 'none';
+        area.style.boxShadow = 'none';
+        area.style.background = 'transparent';
+        area.style.opacity = '0';
+        document.body.appendChild(area);
+        area.focus();
+        area.select();
+        if (area.setSelectionRange) {
+            area.setSelectionRange(0, area.value.length);
         }
-        var text = area.value;
+        var copied = false;
+        try {
+            copied = document.execCommand('copy');
+        } catch (err) {
+            copied = false;
+        }
+        document.body.removeChild(area);
+        return copied;
+    }
+
+    function copyTemplate(button) {
+        var text = button.getAttribute('data-template') || '';
+        var tools = button.closest('.kx-wa-tools');
+        var note = tools && tools.querySelector('.kx-wa-copy-status');
+        var label = button.querySelector('.kx-wa-copy-label');
+
+        function markCopied() {
+            if (note) {
+                note.textContent = '';
+                note.classList.add('d-none');
+            }
+            if (!label) {
+                return;
+            }
+            label.textContent = 'Copied';
+            if (button._kxCopyTimer) {
+                clearTimeout(button._kxCopyTimer);
+            }
+            button._kxCopyTimer = setTimeout(function () {
+                label.textContent = 'Copy WhatsApp template';
+                button._kxCopyTimer = null;
+            }, 2000);
+        }
+
+        function markFailed() {
+            if (button._kxCopyTimer) {
+                clearTimeout(button._kxCopyTimer);
+                button._kxCopyTimer = null;
+            }
+            if (label) {
+                label.textContent = 'Copy WhatsApp template';
+            }
+            status(note, 'Could not copy the template.', false);
+        }
 
         function fallback() {
-            area.focus();
-            area.select();
-            if (area.setSelectionRange) {
-                area.setSelectionRange(0, text.length);
-            }
-            var copied = false;
-            try {
-                copied = document.execCommand('copy');
-            } catch (err) {
-                copied = false;
-            }
-            if (copied) {
-                status(note, 'Template copied. Paste it into WhatsApp and replace the examples.', true);
+            if (text && copyWithExecCommand(text)) {
+                markCopied();
             } else {
-                status(note, 'Clipboard was blocked. The template is selected — copy it manually.', false);
+                markFailed();
             }
         }
 
+        if (!text) {
+            markFailed();
+            return;
+        }
         if (navigator.clipboard && navigator.clipboard.writeText) {
-            navigator.clipboard.writeText(text).then(function () {
-                status(note, 'Template copied. Paste it into WhatsApp and replace the examples.', true);
-            }).catch(fallback);
+            navigator.clipboard.writeText(text).then(markCopied, fallback);
         } else {
             fallback();
         }
+    }
+
+    function bindPasteToggles() {
+        document.querySelectorAll('.kx-wa-paste-toggle').forEach(function (button) {
+            var block = button.closest('.kx-wa-block');
+            var panel = block && block.querySelector('.kx-wa-paste-panel');
+            if (!panel) {
+                return;
+            }
+            button.addEventListener('click', function () {
+                var nowHidden = panel.classList.toggle('d-none');
+                button.setAttribute('aria-expanded', nowHidden ? 'false' : 'true');
+                if (!nowHidden) {
+                    var area = panel.querySelector('textarea');
+                    if (area) {
+                        area.focus();
+                    }
+                }
+            });
+        });
     }
 
     function fieldEl(form, name) {
@@ -618,9 +688,19 @@
         });
     }
 
-    document.addEventListener('DOMContentLoaded', function () {
+    // Odoo 19 serves web.assets_frontend JS from web.assets_frontend_lazy,
+    // after window "load". DOMContentLoaded has already fired by then, so a
+    // listener registered here would never run and the buttons would do nothing.
+    function start() {
         bindCopyButtons();
+        bindPasteToggles();
         bindSingleFill();
         bindBulk();
-    });
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', start);
+    } else {
+        start();
+    }
 })();

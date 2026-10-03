@@ -203,28 +203,40 @@ class TestPortalWhatsappOrders(IndiapostHermeticMixin, HttpCase):
 
     def _template_text(self, page_html):
         match = re.search(
-            r'kx-wa-template-text[^>]*>(.*?)</textarea>',
+            r'\bkx-wa-copy\b[^>]*\bdata-template="([^"]*)"',
             page_html,
             re.DOTALL,
         )
-        self.assertTrue(match, 'copyable template textarea missing')
+        self.assertTrue(match, 'copy button data-template missing')
         return html.unescape(match.group(1))
+
+    def _assert_whatsapp_controls(self, page_html):
+        self.assertIn('Copy WhatsApp template', page_html)
+        self.assertIn('Paste from WhatsApp', page_html)
+        self.assertIn(
+            'Copy the template into WhatsApp, replace the values, then paste it back.',
+            page_html,
+        )
+        self.assertIn('class="kx-wa-paste-panel d-none mt-3"', page_html)
+        self.assertNotIn('kx-wa-template-text', page_html)
+        self.assertEqual(self._template_text(page_html), WHATSAPP_ORDER_TEMPLATE)
+        copy_tag = re.search(r'<button\b[^>]*\bkx-wa-copy\b[^>]*>', page_html)
+        self.assertTrue(copy_tag, 'copy button missing')
+        self.assertIn('type="button"', copy_tag.group(0))
 
     def test_add_order_and_bulk_pages_offer_the_same_template(self):
         self.authenticate(self.portal_login, self.portal_login)
         manual = self.url_open('/my/orders/manual')
         self.assertEqual(manual.status_code, 200)
-        self.assertIn('Copy WhatsApp template', manual.text)
-        self.assertIn('replace the example', manual.text.lower())
-        self.assertEqual(self._template_text(manual.text), WHATSAPP_ORDER_TEMPLATE)
+        self._assert_whatsapp_controls(manual.text)
         self.assertIn('id="kx_wa_paste"', manual.text)
+        self.assertIn('id="kx_wa_single"', manual.text)
         self.assertIn('Create Order', manual.text)
         self.assertIn('name="shipping_to_name"', manual.text)
 
         bulk = self.url_open('/my/orders/new')
         self.assertEqual(bulk.status_code, 200)
-        self.assertIn('Copy WhatsApp template', bulk.text)
-        self.assertEqual(self._template_text(bulk.text), WHATSAPP_ORDER_TEMPLATE)
+        self._assert_whatsapp_controls(bulk.text)
         self.assertIn('name="csv_file"', bulk.text)
         self.assertIn('Download CSV Template', bulk.text)
         self.assertIn('id="kx_wa_bulk_form"', bulk.text)

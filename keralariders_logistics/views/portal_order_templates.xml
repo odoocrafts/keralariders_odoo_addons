@@ -375,24 +375,34 @@
         </t>
     </template>
 
-    <!-- Copyable WhatsApp template. The text is the Python constant so the
-         button, the parser, and the tests stay on the same message. -->
+    <!-- Copy uses the Python template constant. The sample message is not
+         shown; the paste area is the call body and stays hidden until
+         "Paste from WhatsApp". -->
     <template id="portal_whatsapp_template_box" name="WhatsApp Order Template">
-        <div class="kx-wa-template border rounded p-3 mb-4 bg-light">
-            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
-                <div>
-                    <div class="fw-bold">WhatsApp template</div>
-                    <p class="text-muted small mb-0">
-                        Copy this message into WhatsApp and replace the example
-                        values after each colon. Weight is in grams (500 is half a kg).
-                    </p>
+        <div class="kx-wa-block mb-4">
+            <div class="kx-wa-tools">
+                <div class="d-flex flex-wrap gap-2">
+                    <button type="button"
+                            class="btn btn-outline-secondary btn-sm kx-wa-copy o_no_wait_lazy_js"
+                            t-att-data-template="whatsapp_order_template">
+                        <i class="fa fa-clipboard me-1" aria-hidden="true"/>
+                        <span class="kx-wa-copy-label">Copy WhatsApp template</span>
+                    </button>
+                    <button type="button"
+                            class="btn btn-outline-primary btn-sm kx-wa-paste-toggle o_no_wait_lazy_js"
+                            aria-expanded="false"
+                            aria-controls="kx_wa_paste_panel">
+                        Paste from WhatsApp
+                    </button>
                 </div>
-                <button type="button" class="btn btn-outline-secondary btn-sm kx-wa-copy">
-                    <i class="fa fa-clipboard me-1"/> Copy WhatsApp template
-                </button>
+                <p class="text-muted small mb-0 mt-2">
+                    Copy the template into WhatsApp, replace the values, then paste it back.
+                </p>
+                <div class="small mt-2 d-none kx-wa-copy-status" role="status"/>
             </div>
-            <textarea class="form-control font-monospace small kx-wa-template-text" rows="11" readonly="readonly"><t t-esc="whatsapp_order_template"/></textarea>
-            <div class="small mt-2 d-none kx-wa-copy-status" role="status"/>
+            <div class="kx-wa-paste-panel d-none mt-3" id="kx_wa_paste_panel">
+                <t t-out="0"/>
+            </div>
         </div>
     </template>
 
@@ -413,20 +423,21 @@
                         Create an order with its first shipment. You can add more
                         shipments on the next page before requesting pickup.
                     </p>
-                    <t t-call="keralariders_logistics.portal_whatsapp_template_box"/>
-                    <div class="mb-4" id="kx_wa_single">
-                        <label class="form-label fw-bold" for="kx_wa_paste">Paste a filled WhatsApp message</label>
-                        <p class="text-muted small">
-                            This fills the form so you can correct it. The order
-                            is created only when you click Create Order.
-                        </p>
-                        <textarea id="kx_wa_paste" class="form-control font-monospace" rows="8"
-                                  placeholder="Paste one filled message here"/>
-                        <button type="button" class="btn btn-outline-primary btn-sm mt-2" id="kx_wa_fill">
-                            Fill form from message
-                        </button>
-                        <div id="kx_wa_fill_status" class="small mt-2" role="status"/>
-                    </div>
+                    <t t-call="keralariders_logistics.portal_whatsapp_template_box">
+                        <div id="kx_wa_single">
+                            <label class="form-label fw-bold" for="kx_wa_paste">Paste a filled WhatsApp message</label>
+                            <p class="text-muted small">
+                                This fills the form so you can correct it. The order
+                                is created only when you click Create Order.
+                            </p>
+                            <textarea id="kx_wa_paste" class="form-control font-monospace" rows="8"
+                                      placeholder="Paste one filled message here"/>
+                            <button type="button" class="btn btn-outline-primary btn-sm mt-2" id="kx_wa_fill">
+                                Fill form from message
+                            </button>
+                            <div id="kx_wa_fill_status" class="small mt-2" role="status"/>
+                        </div>
+                    </t>
                     <form action="/my/orders/create" method="post" class="kx-portal-shipment-form">
                         <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
                         <div class="mb-4">
@@ -583,13 +594,13 @@
                     <h4 class="mb-0">Add orders from WhatsApp</h4>
                 </div>
                 <div class="card-body">
+                    <t t-call="keralariders_logistics.portal_whatsapp_template_box">
                     <p class="text-muted">
                         Paste one filled message, or several. Separate orders with
                         a blank line, or a line that is only <code>---</code>.
                         Each message becomes its own draft order (Order Added).
                         Pickup is not requested and your wallet is not charged.
                     </p>
-                    <t t-call="keralariders_logistics.portal_whatsapp_template_box"/>
                     <form action="/my/orders/whatsapp_create" method="post" id="kx_wa_bulk_form">
                         <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
                         <input type="hidden" name="whatsapp_create_token" t-att-value="whatsapp_create_token"/>
@@ -641,6 +652,7 @@
                             </button>
                         </div>
                     </form>
+                    </t>
                 </div>
             </div>
         </t>
