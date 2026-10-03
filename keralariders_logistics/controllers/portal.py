@@ -13,6 +13,11 @@ from odoo.addons.keralariders_logistics.models import indiapost_common as ipc
 from odoo.addons.keralariders_logistics.models.indiapost_client import (
     IndiapostApiError,
 )
+from odoo.addons.keralariders_logistics.models.whatsapp_order_paste import (
+    WHATSAPP_ORDER_LIMIT,
+    WHATSAPP_ORDER_TEMPLATE,
+    parse_whatsapp_orders,
+)
 
 _logger = logging.getLogger(__name__)
 
@@ -28,6 +33,7 @@ _COD_SETTLEMENT_SELLER_TYPE_LABELS = {
 class LogisticsPortal(CustomerPortal):
 
     _BULK_UPLOAD_TOKEN_KEY = 'bulk_upload_token'
+    _WHATSAPP_CREATE_TOKEN_KEY = 'whatsapp_create_token'
     _PICKUP_CONFIRM_TOKEN_PREFIX = 'pickup_confirm_token_'
 
     @staticmethod
@@ -332,6 +338,7 @@ class LogisticsPortal(CustomerPortal):
             'shipment': False,
             'hide_indiapost_pickup_date': False,
             'error': request.session.pop('error', None),
+            'whatsapp_order_template': WHATSAPP_ORDER_TEMPLATE,
             **self._shipment_form_indiapost_values(seller),
         }
         values.update(extra)
@@ -891,6 +898,10 @@ class LogisticsPortal(CustomerPortal):
             'bulk_upload_token': self._issue_oneshot_token(
                 self._BULK_UPLOAD_TOKEN_KEY,
             ),
+            'whatsapp_order_template': WHATSAPP_ORDER_TEMPLATE,
+            'whatsapp_create_token': self._issue_oneshot_token(
+                self._WHATSAPP_CREATE_TOKEN_KEY,
+            ),
             **self._shipment_form_indiapost_values(seller),
         }
         return request.render("keralariders_logistics.portal_my_order_new", values)
@@ -1235,7 +1246,208 @@ class LogisticsPortal(CustomerPortal):
             else:
                 request.session['error'] = "Error processing file. Please check your CSV and try again."
             return request.redirect('/my/orders/new')
-            
+
+    @staticmethod
+    def _portal_json(payload, status=200):
+        if hasattr(request, 'make_json_response'):
+            return request.make_json_response(payload, status=status)
+        import json
+        return request.make_response(
+            json.dumps(payload),
+            headers=[('Content-Type', 'application/json')],
+            status=status,
+        )
+
+    @staticmethod
+    def _whatsapp_preview_payload(blocks):
+        preview = []
+        for block in blocks:
+            post = block.get('post') or {}
+            payment = post.get('order_payment_type')
+            preview.append({
+                'index': block['index'],
+                'ok': bool(block['ok']),
+                'reason': block.get('reason') or '',
+                'name': post.get('shipping_to_name') or '',
+                'mobile': post.get('shipping_to_mobile') or '',
+                'pincode': post.get('shipping_to_zip') or '',
+                'payment': 'COD' if payment == 'cod' else ('Prepaid' if block['ok'] else ''),
+            })
+        ok_count = sum(1 for block in blocks if block['ok'])
+        return {
+            'ok_count': ok_count,
+            'fail_count': len(blocks) - ok_count,
+            'blocks': preview,
+        }
+
+    def _portal_indian_states(self):
+        country = request.env.company.country_id or request.env.ref(
+            'base.in', raise_if_not_found=False)
+        return request.env['res.country.state'].sudo().search([
+            ('country_id', '=', country.id if country else False),
+        ])
+
+    @staticmethod
+    def _portal_state_from_name(states, name):
+        wanted = (name or '').strip().lower()
+        if not wanted:
+            return states.browse()
+        exact = states.filtered(
+            lambda state: (state.name or '').strip().lower() == wanted)
+        if exact:
+            return exact[:1]
+        return states.filtered(
+            lambda state: (state.code or '').strip().lower() == wanted)[:1]
+
+    def _portal_whatsapp_post(self, block_post, pickup_date, article_type):
+        """Form-shaped values for one pasted message.
+
+        Omitted state becomes Kerala, and an omitted India Post service becomes
+        the bulk form's choice, which itself defaults to Business Parcel.
+        """
+        post = dict(block_post)
+        post['pickup_date'] = pickup_date
+        state_name = (post.pop('shipping_to_state_name', None) or '').strip()
+        states = self._portal_indian_states()
+        state = self._portal_state_from_name(states, state_name) if state_name else states.browse()
+        if not state:
+            state = self._portal_default_state(states)
+        if state:
+            post['shipping_to_state_id'] = str(state.id)
+        chosen = (post.get('indiapost_article_type') or article_type or 'BP').strip().upper()
+        if chosen not in ('SP', 'BP'):
+            chosen = 'BP'
+        post['indiapost_article_type'] = chosen
+        return post
+
+    @staticmethod
+    def _whatsapp_exc_message(exc):
+        if isinstance(exc, (UserError, ValidationError)) and exc.args:
+            return str(exc.args[0])
+        return _('This order could not be created.')
+
+    @http.route(
+        ['/my/orders/whatsapp_preview'],
+        type='http', auth='user', methods=['POST'], website=True,
+    )
+    def portal_my_orders_whatsapp_preview(self, **post):
+        """Parse a paste for the bulk preview. Does not create orders."""
+        seller = self._portal_seller()
+        if not seller:
+            return self._portal_json({'error': _('Not a seller.')}, status=403)
+        blocks = parse_whatsapp_orders(post.get('message') or '')
+        if len(blocks) > WHATSAPP_ORDER_LIMIT:
+            return self._portal_json({
+                'error': _('Paste at most %s orders at a time.') % WHATSAPP_ORDER_LIMIT,
+            })
+        return self._portal_json(self._whatsapp_preview_payload(blocks))
+
+    @http.route(
+        ['/my/orders/whatsapp_create'],
+        type='http', auth='user', methods=['POST'], website=True,
+    )
+    def portal_my_orders_whatsapp_create(self, **post):
+        """Create one draft order per pasted message. No pickup, no wallet debit."""
+        seller = self._portal_seller()
+        if not seller:
+            return request.redirect('/my')
+        if not self._consume_oneshot_token(
+            self._WHATSAPP_CREATE_TOKEN_KEY, post.get('whatsapp_create_token'),
+        ):
+            request.session['error'] = _(
+                "This WhatsApp paste was already submitted. Open your orders "
+                "list to continue, or start a new one."
+            )
+            return request.redirect('/my/orders')
+
+        pickup_date = (post.get('pickup_date') or '').strip()
+        if not pickup_date:
+            request.session['error'] = _("Pickup date is required.")
+            return request.redirect('/my/orders/new')
+
+        shipping_from = request.env['logistics.shipment'].sudo()._shipping_from_vals_for_seller(seller)
+        if not shipping_from.get('shipping_from_zip'):
+            request.session['error'] = _(
+                "Update seller pickup pincode before creating shipments."
+            )
+            return request.redirect('/my/orders/new')
+
+        blocks = parse_whatsapp_orders(post.get('message') or '')
+        if not blocks:
+            request.session['error'] = _("Paste a WhatsApp message.")
+            return request.redirect('/my/orders/new')
+        if len(blocks) > WHATSAPP_ORDER_LIMIT:
+            request.session['error'] = _(
+                "Paste at most %s orders at a time."
+            ) % WHATSAPP_ORDER_LIMIT
+            return request.redirect('/my/orders/new')
+
+        article_type = post.get('indiapost_article_type')
+        created = []
+        failures = []
+        for block in blocks:
+            if not block['ok']:
+                failures.append(block)
+                continue
+            shipment_post = self._portal_whatsapp_post(
+                block['post'], pickup_date, article_type,
+            )
+            try:
+                with request.env.cr.savepoint():
+                    order = request.env['logistics.order'].sudo().create({
+                        'seller_id': seller.id,
+                        'pickup_date': pickup_date,
+                    })
+                    _shipment, warning = self._portal_create_draft_shipment(
+                        seller, shipment_post, order=order,
+                        require_known_pincode=True,
+                    )
+                created.append((order, warning))
+            except Exception as exc:
+                if not isinstance(exc, (UserError, ValidationError)):
+                    _logger.exception(
+                        'WhatsApp order paste failed for block %s', block['index'],
+                    )
+                failures.append({
+                    'index': block['index'],
+                    'reason': self._whatsapp_exc_message(exc),
+                })
+
+        if not created:
+            detail = '; '.join(
+                _('Block %s: %s') % (item['index'], item['reason'])
+                for item in failures[:5]
+            )
+            request.session['error'] = _(
+                "No orders were created."
+            ) + ((' ' + detail) if detail else '')
+            return request.redirect('/my/orders/new')
+
+        names = ', '.join(order.name for order, _warning in created)
+        if len(created) == 1:
+            msg = _(
+                "Created 1 draft order (%s). Pickup was not requested and "
+                "your wallet was not charged."
+            ) % names
+        else:
+            msg = _(
+                "Created %s draft orders (%s). Pickup was not requested and "
+                "your wallet was not charged."
+            ) % (len(created), names)
+        warnings = [warning for _order, warning in created if warning]
+        if warnings:
+            msg += ' ' + ' '.join(warnings)
+        if failures:
+            msg += ' ' + _(
+                "%s message(s) were skipped."
+            ) % len(failures)
+            msg += ' ' + '; '.join(
+                _('Block %s: %s') % (item['index'], item['reason'])
+                for item in failures[:5]
+            )
+        request.session['success'] = msg
+        return request.redirect('/my/orders')
+
     def _portal_apply_pickup_request(self, order, redirect_url):
         """Debit the order wallet and request pickup.
 

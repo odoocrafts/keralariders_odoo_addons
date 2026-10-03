@@ -375,6 +375,27 @@
         </t>
     </template>
 
+    <!-- Copyable WhatsApp template. The text is the Python constant so the
+         button, the parser, and the tests stay on the same message. -->
+    <template id="portal_whatsapp_template_box" name="WhatsApp Order Template">
+        <div class="kx-wa-template border rounded p-3 mb-4 bg-light">
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+                <div>
+                    <div class="fw-bold">WhatsApp template</div>
+                    <p class="text-muted small mb-0">
+                        Copy this message into WhatsApp and replace the example
+                        values after each colon. Weight is in grams (500 is half a kg).
+                    </p>
+                </div>
+                <button type="button" class="btn btn-outline-secondary btn-sm kx-wa-copy">
+                    <i class="fa fa-clipboard me-1"/> Copy WhatsApp template
+                </button>
+            </div>
+            <textarea class="form-control font-monospace small kx-wa-template-text" rows="11" readonly="readonly"><t t-esc="whatsapp_order_template"/></textarea>
+            <div class="small mt-2 d-none kx-wa-copy-status" role="status"/>
+        </div>
+    </template>
+
     <!-- Manual single-order form (no Excel). First shipment is required;
          more can be added from the order detail while the order is a draft. -->
     <template id="portal_my_order_manual" name="Add Order">
@@ -392,6 +413,20 @@
                         Create an order with its first shipment. You can add more
                         shipments on the next page before requesting pickup.
                     </p>
+                    <t t-call="keralariders_logistics.portal_whatsapp_template_box"/>
+                    <div class="mb-4" id="kx_wa_single">
+                        <label class="form-label fw-bold" for="kx_wa_paste">Paste a filled WhatsApp message</label>
+                        <p class="text-muted small">
+                            This fills the form so you can correct it. The order
+                            is created only when you click Create Order.
+                        </p>
+                        <textarea id="kx_wa_paste" class="form-control font-monospace" rows="8"
+                                  placeholder="Paste one filled message here"/>
+                        <button type="button" class="btn btn-outline-primary btn-sm mt-2" id="kx_wa_fill">
+                            Fill form from message
+                        </button>
+                        <div id="kx_wa_fill_status" class="small mt-2" role="status"/>
+                    </div>
                     <form action="/my/orders/create" method="post" class="kx-portal-shipment-form">
                         <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
                         <div class="mb-4">
@@ -540,6 +575,72 @@
                             </div>
                         </div>
                     </div>
+                </div>
+            </div>
+
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-white py-3">
+                    <h4 class="mb-0">Add orders from WhatsApp</h4>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted">
+                        Paste one filled message, or several. Separate orders with
+                        a blank line, or a line that is only <code>---</code>.
+                        Each message becomes its own draft order (Order Added).
+                        Pickup is not requested and your wallet is not charged.
+                    </p>
+                    <t t-call="keralariders_logistics.portal_whatsapp_template_box"/>
+                    <form action="/my/orders/whatsapp_create" method="post" id="kx_wa_bulk_form">
+                        <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                        <input type="hidden" name="whatsapp_create_token" t-att-value="whatsapp_create_token"/>
+                        <div class="mb-4">
+                            <label for="kx_wa_pickup_date" class="form-label fw-bold">Pickup Date</label>
+                            <input type="date" name="pickup_date" id="kx_wa_pickup_date" class="form-control"
+                                   required="1"
+                                   t-att-value="datetime.date.today().strftime('%Y-%m-%d')"
+                                   t-att-min="earliest_pickup_date if uses_indiapost else None"/>
+                        </div>
+                        <div t-if="uses_indiapost" class="mb-4">
+                            <label class="form-label fw-bold">India Post service</label>
+                            <div class="d-flex flex-wrap gap-4">
+                                <t t-foreach="indiapost_article_types" t-as="product">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="radio"
+                                               t-att-id="'kx_wa_article_%s' % product['code']"
+                                               name="indiapost_article_type"
+                                               t-att-value="product['code']"
+                                               t-att-checked="'checked' if product['code'] == 'BP' else None"/>
+                                        <label class="form-check-label"
+                                               t-att-for="'kx_wa_article_%s' % product['code']">
+                                            <t t-esc="product['label']"/>
+                                            <span t-if="product['code'] == 'BP'" class="text-muted small">
+                                                (normal parcel)
+                                            </span>
+                                        </label>
+                                    </div>
+                                </t>
+                            </div>
+                            <p class="text-muted small mb-0">
+                                Used when a message does not name a service.
+                                Business Parcel is the default, the same as Add Order.
+                            </p>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold" for="kx_wa_paste">Pasted messages</label>
+                            <textarea id="kx_wa_paste" name="message" class="form-control font-monospace" rows="10"
+                                      placeholder="Paste filled messages here"/>
+                        </div>
+                        <button type="button" class="btn btn-outline-primary btn-sm" id="kx_wa_preview_btn">
+                            Preview orders
+                        </button>
+                        <div id="kx_wa_preview" class="alert mt-3 d-none" role="status"/>
+                        <div class="text-end border-top pt-3 mt-3">
+                            <a href="/my/orders" class="btn btn-secondary me-2">Cancel</a>
+                            <button type="submit" class="btn btn-primary" id="kx_wa_create_btn" disabled="disabled">
+                                Create draft orders
+                            </button>
+                        </div>
+                    </form>
                 </div>
             </div>
         </t>

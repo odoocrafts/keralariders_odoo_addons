@@ -1,6 +1,6 @@
 {
     'name': 'Kerala Riders Logistics',
-    'version': '1.6.48',
+    'version': '1.6.49',
     'category': 'Operations/Logistics',
     'summary': 'Last-mile delivery management platform for Kerala Riders',
     'description': """
@@ -80,6 +80,7 @@ Features:
             'keralariders_logistics/static/src/css/portal.css',
             'keralariders_logistics/static/src/js/portal_submit_once.js',
             'keralariders_logistics/static/src/js/portal_print_ready.js',
+            'keralariders_logistics/static/src/js/portal_whatsapp_order.js',
         ],
         'web.assets_backend': [
             'keralariders_logistics/static/src/js/backend_book_once.js',
