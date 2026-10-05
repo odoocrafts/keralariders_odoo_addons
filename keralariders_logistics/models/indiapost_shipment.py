@@ -38,8 +38,9 @@ BOOKING_PATH_TEMPLATE = '/process-articles/%s'  # note: no /v1 prefix
 LABEL_PATH = '/v1/label/create/domestic'
 
 # Outbound-only brand mark on India Post sender / pickup / alt name fields
-# (booking + CEPT label API). Never stored on the seller, never on our AWB /
-# 100x150 / delivery-slip QWeb — officers need to recognise KeralaXpress.
+# and sender-side address lines (booking + CEPT label API). Never stored on
+# the seller, never on our AWB / 100x150 / delivery-slip QWeb. Receiver
+# fields, phones, and the standalone city/state fields stay plain.
 IP_SENDER_BRAND_PREFIX = '[KeralaXpress] '
 
 # The file-upload variant of the booking endpoint takes 5000 articles; the JSON
@@ -1778,10 +1779,12 @@ class Shipment(models.Model):
                 state or (fallback_state or '').strip())
 
     def _ip_branded_sender_name(self, name):
-        """``[KeralaXpress] `` + seller name for India Post outbound only.
+        """``[KeralaXpress] `` + seller text for India Post outbound only.
 
-        Idempotent so a prepare/book retry never double-prefixes. Truncates to
-        India Post's 80-char text limit after branding.
+        One helper for sender-side names and sender-side address lines
+        (booking and the CEPT label API). Idempotent so a prepare/book retry
+        never double-prefixes. India Post's 80-character limit includes the
+        prefix: the original text is truncated, the prefix is not.
         """
         text = re.sub(r'\s+', ' ', str(name or '')).strip()
         if not text:
@@ -1799,25 +1802,27 @@ class Shipment(models.Model):
         they must not be the company warehouse when a seller address exists.
         GSTIN / email remain the contract holder's, when configured.
 
-        ``sender_name`` / ``sender_company`` carry the ``[KeralaXpress] ``
-        brand prefix for officers (pickup / alt names do too). Our QWeb
-        prints stay unprefixed.
+        ``sender_name`` / ``sender_company`` and every ``sender_add_line_*``
+        carry the ``[KeralaXpress] `` brand. City, state, pincode, mobile,
+        email and GSTIN stay plain. Our QWeb prints stay unprefixed.
         """
         parts = parts or self._ip_seller_address_parts()
         branded = self._ip_branded_sender_name(parts['name'])
         payload = {
             'sender_name': branded,
             'sender_company': branded,
-            'sender_add_line_1': parts['address'][0],
+            'sender_add_line_1': self._ip_branded_sender_name(parts['address'][0]),
             'sender_city': parts['city'],
             'sender_state': parts['state'],
             'sender_pincode': parts['pincode'],
             'sender_mobile_no': parts['mobile'],
         }
         if parts['address'][1]:
-            payload['sender_add_line_2'] = parts['address'][1]
+            payload['sender_add_line_2'] = self._ip_branded_sender_name(
+                parts['address'][1])
         if parts['address'][2]:
-            payload['sender_add_line_3'] = parts['address'][2]
+            payload['sender_add_line_3'] = self._ip_branded_sender_name(
+                parts['address'][2])
         if settings.get('indiapost_sender_email'):
             payload['sender_emailid'] = ipc.normalize_text(
                 settings['indiapost_sender_email'], _('Consignor email'))
@@ -1936,8 +1941,9 @@ class Shipment(models.Model):
         """India Post collects from the seller, in one of two fixed slots.
 
         Customer Self Service ``Sender Name`` often shows
-        ``pickup_addressee_name``, so brand that (and company) like
-        ``sender_name``. Streets / city / phone stay plain.
+        ``pickup_addressee_name`` or an unprefixed street/company line, so
+        brand the addressee, company, and every pickup address line the same
+        way as ``sender_name``. City, state and phone stay plain.
         """
         self.ensure_one()
         pickup_date = self.indiapost_pickup_date or self._ip_default_pickup_date()
@@ -1949,7 +1955,8 @@ class Shipment(models.Model):
             'pickup_address_flag': 'TRUE',
             'pickup_addressee_name': branded,
             'pickup_company_name': branded_company,
-            'pickup_address_line1': parts['address'][0],
+            'pickup_address_line1': self._ip_branded_sender_name(
+                parts['address'][0]),
             'pickup_city': parts['city'],
             'pickup_state': parts['state'],
             'pickup_pincode': parts['pincode'],
@@ -1958,17 +1965,20 @@ class Shipment(models.Model):
             'pickup_schedule_date': ipc.format_pickup_datetime(moment),
         }
         if parts['address'][1]:
-            payload['pickup_address_line2'] = parts['address'][1]
+            payload['pickup_address_line2'] = self._ip_branded_sender_name(
+                parts['address'][1])
         if parts['address'][2]:
-            payload['pickup_address_line3'] = parts['address'][2]
+            payload['pickup_address_line3'] = self._ip_branded_sender_name(
+                parts['address'][2])
         return payload
 
     def _ip_alt_group(self, parts):
         """Returns go to the seller, not to KeralaXpress.
 
         Without ``alt_address_flag`` every undelivered article would come back
-        to the consignor of record, which is us. Brand addressee / company
-        names the same way as ``sender_name``; address lines stay plain.
+        to the consignor of record, which is us. Brand addressee, company, and
+        every alternate address line the same way as ``sender_name``. City,
+        state and phone stay plain.
         """
         branded = self._ip_branded_sender_name(parts['name'])
         branded_company = self._ip_branded_sender_name(parts['company'])
@@ -1976,14 +1986,15 @@ class Shipment(models.Model):
             'alt_address_flag': 'TRUE',
             'alt_addressee_name': branded,
             'alt_company_name': branded_company,
-            'alt_address_line1': parts['address'][0],
+            'alt_address_line1': self._ip_branded_sender_name(parts['address'][0]),
             'alt_city': parts['city'],
             'alt_state': parts['state'],
             'alt_pincode': parts['pincode'],
             'alt_alternate_mobile_no': parts['mobile'],
         }
         if parts['address'][1]:
-            payload['alt_address_line2'] = parts['address'][1]
+            payload['alt_address_line2'] = self._ip_branded_sender_name(
+                parts['address'][1])
         return payload
 
     # ------------------------------------------------------------------

@@ -8,6 +8,9 @@ stays the bulk customer / contract holder; the physical from-address does not.
 from odoo.exceptions import UserError
 from odoo.tests import TransactionCase, tagged
 
+from odoo.addons.keralariders_logistics.models.indiapost_shipment import (
+    IP_SENDER_BRAND_PREFIX,
+)
 from odoo.addons.keralariders_logistics.tests.common import (
     SP_CONTRACT,
     IndiapostHermeticMixin,
@@ -120,20 +123,25 @@ class TestIndiapostPickupAddress(IndiapostHermeticMixin, TransactionCase):
         branded = '[KeralaXpress] ' + SELLER_NAME
         self.assertEqual(values['pickup_addressee_name'], branded)
         self.assertEqual(values['pickup_company_name'], branded)
-        self.assertEqual(values['pickup_address_line1'], SELLER_STREET)
-        self.assertEqual(values['pickup_address_line2'], SELLER_STREET2)
+        self.assertEqual(
+            values['pickup_address_line1'], IP_SENDER_BRAND_PREFIX + SELLER_STREET)
+        self.assertEqual(
+            values['pickup_address_line2'], IP_SENDER_BRAND_PREFIX + SELLER_STREET2)
         self.assertEqual(values['pickup_pincode'], SELLER_PIN)
         self.assertEqual(values['pickup_mobile_no'], SELLER_MOBILE)
 
         self.assertEqual(values['sender_name'], branded)
         self.assertEqual(values['sender_company'], branded)
-        self.assertEqual(values['sender_add_line_1'], SELLER_STREET)
-        self.assertEqual(values['sender_add_line_2'], SELLER_STREET2)
+        self.assertEqual(
+            values['sender_add_line_1'], IP_SENDER_BRAND_PREFIX + SELLER_STREET)
+        self.assertEqual(
+            values['sender_add_line_2'], IP_SENDER_BRAND_PREFIX + SELLER_STREET2)
         self.assertEqual(values['sender_pincode'], SELLER_PIN)
         self.assertEqual(values['sender_mobile_no'], SELLER_MOBILE)
 
         self.assertEqual(values['alt_addressee_name'], branded)
-        self.assertEqual(values['alt_address_line1'], SELLER_STREET)
+        self.assertEqual(
+            values['alt_address_line1'], IP_SENDER_BRAND_PREFIX + SELLER_STREET)
         self.assertEqual(values['alt_alternate_mobile_no'], SELLER_MOBILE)
 
         self.assertEqual(article['bulk_customer_id'],
@@ -170,9 +178,11 @@ class TestIndiapostPickupAddress(IndiapostHermeticMixin, TransactionCase):
                 break
         self.assertIsNotNone(booking, 'No booking payload was posted')
         article = booking['articles'][0]
-        self.assertEqual(article['pickup_address_line1'], SELLER_STREET)
+        self.assertEqual(
+            article['pickup_address_line1'], IP_SENDER_BRAND_PREFIX + SELLER_STREET)
         self.assertEqual(article['pickup_mobile_no'], SELLER_MOBILE)
-        self.assertEqual(article['sender_add_line_1'], SELLER_STREET)
+        self.assertEqual(
+            article['sender_add_line_1'], IP_SENDER_BRAND_PREFIX + SELLER_STREET)
         self.assertEqual(article['sender_mobile_no'], SELLER_MOBILE)
         branded = '[KeralaXpress] ' + SELLER_NAME
         self.assertEqual(article['sender_name'], branded)
@@ -192,11 +202,16 @@ class TestIndiapostPickupAddress(IndiapostHermeticMixin, TransactionCase):
         article = shipment._ip_prepare_article(self.settings, 'TT900000024IN')
         branded = '[KeralaXpress] Portal Pickup Contact'
         self.assertEqual(article['pickup_addressee_name'], branded)
-        self.assertEqual(article['pickup_address_line1'], '99 Portal Pickup Lane')
-        self.assertEqual(article['pickup_address_line2'], 'First Floor')
+        self.assertEqual(
+            article['pickup_address_line1'],
+            IP_SENDER_BRAND_PREFIX + '99 Portal Pickup Lane')
+        self.assertEqual(
+            article['pickup_address_line2'], IP_SENDER_BRAND_PREFIX + 'First Floor')
         self.assertEqual(article['sender_name'], branded)
         self.assertEqual(article['alt_addressee_name'], branded)
-        self.assertEqual(article['sender_add_line_1'], '99 Portal Pickup Lane')
+        self.assertEqual(
+            article['sender_add_line_1'],
+            IP_SENDER_BRAND_PREFIX + '99 Portal Pickup Lane')
         self.assertEqual(article['pickup_mobile_no'], SELLER_MOBILE)
 
     def test_partner_phone_is_used_when_seller_phone_is_blank(self):
