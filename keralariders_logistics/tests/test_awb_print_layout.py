@@ -96,6 +96,24 @@ class TestAwbPrintLayout(IndiapostHermeticMixin, TransactionCase):
         self.assertTrue(match, 'India Post AWB is missing the carrier logo cell')
         return match.group(1)
 
+    def _header_kx_cell(self, html):
+        match = re.search(
+            r'class="[^"]*awb-header-kx[^"]*"[^>]*>(.*?)</td>', html,
+            flags=re.DOTALL)
+        self.assertTrue(match, 'AWB is missing the KeralaXpress logo cell')
+        return match.group(1)
+
+    def _binary_in_html(self, html, value):
+        if isinstance(value, bytes):
+            value = value.decode()
+        if not value:
+            return False
+        return (
+            value in html
+            or value.replace('+', '&#43;') in html
+            or value.replace('/', '&#47;') in html
+        )
+
     def test_hub_print_awb_keeps_old_layout(self):
         shipment = self._new_shipment(self.hub_seller)
         self.assertEqual(shipment.fulfilment_method, 'own_network')
@@ -284,6 +302,54 @@ class TestAwbPrintLayout(IndiapostHermeticMixin, TransactionCase):
         self.assertNotIn('bwipjs-api.metafloor.com', source)
         self.assertNotIn('api.qrserver.com', source)
         self.assertNotIn('/report/barcode', source)
+        self.assertNotIn('seller_id.image_1920', source)
+        self.assertNotIn('o.seller_id.image', source)
+        self.assertEqual(source.count('alt="KeralaXpress"'), 2)
+        self.assertIn('image_data_uri(company.logo)', source)
+        self.assertIn('o._awb_indiapost_logo_data_uri()', source)
+
+    def test_awb_header_uses_company_logo_when_seller_has_one(self):
+        """Top-left mark is the company KeralaXpress logo, never the seller brand."""
+        # Distinct 1×1 PNGs so the seller upload cannot collide with company.logo.
+        seller_logo = (
+            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR42mOI0hAB'
+            'AAF2AJcMRvd0AAAAAElFTkSuQmCC'
+        )
+        company_logo = (
+            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR42mMQcdsC'
+            'AAGAAQ9HwWu3AAAAAElFTkSuQmCC'
+        )
+        self.env.company.sudo().write({'logo': company_logo})
+        stored_company = self.env.company.logo
+        self.assertTrue(stored_company)
+
+        for seller in (self.ip_seller, self.hub_seller):
+            seller.sudo().write({'image_1920': seller_logo})
+            stored_seller = seller.image_1920
+            self.assertTrue(stored_seller)
+            self.assertNotEqual(stored_seller, stored_company)
+            shipment = self._new_shipment(seller)
+            if seller.fulfilment_method == 'indiapost':
+                shipment.sudo().write({
+                    'indiapost_article_number': ARTICLE,
+                    'indiapost_booking_state': 'booked',
+                })
+            html = self._awb_html(shipment)
+            header = self._header_kx_cell(html)
+            self.assertIn('alt="KeralaXpress"', header)
+            self.assertTrue(
+                self._binary_in_html(header, stored_company),
+                'KeralaXpress header is missing the company logo',
+            )
+            self.assertFalse(
+                self._binary_in_html(html, stored_seller),
+                'Seller brand logo leaked onto the AWB',
+            )
+            self.assertNotIn('seller_id.image_1920', html)
+            if seller.fulfilment_method == 'indiapost':
+                header_ip = self._header_ip_cell(html)
+                self.assertIn('alt="India Post"', header_ip)
+                self.assertIn('awb-indiapost-logo', header_ip)
 
     def test_a4_cod_uses_rupee_entity(self):
         shipment = self._new_shipment(

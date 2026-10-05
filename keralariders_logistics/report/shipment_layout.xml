@@ -24,9 +24,8 @@
                         <table style="width: 100%; border-collapse: collapse; border: 2px solid black; border-bottom: 0px;">
                             <!-- HEADER -->
                             <tr>
-                                <td class="text-center" colspan="1" style="border: 2px solid black; padding: 5px 10px; text-align: left; vertical-align: middle;" >
-                                    <img t-if="o.seller_id.image_1920" t-att-src="image_data_uri(o.seller_id.image_1920)" style="max-width: 200px;" alt="Logo"/>
-                                    <img t-else="" t-att-src="image_data_uri(company.logo)" style="max-width: 200px;" alt="Logo"/>
+                                <td class="text-center awb-header-kx" colspan="1" style="border: 2px solid black; padding: 5px 10px; text-align: left; vertical-align: middle;">
+                                    <img t-if="company.logo" t-att-src="image_data_uri(company.logo)" style="max-width: 200px;" alt="KeralaXpress"/>
                                 </td>
                                 <td class="text-center" colspan="1" style="border: 2px solid black; padding: 5px 10px; text-align: left; vertical-align: middle;">
                                     <img t-if="company.logo" t-att-src="image_data_uri(company.logo)" style="max-width: 200px;" alt="Logo" />
@@ -145,8 +144,7 @@
                         <table style="width: 100%; border-collapse: collapse; border: 2px solid black; border-bottom: 0px;">
                             <tr>
                                 <td class="awb-header-kx" style="width: 50%; border: 2px solid black; padding: 5px 10px; text-align: left; vertical-align: middle;">
-                                    <img t-if="o.seller_id.image_1920" t-att-src="image_data_uri(o.seller_id.image_1920)" style="max-width: 200px;" alt="Logo"/>
-                                    <img t-else="" t-att-src="image_data_uri(company.logo)" style="max-width: 200px;" alt="Logo"/>
+                                    <img t-if="company.logo" t-att-src="image_data_uri(company.logo)" style="max-width: 200px;" alt="KeralaXpress"/>
                                 </td>
                                 <td class="awb-header-indiapost" style="width: 50%; border: 2px solid black; padding: 5px 10px; text-align: right; vertical-align: middle;">
                                     <img t-att-src="o._awb_indiapost_logo_data_uri()"

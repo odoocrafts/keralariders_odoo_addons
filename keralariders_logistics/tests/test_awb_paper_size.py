@@ -151,6 +151,51 @@ class TestAwbPaperSize(IndiapostHermeticMixin, TransactionCase):
         with self.assertRaises(UserError):
             order.action_print_awb_delivery_slips()
 
+    def _binary_in_html(self, html, value):
+        if isinstance(value, bytes):
+            value = value.decode()
+        if not value:
+            return False
+        return (
+            value in html
+            or value.replace('+', '&#43;') in html
+            or value.replace('/', '&#47;') in html
+        )
+
+    def test_100x150_header_uses_company_logo_when_seller_has_one(self):
+        seller_logo = (
+            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR42mOI0hAB'
+            'AAF2AJcMRvd0AAAAAElFTkSuQmCC'
+        )
+        company_logo = (
+            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR42mMQcdsC'
+            'AAGAAQ9HwWu3AAAAAElFTkSuQmCC'
+        )
+        self.env.company.sudo().write({'logo': company_logo})
+        stored_company = self.env.company.logo
+        self.assertTrue(stored_company)
+        self.ip_seller.sudo().write({'image_1920': seller_logo})
+        stored_seller = self.ip_seller.image_1920
+        self.assertTrue(stored_seller)
+        self.assertNotEqual(stored_seller, stored_company)
+        shipment = self._new_shipment(self.ip_seller)
+        shipment.sudo().write({
+            'indiapost_article_number': ARTICLE,
+            'indiapost_booking_state': 'booked',
+        })
+        html = self._label_html(shipment)
+        self.assertIn('kx-label-kx-logo', html)
+        self.assertIn('alt="KeralaXpress"', html)
+        self.assertTrue(
+            self._binary_in_html(html, stored_company),
+            '100x150 header is missing the company logo',
+        )
+        self.assertFalse(
+            self._binary_in_html(html, stored_seller),
+            'Seller brand logo leaked onto the 100x150 label',
+        )
+        self.assertIn('alt="India Post"', html)
+
     def test_hub_100x150_has_kx_marks_not_indiapost(self):
         shipment = self._new_shipment(self.hub_seller)
         html = self._label_html(shipment)
@@ -290,6 +335,11 @@ class TestAwbPaperSize(IndiapostHermeticMixin, TransactionCase):
         self.assertIn('t-if="not is_ip"', source)
         self.assertNotIn('bwipjs-api.metafloor.com', source)
         self.assertNotIn('/report/barcode', source)
+        self.assertNotIn('seller_id.image_1920', source)
+        self.assertNotIn('o.seller_id.image', source)
+        self.assertIn('alt="KeralaXpress"', source)
+        self.assertIn('image_data_uri(company.logo)', source)
+        self.assertIn('_awb_indiapost_logo_data_uri()', source)
         font = (
             Path(__file__).resolve().parents[1]
             / 'static' / 'src' / 'fonts' / 'KxAwbRupee-Bold.ttf'
