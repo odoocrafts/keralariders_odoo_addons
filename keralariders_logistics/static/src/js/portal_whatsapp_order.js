@@ -2,15 +2,22 @@
  * Seller portal: copy the WhatsApp order template, fill Add Order from one
  * pasted message, and preview a bulk paste before create.
  *
- * Keep the aliases, separators, and gram-to-kilogram conversion in step with
- * models/whatsapp_order_paste.py. Bulk preview and create re-parse on the
- * server with that module. This file fills the single Add Order form locally.
+ * Keep the aliases, separators, line order, and gram-to-kilogram conversion
+ * in step with models/whatsapp_order_paste.py. The copy button reads
+ * data-template, which the page renders from WHATSAPP_ORDER_TEMPLATE.
+ * Bulk preview and create re-parse on the server with that module. This
+ * file fills the single Add Order form locally.
  */
 (function () {
     'use strict';
 
     var LINE_RE = /^\s*(.+?)\s*[:\-\u2013\u2014]\s*(.*)\s*$/;
     var NUMBER_RE = /\d+(?:\.\d+)?/;
+    var DIM_RE = /(\d+(?:\.\d+)?)\s*[xX\u00d7]\s*(\d+(?:\.\d+)?)\s*[xX\u00d7]\s*(\d+(?:\.\d+)?)/;
+    var LINE_KEYS = [
+        'name', 'mobile', 'address', 'pincode', 'payment',
+        'cod_amount', 'item', 'weight_g', 'dimensions'
+    ];
     var ALIASES = {
         'name': 'name',
         'customer name': 'name',
@@ -92,6 +99,17 @@
         return blocks;
     }
 
+    function usesLabeledFormat(block) {
+        var labeled = false;
+        block.split('\n').forEach(function (line) {
+            var match = LINE_RE.exec(line);
+            if (match && ALIASES[normLabel(match[1])] === 'name') {
+                labeled = true;
+            }
+        });
+        return labeled;
+    }
+
     function readFields(block) {
         var values = {};
         var lastKey = null;
@@ -107,6 +125,35 @@
                 values[lastKey] = (values[lastKey] + ' ' + line.trim()).trim();
             }
         });
+        return values;
+    }
+
+    function readLineFields(block) {
+        var lines = [];
+        block.split('\n').forEach(function (line) {
+            if (line.trim()) {
+                lines.push(line.trim());
+            }
+        });
+        var values = {};
+        LINE_KEYS.forEach(function (key, index) {
+            if (index < lines.length) {
+                values[key] = lines[index];
+            }
+        });
+        var dims = values.dimensions;
+        delete values.dimensions;
+        if (dims) {
+            var match = DIM_RE.exec(dims);
+            if (match) {
+                values.length_cm = match[1];
+                values.breadth_cm = match[2];
+                values.height_cm = match[3];
+            }
+        }
+        if (parsePayment(values.payment).payment === 'prepaid') {
+            values.cod_amount = '0';
+        }
         return values;
     }
 
@@ -199,7 +246,7 @@
     }
 
     function parseBlock(index, block) {
-        var values = readFields(block);
+        var values = usesLabeledFormat(block) ? readFields(block) : readLineFields(block);
         if (!Object.keys(values).length) {
             return {
                 index: index,

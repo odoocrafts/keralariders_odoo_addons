@@ -396,7 +396,7 @@
                     </button>
                 </div>
                 <p class="text-muted small mb-0 mt-2">
-                    Copy the template into WhatsApp, replace the values, then paste it back.
+                    One field per line: name, mobile, address, pincode, COD or Prepaid, COD amount, item, weight in grams, size as LxBxH.
                 </p>
                 <div class="small mt-2 d-none kx-wa-copy-status" role="status"/>
             </div>

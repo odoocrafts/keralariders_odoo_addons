@@ -1,28 +1,29 @@
 """Parse a seller's filled WhatsApp order message into portal form fields.
 
 The copy button on Add Order and bulk upload pastes ``WHATSAPP_ORDER_TEMPLATE``.
-This parser accepts that text, including small label and colon variations.
-Keep ``static/src/js/portal_whatsapp_order.js`` in step with the aliases,
-separators, and gram-to-kilogram conversion here. Bulk create uses this
-module so the rules are the ones the tests run.
+That sample is one field per line: name, mobile, address, pincode, COD or
+Prepaid, COD amount, item, weight in grams, then size as LxBxH. A block that
+still has a Name: line uses the older labeled parser. Keep
+``static/src/js/portal_whatsapp_order.js`` in step with the aliases,
+separators, line order, and gram-to-kilogram conversion here. Bulk create
+uses this module so the rules are the ones the tests run.
 """
 
 import re
 
 # Exact text the portal "Copy WhatsApp template" button copies.
 # Weight is grams. The portal form stores kilograms (500 g -> 0.5 kg).
+# Size is centimetres: 10x10x10 is length, breadth, height.
 WHATSAPP_ORDER_TEMPLATE = (
-    "Name: Customer Name\n"
-    "Mobile: 9800000000\n"
-    "Address: House name, Street, Area\n"
-    "Pincode: 682001\n"
-    "Weight g: 500\n"
-    "Length cm: 10\n"
-    "Breadth cm: 10\n"
-    "Height cm: 10\n"
-    "Payment: Prepaid\n"
-    "COD amount: 0\n"
-    "Item: Sample item"
+    "Customer Name\n"
+    "9800000000\n"
+    "House name, Street, Area\n"
+    "682001\n"
+    "COD\n"
+    "500\n"
+    "Sample item\n"
+    "500\n"
+    "10x10x10"
 )
 
 # How many pasted messages one bulk create will accept.
@@ -30,6 +31,19 @@ WHATSAPP_ORDER_LIMIT = 100
 
 _LINE_RE = re.compile(r'^\s*(.+?)\s*[:\-\u2013\u2014]\s*(.*)\s*$')
 _NUMBER_RE = re.compile(r'\d+(?:\.\d+)?')
+# 15x10x10, 15X10X10, and 15×10×10. Spaces around the separator are allowed.
+_DIM_RE = re.compile(
+    r'(\d+(?:\.\d+)?)\s*[xX\u00d7]\s*'
+    r'(\d+(?:\.\d+)?)\s*[xX\u00d7]\s*'
+    r'(\d+(?:\.\d+)?)'
+)
+
+# Positional order of an unlabeled paste. A blank line is a new order, not
+# a field, so each of these stays on its own single line.
+_LINE_KEYS = (
+    'name', 'mobile', 'address', 'pincode', 'payment',
+    'cod_amount', 'item', 'weight_g', 'dimensions',
+)
 
 # Normalized label -> internal key. The template labels are the first alias
 # of each field. Extra aliases cover case, spacing, and CSV-style names.
@@ -220,6 +234,22 @@ def _failure(index, reason):
 
 
 def _read_fields(block):
+    # Name: (and the other name aliases) means the seller still has the old
+    # labeled message. Anything else is one field per line, in _LINE_KEYS order.
+    if _uses_labeled_format(block):
+        return _read_labeled_fields(block)
+    return _read_line_fields(block)
+
+
+def _uses_labeled_format(block):
+    for line in block.split('\n'):
+        match = _LINE_RE.match(line)
+        if match and _ALIASES.get(_norm_label(match.group(1))) == 'name':
+            return True
+    return False
+
+
+def _read_labeled_fields(block):
     values = {}
     last_key = None
     for line in block.split('\n'):
@@ -234,6 +264,36 @@ def _read_fields(block):
         if last_key and line.strip():
             values[last_key] = ('%s %s' % (values[last_key], line.strip())).strip()
     return values
+
+
+def _read_line_fields(block):
+    lines = [line.strip() for line in block.split('\n') if line.strip()]
+    values = {}
+    for key, line in zip(_LINE_KEYS, lines):
+        values[key] = line
+    dimensions = values.pop('dimensions', None)
+    if dimensions:
+        parsed = _parse_dimensions(dimensions)
+        if parsed:
+            values['length_cm'], values['breadth_cm'], values['height_cm'] = parsed
+    # Prepaid ignores a number on the COD-amount line. COD keeps that line.
+    payment, _payment_error = _payment(values.get('payment'))
+    if payment == 'prepaid':
+        values['cod_amount'] = '0'
+    return values
+
+
+def _parse_dimensions(raw):
+    match = _DIM_RE.search(raw or '')
+    if not match:
+        return None
+    parts = []
+    for group in match.groups():
+        text = _measure(group)
+        if not text:
+            return None
+        parts.append(text)
+    return tuple(parts)
 
 
 def _norm_label(label):

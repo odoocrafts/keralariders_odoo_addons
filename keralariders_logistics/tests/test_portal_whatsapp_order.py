@@ -23,10 +23,38 @@ def _ok_posts(text):
     return [block['post'] for block in parse_whatsapp_orders(text) if block['ok']]
 
 
+# The copy button no longer uses this. It stays so an old labeled paste still parses.
+_LABELED_MESSAGE = (
+    "Name: Customer Name\n"
+    "Mobile: 9800000000\n"
+    "Address: House name, Street, Area\n"
+    "Pincode: 682001\n"
+    "Weight g: 500\n"
+    "Length cm: 10\n"
+    "Breadth cm: 10\n"
+    "Height cm: 10\n"
+    "Payment: Prepaid\n"
+    "COD amount: 0\n"
+    "Item: Sample item"
+)
+
+
 @tagged('post_install', '-at_install')
 class TestWhatsappOrderPaste(TransactionCase):
 
     def test_one_valid_message_extracts_the_form_fields(self):
+        self.assertEqual(
+            WHATSAPP_ORDER_TEMPLATE,
+            "Customer Name\n"
+            "9800000000\n"
+            "House name, Street, Area\n"
+            "682001\n"
+            "COD\n"
+            "500\n"
+            "Sample item\n"
+            "500\n"
+            "10x10x10",
+        )
         blocks = parse_whatsapp_orders(WHATSAPP_ORDER_TEMPLATE)
         self.assertEqual(len(blocks), 1)
         self.assertTrue(blocks[0]['ok'], blocks[0]['reason'])
@@ -42,11 +70,28 @@ class TestWhatsappOrderPaste(TransactionCase):
         self.assertEqual(post['length_cm'], '10')
         self.assertEqual(post['breadth_cm'], '10')
         self.assertEqual(post['height_cm'], '10')
-        self.assertEqual(post['order_payment_type'], 'prepaid')
-        self.assertEqual(post['total_order_value'], '0')
+        self.assertEqual(post['order_payment_type'], 'cod')
+        self.assertEqual(post['total_order_value'], '500')
         self.assertEqual(post['item_description'], 'Sample item')
         self.assertNotIn('shipping_to_state_name', post)
         self.assertNotIn('indiapost_article_type', post)
+
+    def test_old_labeled_message_still_parses(self):
+        blocks = parse_whatsapp_orders(_LABELED_MESSAGE)
+        self.assertEqual(len(blocks), 1)
+        self.assertTrue(blocks[0]['ok'], blocks[0]['reason'])
+        post = blocks[0]['post']
+        self.assertEqual(post['shipping_to_name'], 'Customer Name')
+        self.assertEqual(post['shipping_to_mobile'], '9800000000')
+        self.assertEqual(post['shipping_to_address'], 'House name, Street, Area')
+        self.assertEqual(post['shipping_to_zip'], '682001')
+        self.assertEqual(post['total_weight'], '0.5')
+        self.assertEqual(post['length_cm'], '10')
+        self.assertEqual(post['breadth_cm'], '10')
+        self.assertEqual(post['height_cm'], '10')
+        self.assertEqual(post['order_payment_type'], 'prepaid')
+        self.assertEqual(post['total_order_value'], '0')
+        self.assertEqual(post['item_description'], 'Sample item')
 
     def test_label_case_and_separator_still_parse(self):
         text = (
@@ -96,20 +141,32 @@ class TestWhatsappOrderPaste(TransactionCase):
         self.assertEqual(blocks[1]['post']['shipping_to_name'], 'Second Customer')
 
     def test_missing_mobile_is_reported_and_not_ok(self):
-        text = WHATSAPP_ORDER_TEMPLATE.replace('Mobile: 9800000000\n', '')
-        blocks = parse_whatsapp_orders(text)
-        self.assertEqual(len(blocks), 1)
-        self.assertFalse(blocks[0]['ok'])
-        self.assertIn('Mobile', blocks[0]['reason'])
-        self.assertNotIn('shipping_to_mobile', blocks[0]['post'])
+        bad = WHATSAPP_ORDER_TEMPLATE.replace('9800000000', '-').replace(
+            'Customer Name', 'No Phone',
+        )
+        blocks = parse_whatsapp_orders(
+            WHATSAPP_ORDER_TEMPLATE + '\n\n' + bad,
+        )
+        self.assertEqual(len(blocks), 2)
+        self.assertTrue(blocks[0]['ok'], blocks[0]['reason'])
+        self.assertFalse(blocks[1]['ok'])
+        self.assertIn('Mobile', blocks[1]['reason'])
+        self.assertNotIn('shipping_to_mobile', blocks[1]['post'])
+        self.assertEqual(blocks[0]['post']['shipping_to_name'], 'Customer Name')
 
     def test_missing_pincode_is_reported_and_not_ok(self):
-        text = WHATSAPP_ORDER_TEMPLATE.replace('Pincode: 682001\n', '')
-        blocks = parse_whatsapp_orders(text)
-        self.assertEqual(len(blocks), 1)
-        self.assertFalse(blocks[0]['ok'])
-        self.assertIn('Pincode', blocks[0]['reason'])
-        self.assertNotIn('shipping_to_zip', blocks[0]['post'])
+        bad = WHATSAPP_ORDER_TEMPLATE.replace('682001', '------').replace(
+            'Customer Name', 'No Pin',
+        )
+        blocks = parse_whatsapp_orders(
+            WHATSAPP_ORDER_TEMPLATE + '\n\n' + bad,
+        )
+        self.assertEqual(len(blocks), 2)
+        self.assertTrue(blocks[0]['ok'], blocks[0]['reason'])
+        self.assertFalse(blocks[1]['ok'])
+        self.assertIn('Pincode', blocks[1]['reason'])
+        self.assertNotIn('shipping_to_zip', blocks[1]['post'])
+        self.assertEqual(blocks[0]['post']['shipping_to_mobile'], '9800000000')
 
     def test_a_bad_block_does_not_drop_a_good_one(self):
         text = (
@@ -126,11 +183,11 @@ class TestWhatsappOrderPaste(TransactionCase):
 
     def test_payment_cod_and_prepaid_are_recognized(self):
         prepaid = _ok_posts(
-            WHATSAPP_ORDER_TEMPLATE.replace('Payment: Prepaid', 'PAYMENT: PREPAID')
+            _LABELED_MESSAGE.replace('Payment: Prepaid', 'PAYMENT: PREPAID')
         )[0]
         self.assertEqual(prepaid['order_payment_type'], 'prepaid')
 
-        cod_text = WHATSAPP_ORDER_TEMPLATE.replace(
+        cod_text = _LABELED_MESSAGE.replace(
             'Payment: Prepaid', 'Payment: COD',
         ).replace('COD amount: 0', 'COD amount: 1500')
         cod = _ok_posts(cod_text)[0]
@@ -138,7 +195,7 @@ class TestWhatsappOrderPaste(TransactionCase):
         self.assertEqual(cod['total_order_value'], '1500')
 
         words = _ok_posts(
-            WHATSAPP_ORDER_TEMPLATE.replace(
+            _LABELED_MESSAGE.replace(
                 'Payment: Prepaid', 'Payment - cash on delivery',
             ).replace('COD amount: 0', 'COD amount: 250')
         )[0]
@@ -146,12 +203,28 @@ class TestWhatsappOrderPaste(TransactionCase):
         self.assertEqual(words['total_order_value'], '250')
 
         missing_amount = parse_whatsapp_orders(
-            WHATSAPP_ORDER_TEMPLATE.replace('Payment: Prepaid', 'Payment: COD').replace(
+            _LABELED_MESSAGE.replace('Payment: Prepaid', 'Payment: COD').replace(
                 'COD amount: 0\n', '',
             )
         )
         self.assertFalse(missing_amount[0]['ok'])
         self.assertIn('COD amount', missing_amount[0]['reason'])
+
+        line_cod = _ok_posts(WHATSAPP_ORDER_TEMPLATE.replace('\nCOD\n', '\ncod\n'))[0]
+        self.assertEqual(line_cod['order_payment_type'], 'cod')
+        self.assertEqual(line_cod['total_order_value'], '500')
+
+        line_prepaid = _ok_posts(
+            WHATSAPP_ORDER_TEMPLATE.replace('\nCOD\n', '\nPrepaid\n')
+        )[0]
+        self.assertEqual(line_prepaid['order_payment_type'], 'prepaid')
+        self.assertEqual(line_prepaid['total_order_value'], '0')
+
+        for size in ('15x10x10', '15X10X10', '15×10×10', '15 x 10 x 10'):
+            sized = _ok_posts(WHATSAPP_ORDER_TEMPLATE.replace('10x10x10', size))[0]
+            self.assertEqual(sized['length_cm'], '15', size)
+            self.assertEqual(sized['breadth_cm'], '10', size)
+            self.assertEqual(sized['height_cm'], '10', size)
 
 
 @tagged('post_install', '-at_install')
@@ -214,7 +287,8 @@ class TestPortalWhatsappOrders(IndiapostHermeticMixin, HttpCase):
         self.assertIn('Copy WhatsApp template', page_html)
         self.assertIn('Paste from WhatsApp', page_html)
         self.assertIn(
-            'Copy the template into WhatsApp, replace the values, then paste it back.',
+            'One field per line: name, mobile, address, pincode, COD or Prepaid, '
+            'COD amount, item, weight in grams, size as LxBxH.',
             page_html,
         )
         self.assertIn('class="kx-wa-paste-panel d-none mt-3"', page_html)
@@ -248,35 +322,35 @@ class TestPortalWhatsappOrders(IndiapostHermeticMixin, HttpCase):
         opening = self.wallet.balance
         form = self.url_open('/my/orders/new')
         message = "\n".join([
-            "Name: First Customer",
-            "Mobile: 9876543210",
-            "Address: 12 Test Road",
-            "Pincode: 695001",
-            "Weight g: 500",
-            "Length cm: 20",
-            "Breadth cm: 15",
-            "Height cm: 10",
-            "Payment: Prepaid",
-            "COD amount: 0",
-            "Item: Clothes",
+            "First Customer",
+            "9876543210",
+            "12 Test Road",
+            "695001",
+            "Prepaid",
+            "0",
+            "Clothes",
+            "500",
+            "20x15x10",
             "",
-            "Name: Second Customer",
-            "Mobile: 9876543211",
-            "Address: 13 Test Road",
-            "Pincode: 695014",
-            "Weight g: 1500",
-            "Length cm: 20",
-            "Breadth cm: 15",
-            "Height cm: 10",
-            "Payment: COD",
-            "COD amount: 250",
-            "Item: Books",
-            "---",
-            "Name: Broken Customer",
-            "Address: 14 Test Road",
-            "Pincode: 695001",
-            "Weight g: 500",
-            "Item: Hat",
+            "Second Customer",
+            "9876543211",
+            "13 Test Road",
+            "695014",
+            "COD",
+            "250",
+            "Books",
+            "1500",
+            "20x15x10",
+            "",
+            "Broken Customer",
+            "-",
+            "14 Test Road",
+            "695001",
+            "Prepaid",
+            "0",
+            "Hat",
+            "500",
+            "10x10x10",
         ])
         preview = self.url_open('/my/orders/whatsapp_preview', data={
             'csrf_token': self._csrf(form.text),
@@ -320,6 +394,9 @@ class TestPortalWhatsappOrders(IndiapostHermeticMixin, HttpCase):
         self.assertEqual(second.order_payment_type, 'cod')
         self.assertEqual(second.cod_amount, 250.0)
         self.assertEqual(second.total_order_value, 250.0)
+        self.assertEqual(second.length_cm, 20.0)
+        self.assertEqual(second.breadth_cm, 15.0)
+        self.assertEqual(second.height_cm, 10.0)
         self.assertFalse(shipments.filtered('pickup_requested_on'))
         self.wallet.invalidate_recordset(['balance'])
         self.assertAlmostEqual(self.wallet.balance, opening, places=2)
