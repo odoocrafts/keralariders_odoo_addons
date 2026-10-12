@@ -149,6 +149,6 @@
     <menuitem id="menu_indiapost_scan_import" name="Scan imports"
               parent="menu_indiapost_root" sequence="6"
               action="action_indiapost_scan_import"
-              groups="keralariders_logistics.group_logistics_admin,keralariders_logistics.group_staff_indiapost"/>
+              groups="keralariders_logistics.group_logistics_admin,-keralariders_logistics.group_staff_indiapost,-keralariders_logistics.group_staff_operations,-keralariders_logistics.group_staff_base"/>
 
 </odoo>

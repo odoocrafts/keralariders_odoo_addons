@@ -26,6 +26,16 @@ FINANCE_MENU_XMLIDS = tuple('keralariders_logistics.%s' % name for name in (
     'menu_logistics_account_transfer_other',
 ))
 
+INDIAPOST_MENU_XMLIDS = tuple('keralariders_logistics.%s' % name for name in (
+    'menu_indiapost_root',
+    'menu_indiapost_barcode_range',
+    'menu_indiapost_barcode',
+    'menu_indiapost_office',
+    'menu_indiapost_tariff_cache',
+    'menu_indiapost_log',
+    'menu_indiapost_scan_import',
+))
+
 
 @tagged('post_install', '-at_install')
 class TestStaffAccess(TransactionCase):
@@ -514,6 +524,62 @@ class TestStaffAccess(TransactionCase):
             menu = self.env.ref(xmlid)
             if menu.active:
                 self.assertIn(menu.id, visible, xmlid)
+
+    def test_indiapost_menu_is_administrator_only(self):
+        """India Post staff keep their ACLs; only the top menu is hidden."""
+        admin_group = self.env.ref(ADMIN_GROUP_XMLID)
+        for xmlid in INDIAPOST_MENU_XMLIDS:
+            self.assertEqual(self.env.ref(xmlid).group_ids, admin_group, xmlid)
+
+        all_packs = self.env['logistics.staff.access.pack'].search([])
+        cases = [('kx_all_packs_ip_menu', all_packs)] + [
+            ('kx_ip_menu_pack_%s' % pack.id, pack) for pack in all_packs
+        ]
+        for login, packs in cases:
+            with self.subTest(login=login):
+                staff = self._create_staff(login, packs)
+                visible = self.env['ir.ui.menu'].with_user(staff)._visible_menu_ids()
+                for xmlid in INDIAPOST_MENU_XMLIDS:
+                    self.assertNotIn(self.env.ref(xmlid).id, visible, xmlid)
+
+        visible = self.env['ir.ui.menu']._visible_menu_ids()
+        for xmlid in INDIAPOST_MENU_XMLIDS:
+            self.assertIn(self.env.ref(xmlid).id, visible, xmlid)
+
+    def test_staff_reads_indiapost_shipment_without_menu(self):
+        shipment = self.env['logistics.shipment'].create({
+            'seller_id': self.seller.id,
+            'shipping_to_name': 'India Post Staff Customer',
+            'shipping_to_address': '1 Post Road',
+            'shipping_to_zip': '682001',
+            'shipping_to_mobile': '9999999999',
+            'item_description': 'India Post read',
+            'total_weight': 0.5,
+            'fulfilment_method': 'indiapost',
+            'indiapost_article_number': 'EK123456789IN',
+        })
+        pack_indiapost = self.env.ref('keralariders_logistics.staff_pack_indiapost')
+        root_menu = self.env.ref('keralariders_logistics.menu_indiapost_root')
+        cases = (
+            ('kx_ip_read_ops', [self.pack_operations]),
+            ('kx_ip_read_indiapost', [pack_indiapost]),
+            ('kx_ip_read_ops_indiapost', [self.pack_operations, pack_indiapost]),
+        )
+        for login, packs in cases:
+            with self.subTest(login=login):
+                staff = self._create_staff(login, packs)
+                self.assertNotIn(
+                    root_menu.id,
+                    self.env['ir.ui.menu'].with_user(staff)._visible_menu_ids(),
+                )
+                row = shipment.with_user(staff).read([
+                    'name', 'indiapost_article_number', 'indiapost_barcode_id',
+                    'indiapost_booking_state', 'fulfilment_method',
+                ])[0]
+                self.assertEqual(row['indiapost_article_number'], 'EK123456789IN')
+                arch = self.env['logistics.shipment'].with_user(staff).get_views(
+                    [(False, 'form')])['views']['form']['arch']
+                self.assertIn('indiapost_article_number', arch)
 
     def test_seller_form_hides_recharge_button_for_staff(self):
         staff = self._create_staff(
