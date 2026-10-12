@@ -3358,7 +3358,41 @@ class Shipment(models.Model):
 
     wallet_transaction_id = fields.Many2one("logistics.wallet.transaction", string="Wallet Transaction (Legacy)")
 
+    def _kx_may_post_wallet_debit(self):
+        """Who may create a wallet debit from a shipment.
+
+        Pickup keeps working: ``action_request_pickup`` opts in with
+        ``kx_allow_wallet_debit``. The Deduct from Wallet button does not, so
+        office staff who are not wallet staff or a logistics administrator
+        cannot post a debit from the form or over RPC. Portal sellers are
+        not office staff; their pickup debit stays allowed. A staff login
+        that also has the portal group does not inherit that exception.
+        """
+        if self.env.context.get('kx_allow_wallet_debit'):
+            return True
+        user = self.env.user
+        if user.has_group(DELIVERY_CHARGE_ADMIN_GROUP):
+            return True
+        if user.has_group('keralariders_logistics.group_staff_wallet'):
+            return True
+        if user.has_group('keralariders_logistics.group_logistics_hub_manager'):
+            return True
+        if user.has_group('keralariders_logistics.group_logistics_executive'):
+            return True
+        if user.has_group('base.group_portal') and not user.has_group(
+                'keralariders_logistics.group_staff_base'):
+            return True
+        return False
+
+    def _kx_may_post_cod(self):
+        return self.env.user.has_group(DELIVERY_CHARGE_ADMIN_GROUP)
+
     def action_add_wallet_transaction(self):
+        if not self._kx_may_post_wallet_debit():
+            raise AccessError(_(
+                "Only KeralaXpress wallet staff or a Logistics Administrator "
+                "can deduct a delivery charge from a seller wallet."
+            ))
         if not self.seller_id:
             raise UserError(f'Seller must be set before adding Wallet Transaction!')
         if not self.seller_id.wallet_ids:
@@ -3429,6 +3463,10 @@ class Shipment(models.Model):
 
     def action_add_cod_payment_transfer(self):
         self.ensure_one()
+        if not self._kx_may_post_cod():
+            raise AccessError(_(
+                "Only a Logistics Administrator can record a COD payment."
+            ))
         from_account = self.env['logistics.account'].search([('account_type', 'in', ('cod_customer'))], limit=1)
         if not from_account:
             raise UserError(f'No COD Customer Account found! Please create atleast on account of type COD Customer Account before proceeding.')

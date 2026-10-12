@@ -1023,8 +1023,21 @@ class BankCashAccountTransfer(models.Model):
             'net': str(money(self.cod_net_amount)),
         }
 
+    def _kx_may_post_cod(self):
+        return self.env.user.has_group(
+            'keralariders_logistics.group_logistics_admin'
+        )
+
+    def _check_kx_may_post_cod(self):
+        if not self._kx_may_post_cod():
+            raise AccessError(_(
+                "Only a Logistics Administrator can approve, pay, or cancel "
+                "a COD transfer."
+            ))
+
     def action_mark_cod_paid(self):
         """Finance confirms the bank transfer promised at approval has gone out."""
+        self._check_kx_may_post_cod()
         for rec in self:
             if rec.transfer_type != 'cod_withdrawal':
                 raise UserError(_(
@@ -1264,6 +1277,7 @@ class BankCashAccountTransfer(models.Model):
 
     def action_approve(self):
         """Approve draft transfer: post ledger transactions and complete activities."""
+        self._check_kx_may_post_cod()
         for rec in self:
             if rec.state != 'draft':
                 raise UserError(_("Only draft transfers can be approved."))
@@ -1277,6 +1291,7 @@ class BankCashAccountTransfer(models.Model):
 
     def action_cancel_draft(self):
         """Cancel a draft transfer without posting ledger lines."""
+        self._check_kx_may_post_cod()
         for rec in self:
             if rec.state != 'draft':
                 raise UserError(_("Only draft transfers can be cancelled."))

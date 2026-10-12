@@ -27,9 +27,12 @@
         <field name="arch" type="xml">
             <form string="Wallet Recharge Request">
                 <header>
-                    <button name="action_approve_request" string="Approve Request" type="object" class="btn-primary" invisible="wallet_transaction_id or state in ('approved', 'cancelled')"/>
-                    <button name="action_cancel" string="Cancel" type="object" class="btn-secondary" invisible="state in ('cancelled')"/>
-                    <button name="action_reset" string="Reset" type="object" class="btn-secondary" invisible="state != 'cancelled'"/>
+                    <button name="action_approve_request" string="Approve Request" type="object" class="btn-primary" invisible="wallet_transaction_id or state in ('approved', 'cancelled')"
+                            groups="keralariders_logistics.group_logistics_admin"/>
+                    <button name="action_cancel" string="Cancel" type="object" class="btn-secondary" invisible="state in ('cancelled')"
+                            groups="keralariders_logistics.group_logistics_admin"/>
+                    <button name="action_reset" string="Reset" type="object" class="btn-secondary" invisible="state != 'cancelled'"
+                            groups="keralariders_logistics.group_logistics_admin"/>
 
                     <field name="state" widget="statusbar"/>
                 </header>
@@ -179,5 +182,5 @@
               parent="menu_logistics_wallet"
               action="action_logistics_wallet_recharge_request"
               sequence="40"
-              groups="keralariders_logistics.group_logistics_admin,keralariders_logistics.group_staff_wallet"/>
+              groups="keralariders_logistics.group_logistics_admin,-keralariders_logistics.group_staff_wallet"/>
 </odoo>

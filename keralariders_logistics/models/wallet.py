@@ -125,7 +125,20 @@ class WalletTransaction(models.Model):
     shipment_id = fields.Many2one('logistics.shipment', string="Related Shipment", ondelete="cascade")
     order_id = fields.Many2one('logistics.order', string="Related Order", ondelete="cascade")
     recharge_request_id = fields.Many2one('logistics.wallet.recharge.request', string="Recharge Request", ondelete="cascade")
-    
+
+    @api.model
+    def _get_view(self, view_id=None, view_type='form', **options):
+        """Inline edit on the transaction list is a write. Viewers keep the rows."""
+        arch, view = super()._get_view(view_id, view_type, **options)
+        if view_type == 'list' and not self.has_access('write'):
+            nodes = [arch] if arch.tag == 'list' else arch.xpath('//list')
+            for node in nodes:
+                node.attrib.pop('editable', None)
+                node.set('create', 'false')
+                node.set('edit', 'false')
+                node.set('delete', 'false')
+        return arch, view
+
 class WalletRechargeRequest(models.Model):
     _name = "logistics.wallet.recharge.request"
     _description = "Wallet Recharge Request"
@@ -218,12 +231,10 @@ class WalletRechargeRequest(models.Model):
         """Whether the current user may decide that money enters a wallet."""
         if self.env.context.get('allow_recharge_approval_write'):
             return True
-        return self.env.user.has_group(RECHARGE_ADMIN_GROUP) or self.env.user.has_group(
-            'keralariders_logistics.group_staff_wallet'
-        )
+        return self.env.user.has_group(RECHARGE_ADMIN_GROUP)
 
     def _check_recharge_admin(self, message):
-        """Refuse an approval-side action to everyone but logistics staff."""
+        """Refuse an approval-side action to everyone but a Logistics Administrator."""
         if not self._can_approve_recharge():
             raise AccessError(message)
 
@@ -491,9 +502,9 @@ class WalletRechargeRequest(models.Model):
         # a different reason and could be loosened by an unrelated feature
         # tomorrow; crediting a wallet must not depend on it.
         self._check_recharge_admin(_(
-            "Only KeralaXpress wallet staff or a Logistics Administrator can "
-            "approve a wallet recharge request. Your request will be credited "
-            "once KeralaXpress has verified the payment."
+            "Only a Logistics Administrator can approve a wallet recharge "
+            "request. Your request will be credited once KeralaXpress has "
+            "verified the payment."
         ))
         self.ensure_one()
         if self.recharged_amount <= 0:

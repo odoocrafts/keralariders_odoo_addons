@@ -368,7 +368,8 @@
                                         class="btn btn-info btn-sm me-1"
                                         icon="fa-credit-card"
                                         string="Add Payment"
-                                        invisible="cod_balance_amount &lt;= 0"/>
+                                        invisible="cod_balance_amount &lt;= 0"
+                                        groups="keralariders_logistics.group_logistics_admin"/>
                                 <button name="action_view_cod_payment_transfers"
                                         type="object"
                                         class="btn btn-primary btn-sm"
@@ -427,7 +428,8 @@
                                         class="btn btn-warning btn-sm me-1"
                                         icon="fa-credit-card"
                                         string="Deduct from Wallet"
-                                        invisible="wallet_transaction_id"/>
+                                        invisible="wallet_transaction_id"
+                                        groups="keralariders_logistics.group_logistics_admin,keralariders_logistics.group_staff_wallet"/>
 
                                 <button name="action_view_wallet_transaction"
                                         type="object"
@@ -442,7 +444,8 @@
                                         class="btn btn-danger btn-sm"
                                         icon="fa-trash"
                                         confirm="This will delete the wallet transaction and restore the wallet balance. Continue?"
-                                        invisible="not wallet_transaction_id"/>
+                                        invisible="not wallet_transaction_id"
+                                        groups="keralariders_logistics.group_logistics_admin"/>
                             </div>
                             <!-- Stamped when someone prices a shipment by hand.
                                  The wallet is debited at this amount instead of

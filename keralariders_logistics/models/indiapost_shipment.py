@@ -1632,11 +1632,19 @@ class Shipment(models.Model):
     def action_add_wallet_transaction(self):
         """Never debit a wallet against a stale or missing India Post rate.
 
+        The office-staff check runs before any India Post call so a viewer
+        cannot reach the quote or the debit.
+
         The stored quote signature is the authority: if it does not match the
         shipment as it stands now, the price is re-fetched before a single
         rupee moves, and a failure to re-fetch stops the debit outright rather
         than charging yesterday's number.
         """
+        if not self._kx_may_post_wallet_debit():
+            raise AccessError(_(
+                "Only KeralaXpress wallet staff or a Logistics Administrator "
+                "can deduct a delivery charge from a seller wallet."
+            ))
         for record in self:
             if record.fulfilment_method != 'indiapost':
                 continue

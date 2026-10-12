@@ -234,4 +234,122 @@
             <field name="perm_unlink" eval="False"/>
         </record>
     </data>
+
+    <!-- Office staff read every logistics record. Portal, delivery-executive
+         and hub-manager rules are OR'd with these, so a login that also has
+         one of those groups is not limited to a single seller or hub on read.
+         Write, create and delete stay with the ACLs: these rules do not grant
+         them. -->
+    <data noupdate="0">
+        <record id="logistics_seller_staff_read_rule" model="ir.rule">
+            <field name="name">Office Staff All Sellers</field>
+            <field name="model_id" ref="model_logistics_seller"/>
+            <field name="domain_force">[(1, '=', 1)]</field>
+            <field name="groups" eval="[(4, ref('group_staff_base'))]"/>
+            <field name="perm_read" eval="True"/>
+            <field name="perm_write" eval="False"/>
+            <field name="perm_create" eval="False"/>
+            <field name="perm_unlink" eval="False"/>
+        </record>
+        <record id="logistics_wallet_staff_read_rule" model="ir.rule">
+            <field name="name">Office Staff All Wallets</field>
+            <field name="model_id" ref="model_logistics_wallet"/>
+            <field name="domain_force">[(1, '=', 1)]</field>
+            <field name="groups" eval="[(4, ref('group_staff_base'))]"/>
+            <field name="perm_read" eval="True"/>
+            <field name="perm_write" eval="False"/>
+            <field name="perm_create" eval="False"/>
+            <field name="perm_unlink" eval="False"/>
+        </record>
+        <record id="logistics_wallet_transaction_staff_read_rule" model="ir.rule">
+            <field name="name">Office Staff All Wallet Transactions</field>
+            <field name="model_id" ref="model_logistics_wallet_transaction"/>
+            <field name="domain_force">[(1, '=', 1)]</field>
+            <field name="groups" eval="[(4, ref('group_staff_base'))]"/>
+            <field name="perm_read" eval="True"/>
+            <field name="perm_write" eval="False"/>
+            <field name="perm_create" eval="False"/>
+            <field name="perm_unlink" eval="False"/>
+        </record>
+        <record id="logistics_wallet_recharge_staff_read_rule" model="ir.rule">
+            <field name="name">Office Staff All Wallet Recharge Requests</field>
+            <field name="model_id" ref="model_logistics_wallet_recharge_request"/>
+            <field name="domain_force">[(1, '=', 1)]</field>
+            <field name="groups" eval="[(4, ref('group_staff_base'))]"/>
+            <field name="perm_read" eval="True"/>
+            <field name="perm_write" eval="False"/>
+            <field name="perm_create" eval="False"/>
+            <field name="perm_unlink" eval="False"/>
+        </record>
+        <record id="logistics_order_staff_read_rule" model="ir.rule">
+            <field name="name">Office Staff All Orders</field>
+            <field name="model_id" ref="model_logistics_order"/>
+            <field name="domain_force">[(1, '=', 1)]</field>
+            <field name="groups" eval="[(4, ref('group_staff_base'))]"/>
+            <field name="perm_read" eval="True"/>
+            <field name="perm_write" eval="False"/>
+            <field name="perm_create" eval="False"/>
+            <field name="perm_unlink" eval="False"/>
+        </record>
+        <record id="logistics_shipment_staff_read_rule" model="ir.rule">
+            <field name="name">Office Staff All Shipments</field>
+            <field name="model_id" ref="model_logistics_shipment"/>
+            <field name="domain_force">[(1, '=', 1)]</field>
+            <field name="groups" eval="[(4, ref('group_staff_base'))]"/>
+            <field name="perm_read" eval="True"/>
+            <field name="perm_write" eval="False"/>
+            <field name="perm_create" eval="False"/>
+            <field name="perm_unlink" eval="False"/>
+        </record>
+        <record id="logistics_shipment_event_staff_read_rule" model="ir.rule">
+            <field name="name">Office Staff All Shipment Events</field>
+            <field name="model_id" ref="model_logistics_shipment_event"/>
+            <field name="domain_force">[(1, '=', 1)]</field>
+            <field name="groups" eval="[(4, ref('group_staff_base'))]"/>
+            <field name="perm_read" eval="True"/>
+            <field name="perm_write" eval="False"/>
+            <field name="perm_create" eval="False"/>
+            <field name="perm_unlink" eval="False"/>
+        </record>
+        <record id="logistics_hub_staff_read_rule" model="ir.rule">
+            <field name="name">Office Staff All Hubs</field>
+            <field name="model_id" ref="model_logistics_hub"/>
+            <field name="domain_force">[(1, '=', 1)]</field>
+            <field name="groups" eval="[(4, ref('group_staff_base'))]"/>
+            <field name="perm_read" eval="True"/>
+            <field name="perm_write" eval="False"/>
+            <field name="perm_create" eval="False"/>
+            <field name="perm_unlink" eval="False"/>
+        </record>
+        <record id="logistics_de_staff_read_rule" model="ir.rule">
+            <field name="name">Office Staff All Delivery Executives</field>
+            <field name="model_id" ref="model_logistics_delivery_executive"/>
+            <field name="domain_force">[(1, '=', 1)]</field>
+            <field name="groups" eval="[(4, ref('group_staff_base'))]"/>
+            <field name="perm_read" eval="True"/>
+            <field name="perm_write" eval="False"/>
+            <field name="perm_create" eval="False"/>
+            <field name="perm_unlink" eval="False"/>
+        </record>
+        <record id="logistics_account_transfer_staff_read_rule" model="ir.rule">
+            <field name="name">Office Staff All COD Transfers</field>
+            <field name="model_id" ref="model_logistics_account_transfer"/>
+            <field name="domain_force">[(1, '=', 1)]</field>
+            <field name="groups" eval="[(4, ref('group_staff_base'))]"/>
+            <field name="perm_read" eval="True"/>
+            <field name="perm_write" eval="False"/>
+            <field name="perm_create" eval="False"/>
+            <field name="perm_unlink" eval="False"/>
+        </record>
+        <record id="logistics_account_transaction_staff_read_rule" model="ir.rule">
+            <field name="name">Office Staff All Account Transactions</field>
+            <field name="model_id" ref="model_logistics_account_transaction"/>
+            <field name="domain_force">[(1, '=', 1)]</field>
+            <field name="groups" eval="[(4, ref('group_staff_base'))]"/>
+            <field name="perm_read" eval="True"/>
+            <field name="perm_write" eval="False"/>
+            <field name="perm_create" eval="False"/>
+            <field name="perm_unlink" eval="False"/>
+        </record>
+    </data>
 </odoo>
