@@ -1,4 +1,5 @@
 import logging
+import queue
 import threading
 
 from markupsafe import Markup
@@ -13,6 +14,13 @@ FROM_NOTIFICATION_PARAM = 'keralariders_logistics.notification_email_from'
 KX_FROM_DOMAIN = 'keralaxpress.com'
 KX_FROM_FALLBACK = 'notifications@keralaxpress.com'
 KX_FROM_DISPLAY = 'KERALA XPRESS LOGISTICS'
+# Aggregated on ``cr.postcommit.data`` for the current transaction only.
+# Rollback clears that dict without running hooks, so rolled-back mails
+# are never handed to the sender.
+_KX_POSTCOMMIT_KEY = 'keralariders_logistics.queued_mail'
+_kx_mail_batches = queue.Queue()
+_kx_mail_worker = None
+_kx_mail_worker_lock = threading.Lock()
 
 
 def _send_queued_mail_ids(dbname, mail_ids, context):
@@ -30,13 +38,74 @@ def _send_queued_mail_ids(dbname, mail_ids, context):
         )
 
 
+def _kx_mail_worker_loop():
+    """SMTP-send every batch handed off after commit. One thread for the process."""
+    while True:
+        batch = _kx_mail_batches.get()
+        try:
+            dbname, mail_ids, context = batch
+            _send_queued_mail_ids(dbname, mail_ids, context)
+        except Exception:
+            _logger.exception('KeralaXpress mail worker failed on batch %s', batch)
+        finally:
+            _kx_mail_batches.task_done()
+
+
+def _ensure_kx_mail_worker():
+    """Start the shared sender. A failed ``Thread.start`` is logged, not raised."""
+    global _kx_mail_worker
+    try:
+        with _kx_mail_worker_lock:
+            worker = _kx_mail_worker
+            if worker is not None and worker.is_alive():
+                return
+            worker = threading.Thread(
+                target=_kx_mail_worker_loop,
+                name='keralaxpress-mail-send',
+                daemon=True,
+            )
+            worker.start()
+            _kx_mail_worker = worker
+    except Exception:
+        _logger.exception(
+            'Could not start KeralaXpress mail worker; outgoing mail stays queued',
+        )
+
+
+def _flush_kx_postcommit_mail(postcommit):
+    """Move this transaction's queued mail onto the shared sender.
+
+    Runs from ``cr.postcommit`` after the SQL commit. Must not raise: a
+    failure here used to escape ``Cursor.commit`` and turn a successful
+    scan import into an RPC error.
+    """
+    mail_ids = []
+    try:
+        bucket = postcommit.data.get(_KX_POSTCOMMIT_KEY) or {}
+        mail_ids = list(bucket.get('mail_ids') or [])
+        bucket['mail_ids'] = []
+        dbname = bucket.get('dbname')
+        context = dict(bucket.get('context') or {})
+        if not mail_ids or not dbname:
+            return
+        _kx_mail_batches.put((dbname, mail_ids, context))
+        _ensure_kx_mail_worker()
+    except Exception:
+        _logger.exception(
+            'KeralaXpress post-commit mail handoff failed for ids %s',
+            mail_ids,
+        )
+
+
 class LogisticsMailNotify(models.AbstractModel):
     """Queue branded KeralaXpress mail without blocking the HTTP request.
 
     ``message_notify`` in Odoo 19 force-sends SMTP in a post-commit hook on
     the same request thread, which is what freezes seller/admin screens.
     These helpers create ``mail.mail`` in ``outgoing`` and, after commit,
-    spawn a daemon thread to call ``send()``.
+    hand every id from that transaction to one shared daemon worker.
+    One thread per message exhausts the process on a large first scan
+    import (``RuntimeError: can't start new thread``) and fails the RPC.
     """
 
     _name = 'logistics.mail.notify'
@@ -202,7 +271,7 @@ class LogisticsMailNotify(models.AbstractModel):
 
         Never calls ``send()`` or ``send_after_commit()`` on the HTTP thread.
         Tests leave the row queued because ``modules.module.current_test`` skips
-        the daemon thread.
+        the post-commit handoff.
         """
         email_to = (email_to or '').strip()
         if not email_to or not subject:
@@ -242,10 +311,12 @@ class LogisticsMailNotify(models.AbstractModel):
 
     @api.model
     def _kx_schedule_async_send(self, mail_ids):
-        """After a successful commit, SMTP-send in a daemon thread.
+        """After a successful commit, SMTP-send on the shared worker.
 
-        During tests the thread is skipped so assertions can see ``outgoing``
-        mail and so ``send()`` is never invoked in the request.
+        Every mail created in this transaction shares one post-commit hook.
+        That hook only enqueues ids; it does not start a thread per message
+        and it does not call ``send()`` on the request thread. During tests
+        the hook is skipped so assertions can see ``outgoing`` mail.
         """
         mail_ids = [mid for mid in (mail_ids or []) if mid]
         if not mail_ids:
@@ -253,27 +324,26 @@ class LogisticsMailNotify(models.AbstractModel):
         if modules.module.current_test:
             return
 
-        dbname = self.env.cr.dbname
-        context = dict(self.env.context)
-
-        def _spawn_thread():
-            thread = threading.Thread(
-                target=_send_queued_mail_ids,
-                args=(dbname, list(mail_ids), context),
-                name='keralaxpress-mail-send',
-                daemon=True,
-            )
-            thread.start()
-
-        try:
-            self.env.cr.postcommit.add(_spawn_thread)
-        except Exception:
-            _logger.warning(
-                'Could not register post-commit mail send for ids %s',
-                mail_ids, exc_info=True,
-            )
-            # Last resort: still do not block this request on SMTP.
-            _spawn_thread()
+        postcommit = self.env.cr.postcommit
+        bucket = postcommit.data.get(_KX_POSTCOMMIT_KEY)
+        if not bucket:
+            bucket = {
+                'dbname': self.env.cr.dbname,
+                'context': dict(self.env.context),
+                'mail_ids': [],
+            }
+            postcommit.data[_KX_POSTCOMMIT_KEY] = bucket
+            try:
+                postcommit.add(
+                    lambda pc=postcommit: _flush_kx_postcommit_mail(pc))
+            except Exception:
+                _logger.warning(
+                    'Could not register post-commit mail send for ids %s',
+                    mail_ids, exc_info=True,
+                )
+                postcommit.data.pop(_KX_POSTCOMMIT_KEY, None)
+                return
+        bucket['mail_ids'].extend(mail_ids)
 
 
 class MailActivityKx(models.Model):

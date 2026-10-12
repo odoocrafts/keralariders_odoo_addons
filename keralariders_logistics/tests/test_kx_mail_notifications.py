@@ -6,8 +6,10 @@ the seller once. ``mail.mail.send`` / ``send_after_commit`` must not run in the
 request — that is what froze I Have Paid and Approve.
 """
 
+import queue as queue_mod
 from unittest.mock import patch
 
+import odoo.addons.keralariders_logistics.models.mail_notify as kx_mail_notify
 from odoo.tests import TransactionCase, tagged
 
 ADMIN_GROUP = 'keralariders_logistics.group_logistics_admin'
@@ -297,4 +299,112 @@ class TestKxMailNotifications(TransactionCase):
         self.assertEqual(len(mails), 1, mails.mapped('subject'))
         self._assert_kx_from(mails, forbidden_email='techzy111@gmail.com')
         self.assertIn(self.admin_user, recharge.activity_ids.mapped('user_id'))
+
+    def _reset_mail_sender(self):
+        """Drop a mocked worker and any batches so tests cannot send later."""
+        def reset():
+            with kx_mail_notify._kx_mail_worker_lock:
+                kx_mail_notify._kx_mail_worker = None
+            while True:
+                try:
+                    kx_mail_notify._kx_mail_batches.get_nowait()
+                except queue_mod.Empty:
+                    break
+        reset()
+        self.addCleanup(reset)
+
+    def test_many_notifications_share_one_sender_thread(self):
+        """One transaction of many mails starts a single sender, not one per mail.
+
+        A first India Post scan import posts one adjustment mail per new row
+        and used to call ``Thread.start`` inside each post-commit hook.
+        """
+        self._reset_mail_sender()
+        with patch.object(kx_mail_notify.modules.module, 'current_test', False), \
+                patch.object(kx_mail_notify.threading, 'Thread') as mock_thread, \
+                patch.object(type(self.Mail), 'send') as mock_send, \
+                patch.object(type(self.Mail), 'send_after_commit') as mock_after:
+            mock_thread.return_value.is_alive.return_value = True
+            hooks_before = len(self.env.cr.postcommit)
+            queued = []
+            for index in range(6):
+                queued.append(self.Notify._kx_queue_mail(
+                    email_to='batch%s@example.com' % index,
+                    subject='KX batch %s' % index,
+                    body_html='<p>batch %s</p>' % index,
+                ))
+            self._assert_not_sent_in_request(mock_send, mock_after)
+            mock_thread.assert_not_called()
+            self.assertEqual(len(self.env.cr.postcommit), hooks_before + 1)
+            for mail in queued:
+                self.assertEqual(mail.state, 'outgoing')
+                self._assert_kx_from(mail)
+
+            self.env.cr.postcommit.run()
+            self._assert_not_sent_in_request(mock_send, mock_after)
+            self.assertEqual(mock_thread.call_count, 1)
+            self.assertEqual(mock_thread.return_value.start.call_count, 1)
+            self.assertEqual(
+                mock_thread.call_args.kwargs.get('name'),
+                'keralaxpress-mail-send',
+            )
+            self.assertTrue(mock_thread.call_args.kwargs.get('daemon'))
+            self.assertIs(
+                mock_thread.call_args.kwargs.get('target'),
+                kx_mail_notify._kx_mail_worker_loop,
+            )
+
+            first_batch = kx_mail_notify._kx_mail_batches.get_nowait()
+            self.assertEqual(
+                [mail.id for mail in queued],
+                list(first_batch[1]),
+            )
+
+            for index in range(4):
+                self.Notify._kx_queue_mail(
+                    email_to='again%s@example.com' % index,
+                    subject='KX batch again %s' % index,
+                    body_html='<p>again</p>',
+                )
+            self.env.cr.postcommit.run()
+            self.assertEqual(
+                mock_thread.return_value.start.call_count, 1,
+                'a later batch must reuse the shared sender',
+            )
+            second_batch = kx_mail_notify._kx_mail_batches.get_nowait()
+            self.assertEqual(len(second_batch[1]), 4)
+            self.assertEqual(mock_send.call_count, 0)
+            self.assertEqual(mock_after.call_count, 0)
+
+    def test_thread_start_failure_does_not_escape_postcommit(self):
+        """``can't start new thread`` is logged and does not fail the commit hook."""
+        self._reset_mail_sender()
+        with patch.object(kx_mail_notify.modules.module, 'current_test', False), \
+                patch.object(kx_mail_notify.threading, 'Thread') as mock_thread, \
+                patch.object(type(self.Mail), 'send') as mock_send, \
+                patch.object(type(self.Mail), 'send_after_commit') as mock_after:
+            mock_thread.return_value.start.side_effect = RuntimeError(
+                "can't start new thread")
+            queued = []
+            for index in range(5):
+                queued.append(self.Notify._kx_queue_mail(
+                    email_to='fail%s@example.com' % index,
+                    subject='KX thread fail %s' % index,
+                    body_html='<p>fail</p>',
+                ))
+            mock_thread.assert_not_called()
+            logger_name = kx_mail_notify._logger.name
+            with self.assertLogs(logger_name, level='ERROR') as logs:
+                self.env.cr.postcommit.run()
+            self.assertEqual(mock_thread.return_value.start.call_count, 1)
+            self.assertTrue(any(
+                'Could not start KeralaXpress mail worker' in message
+                for message in logs.output
+            ))
+            self._assert_not_sent_in_request(mock_send, mock_after)
+            failed_batch = kx_mail_notify._kx_mail_batches.get_nowait()
+            self.assertEqual([mail.id for mail in queued], list(failed_batch[1]))
+            for mail in queued:
+                self.assertEqual(mail.state, 'outgoing')
+                self._assert_kx_from(mail)
 
