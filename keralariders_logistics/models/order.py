@@ -5,7 +5,7 @@ class Order(models.Model):
     _name = 'logistics.order'
     _description = 'Order'
     _inherit = ['mail.thread', 'mail.activity.mixin']
-    _order = 'name desc, write_date desc'
+    _order = 'create_date desc, id desc'
     
     name = fields.Char(string='Order Reference', required=True, copy=False, readonly=True, index=True, default=lambda self: _('New'))
     

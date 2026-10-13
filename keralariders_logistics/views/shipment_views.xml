@@ -208,7 +208,7 @@
         <field name="name">Shipment List</field>
         <field name="model">logistics.shipment</field>
         <field name="arch" type="xml">
-            <list string="Shipments">
+            <list string="Shipments" default_order="create_date desc, id desc">
                 <field name="name" string="Reference No." width="100"/>
                 <field name="order_id" width="100"/>
                 <field name="seller_id" width="100"/>

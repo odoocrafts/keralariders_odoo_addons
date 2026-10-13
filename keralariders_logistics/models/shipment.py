@@ -69,7 +69,7 @@ class Shipment(models.Model):
     _name = 'logistics.shipment'
     _description = 'Shipment'
     _inherit = ['mail.thread', 'mail.activity.mixin']
-    _order = 'name desc, write_date desc'
+    _order = 'create_date desc, id desc'
 
     def init(self):
         """Migrate legacy duplicate cancel key → cancelled."""

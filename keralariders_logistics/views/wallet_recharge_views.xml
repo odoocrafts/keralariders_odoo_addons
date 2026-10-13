@@ -4,7 +4,7 @@
         <field name="name">logistics.wallet.recharge.request.list</field>
         <field name="model">logistics.wallet.recharge.request</field>
         <field name="arch" type="xml">
-            <list string="Wallet Recharge Requests">
+            <list string="Wallet Recharge Requests" default_order="create_date desc, id desc">
                 <field name="name" width="100"/>
                 <field name="request_date" width="100"/>
                 <field name="seller_id" width="100"

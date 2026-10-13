@@ -4,7 +4,7 @@
         <field name="name">logistics.order.tree</field>
         <field name="model">logistics.order</field>
         <field name="arch" type="xml">
-            <list string="Orders">
+            <list string="Orders" default_order="create_date desc, id desc">
                 <field name="name"/>
                 <field name="seller_id"/>
                 <field name="order_date"/>
@@ -109,6 +109,7 @@
         <field name="arch" type="xml">
             <kanban class="o_kanban_mobile"
                     default_group_by="state"
+                    default_order="create_date desc, id desc"
                     records_draggable="0"
                     quick_create="0">
 

@@ -188,7 +188,7 @@ class LogisticsPortal(CustomerPortal):
         
         transactions = Transaction.search(domain, order=order, limit=self._items_per_page, offset=pager['offset'])
         
-        recharge_requests = request.env['logistics.wallet.recharge.request'].search([('wallet_id', '=', wallet.id)], order='request_date desc')
+        recharge_requests = request.env['logistics.wallet.recharge.request'].search([('wallet_id', '=', wallet.id)], order='create_date desc, id desc')
 
         values = {
             'wallet': wallet,
@@ -2887,7 +2887,7 @@ class LogisticsPortal(CustomerPortal):
         )
         
         # content according to pager
-        transfers = Transfer.search(domain, order='transfer_date desc, id desc', limit=20, offset=pager['offset'])
+        transfers = Transfer.search(domain, order='create_date desc, id desc', limit=20, offset=pager['offset'])
         
         cod_balance = Transfer.get_seller_cod_pending_balance(seller)
         withdrawable = Transfer.get_seller_cod_withdrawable_balance(seller)
@@ -2897,7 +2897,7 @@ class LogisticsPortal(CustomerPortal):
             ('related_seller_id', '=', seller.id),
             ('transfer_type', '=', 'cod_withdrawal'),
             ('state', '=', 'draft'),
-        ], order='transfer_date desc, id desc')
+        ], order='create_date desc, id desc')
 
         # Every live withdrawal (requested, approved, paid) with its charge
         # breakdown. Cancelled requests are left out.
@@ -2905,7 +2905,7 @@ class LogisticsPortal(CustomerPortal):
             ('related_seller_id', '=', seller.id),
             ('transfer_type', '=', 'cod_withdrawal'),
             ('state', 'in', ['draft', 'posted']),
-        ], order='transfer_date desc, id desc', limit=10)
+        ], order='create_date desc, id desc', limit=10)
 
         # Withdrawals are listed above with their breakdown, so this only
         # carries finance-initiated clearances and legacy "other" payouts.
@@ -2913,7 +2913,7 @@ class LogisticsPortal(CustomerPortal):
             ('related_seller_id', '=', seller.id),
             ('transfer_type', 'in', ['cod_clearance', 'other']),
             ('state', '=', 'posted'),
-        ], order='transfer_date desc, id desc', limit=5)
+        ], order='create_date desc, id desc', limit=5)
 
         currency = seller.currency_id or request.env.company.currency_id
         withdrawal_preview = Transfer.get_cod_withdrawal_breakdown(

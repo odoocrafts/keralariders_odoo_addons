@@ -155,6 +155,7 @@ class BankCashAccountTransfer(models.Model):
     _name = "logistics.account.transfer"
     _description = 'Bank/Cash Account Transfer'
     _inherit = ['mail.thread', 'mail.activity.mixin']
+    _order = 'create_date desc, id desc'
 
     _ACTIVITY_TYPE_TODO = 'mail.mail_activity_data_todo'
 

@@ -205,7 +205,7 @@
         <field name="name">logistics.account.transfer.list</field>
         <field name="model">logistics.account.transfer</field>
         <field name="arch" type="xml">
-            <list string="Account Transfers" expand="1">
+            <list string="Account Transfers" expand="1" default_order="create_date desc, id desc">
                 <field name="transfer_date" width="100" string="Date"/>
                 <field name="name" width="100" options='{"bg_color": "#e1fade: cod_clearance_transfer_id != False; #fffad6: not cod_clearance_transfer_id;  #d2c5ed: transfer_type!=&apos;cod_payment&apos;;"}'/>              
                 <field name="transfer_type" widget="badge" width="100"/>
@@ -334,7 +334,7 @@
         <field name="name">logistics.account.transfer.kanban</field>
         <field name="model">logistics.account.transfer</field>
         <field name="arch" type="xml">
-            <kanban default_group_by="transfer_type" records_draggable="0" quick_create="0">
+            <kanban default_group_by="transfer_type" default_order="create_date desc, id desc" records_draggable="0" quick_create="0">
                 <field name="name"/>
                 <field name="transfer_type"/>
                 <field name="state"/>

@@ -143,6 +143,7 @@ class WalletRechargeRequest(models.Model):
     _name = "logistics.wallet.recharge.request"
     _description = "Wallet Recharge Request"
     _inherit = ['mail.thread', 'mail.activity.mixin']
+    _order = 'create_date desc, id desc'
     name = fields.Char(string="Reference", readonly=True, store=True, copy=False, default=lambda self: _('New'))
 
     _ACTIVITY_TYPE_TODO = 'mail.mail_activity_data_todo'
