@@ -246,6 +246,57 @@ class TestSellerApiHttp(IndiapostHermeticMixin, HttpCase):
         self.assertAlmostEqual(
             self.wallet.balance, opening - shipment.delivery_charges_total, places=2,
         )
+        self.assertEqual(
+            self.env['logistics.wallet.transaction'].search_count([
+                ('shipment_id', '=', shipment.id),
+                ('amount', '<', 0),
+            ]),
+            1,
+        )
+
+    def test_pickup_debits_the_wallet_once(self):
+        """POST /api/v1/seller/shipments/<awb>/pickup is the draft book path."""
+        created = self._post(
+            '/api/v1/seller/shipments',
+            _shipment_body(book=False),
+        )
+        self.assertIn(created.status_code, (200, 201), created.text)
+        awb = self._json(created)['data']['awb']
+        shipment = self.env['logistics.shipment'].search([
+            ('name', '=', awb),
+            ('seller_id', '=', self.seller.id),
+        ], limit=1)
+        self.assertFalse(shipment.wallet_transaction_id)
+        opening = self.wallet.balance
+
+        response = self._post('/api/v1/seller/shipments/%s/pickup' % awb)
+        self.assertEqual(response.status_code, 200, response.text)
+        data = self._json(response)['data']
+        self.assertTrue(data['wallet_debited'])
+        self.env.invalidate_all()
+        shipment.invalidate_recordset()
+        self.wallet.invalidate_recordset(['balance'])
+        self.assertTrue(shipment.wallet_transaction_id)
+        charge = abs(shipment.wallet_transaction_id.amount)
+        self.assertAlmostEqual(data['wallet_debit'], charge, places=2)
+        self.assertAlmostEqual(self.wallet.balance, opening - charge, places=2)
+        self.assertEqual(
+            self.env['logistics.wallet.transaction'].search_count([
+                ('shipment_id', '=', shipment.id),
+                ('amount', '<', 0),
+            ]),
+            1,
+        )
+
+        again = self._post('/api/v1/seller/shipments/%s/pickup' % awb)
+        self.assertEqual(again.status_code, 409, again.text)
+        self.assertEqual(
+            self.env['logistics.wallet.transaction'].search_count([
+                ('shipment_id', '=', shipment.id),
+                ('amount', '<', 0),
+            ]),
+            1,
+        )
 
     def test_create_rejects_insufficient_wallet_without_leaving_a_draft(self):
         broke = self.env['logistics.seller'].create({

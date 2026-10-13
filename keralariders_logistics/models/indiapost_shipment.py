@@ -1629,22 +1629,21 @@ class Shipment(models.Model):
         total = self.indiapost_total_tariff or subtotal
         return self._round_charge(subtotal), self._round_charge(total)
 
-    def action_add_wallet_transaction(self):
+    def _kx_post_delivery_charge_debit(self):
         """Never debit a wallet against a stale or missing India Post rate.
 
-        The office-staff check runs before any India Post call so a viewer
-        cannot reach the quote or the debit.
+        The manual Deduct from Wallet button still goes through
+        ``action_add_wallet_transaction``, which refuses office staff before
+        this runs, so a viewer cannot reach the quote or the debit. Request
+        Pickup calls this method directly: the seller API (public user) and
+        the portal seller are not wallet staff, and their booking debit is
+        the same delivery amount autobook then ships.
 
         The stored quote signature is the authority: if it does not match the
         shipment as it stands now, the price is re-fetched before a single
         rupee moves, and a failure to re-fetch stops the debit outright rather
         than charging yesterday's number.
         """
-        if not self._kx_may_post_wallet_debit():
-            raise AccessError(_(
-                "Only KeralaXpress wallet staff or a Logistics Administrator "
-                "can deduct a delivery charge from a seller wallet."
-            ))
         for record in self:
             if record.fulfilment_method != 'indiapost':
                 continue
@@ -1681,7 +1680,7 @@ class Shipment(models.Model):
                     'package as it stands, so the wallet has not been '
                     'debited. Refresh the India Post rate and try again.'
                 ) % record.name)
-        res = super().action_add_wallet_transaction()
+        res = super()._kx_post_delivery_charge_debit()
         self._ip_snapshot_charged_package()
         return res
 

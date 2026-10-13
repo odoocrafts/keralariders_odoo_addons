@@ -11,6 +11,7 @@ import re
 from unittest.mock import patch
 
 from odoo import fields
+from odoo.exceptions import AccessError
 from odoo.tests import HttpCase, TransactionCase, tagged
 
 from odoo.addons.keralariders_logistics.models import indiapost_common as ipc
@@ -131,6 +132,37 @@ class TestIndiapostAutobook(IndiapostHermeticMixin, TransactionCase):
         self.assertAlmostEqual(self.ip_wallet.balance, opening - 118.0, places=2)
         slab = self._slab_price(shipment)
         self.assertNotAlmostEqual(slab, 118.0, places=2)
+
+    def test_public_user_pickup_debits_postal_tariff_once(self):
+        """Seller API autobook still charges the postal amount, once.
+
+        The HTTP caller is the public user. Manual deduct stays refused.
+        """
+        public = self.env.ref('base.public_user')
+        order, shipment = self._new_order(self.ip_seller)
+        self._store_quote(shipment, total=118.0)
+        opening = self.ip_wallet.balance
+
+        with self.assertRaises(AccessError):
+            shipment.with_user(public).sudo().action_add_wallet_transaction()
+
+        with self._ip_patch_call():
+            order.with_user(public).sudo().action_request_pickup()
+
+        self.assertEqual(shipment.state, 'pickup_requested')
+        self.assertAlmostEqual(
+            shipment.wallet_transaction_id.amount, -118.0, places=2,
+        )
+        self.assertEqual(
+            self.env['logistics.wallet.transaction'].search_count([
+                ('shipment_id', '=', shipment.id),
+                ('amount', '<', 0),
+            ]),
+            1,
+        )
+        self.ip_wallet.invalidate_recordset(['balance'])
+        self.assertAlmostEqual(self.ip_wallet.balance, opening - 118.0, places=2)
+        self.assertNotAlmostEqual(self._slab_price(shipment), 118.0, places=2)
 
     def test_own_network_pickup_does_not_book(self):
         order, shipment = self._new_order(self.own_seller)

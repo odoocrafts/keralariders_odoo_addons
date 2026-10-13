@@ -3359,17 +3359,16 @@ class Shipment(models.Model):
     wallet_transaction_id = fields.Many2one("logistics.wallet.transaction", string="Wallet Transaction (Legacy)")
 
     def _kx_may_post_wallet_debit(self):
-        """Who may create a wallet debit from a shipment.
+        """Who may press Deduct from Wallet.
 
-        Pickup keeps working: ``action_request_pickup`` opts in with
-        ``kx_allow_wallet_debit``. The Deduct from Wallet button does not, so
-        office staff who are not wallet staff or a logistics administrator
-        cannot post a debit from the form or over RPC. Portal sellers are
-        not office staff; their pickup debit stays allowed. A staff login
-        that also has the portal group does not inherit that exception.
+        Request Pickup, the seller API and India Post autobook do not use
+        this. They debit through :meth:`_kx_post_delivery_charge_debit`, which
+        ``action_request_pickup`` calls directly. That method is not an RPC
+        entry point, and this check does not honour a context flag, so office
+        staff cannot opt in by passing one on ``action_add_wallet_transaction``.
+        Portal sellers are not office staff; a staff login that also has the
+        portal group does not inherit that exception.
         """
-        if self.env.context.get('kx_allow_wallet_debit'):
-            return True
         user = self.env.user
         if user.has_group(DELIVERY_CHARGE_ADMIN_GROUP):
             return True
@@ -3388,11 +3387,26 @@ class Shipment(models.Model):
         return self.env.user.has_group(DELIVERY_CHARGE_ADMIN_GROUP)
 
     def action_add_wallet_transaction(self):
+        """Manual Deduct from Wallet button and its RPC.
+
+        Booking does not come through here. ``action_request_pickup`` calls
+        :meth:`_kx_post_delivery_charge_debit` so the seller's own pickup can
+        debit when the caller is the public API user or a portal seller.
+        """
         if not self._kx_may_post_wallet_debit():
             raise AccessError(_(
                 "Only KeralaXpress wallet staff or a Logistics Administrator "
                 "can deduct a delivery charge from a seller wallet."
             ))
+        return self._kx_post_delivery_charge_debit()
+
+    def _kx_post_delivery_charge_debit(self):
+        """Debit this shipment's delivery charge from the seller wallet.
+
+        Idempotent: a shipment that already has ``wallet_transaction_id`` is
+        left alone, so pickup and a later manual deduct cannot charge twice.
+        Not exposed over RPC (leading underscore).
+        """
         if not self.seller_id:
             raise UserError(f'Seller must be set before adding Wallet Transaction!')
         if not self.seller_id.wallet_ids:

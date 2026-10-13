@@ -243,6 +243,59 @@ class TestDeliveryChargeIntegrity(TransactionCase):
         self.wallet.invalidate_recordset(['balance'])
         self.assertAlmostEqual(self.wallet.balance, opening_balance - charge,
                                places=2)
+        debits = self.env['logistics.wallet.transaction'].search([
+            ('shipment_id', '=', shipment.id),
+            ('amount', '<', 0),
+        ])
+        self.assertEqual(len(debits), 1)
+
+    def test_public_api_user_request_pickup_debits_once(self):
+        """POST /api/v1/seller/* runs as the public user, then sudo().
+
+        sudo() leaves env.user as that public user. The manual deduct guard
+        must not apply to Request Pickup, and a context flag on the public
+        RPC must not unlock Deduct from Wallet.
+        """
+        public = self.env.ref('base.public_user')
+        self.assertFalse(public.has_group(
+            'keralariders_logistics.group_staff_wallet'))
+        self.assertFalse(public.has_group(
+            'keralariders_logistics.group_logistics_admin'))
+        self.assertFalse(public.has_group('base.group_portal'))
+
+        order = self.env['logistics.order'].create({'seller_id': self.seller.id})
+        shipment = self._new_shipment(order_id=order.id)
+        charge = shipment.delivery_charges_total
+        self.assertGreater(charge, 1.0)
+        opening = self.wallet.balance
+
+        with self.assertRaises(AccessError) as caught:
+            shipment.with_user(public).sudo().with_context(
+                kx_allow_wallet_debit=True,
+            ).action_add_wallet_transaction()
+        self.assertIn('wallet staff', str(caught.exception).lower())
+        self.assertFalse(shipment.wallet_transaction_id)
+
+        order.with_user(public).sudo().action_request_pickup()
+
+        debits = self.env['logistics.wallet.transaction'].search([
+            ('shipment_id', '=', shipment.id),
+            ('amount', '<', 0),
+        ])
+        self.assertEqual(len(debits), 1)
+        self.assertAlmostEqual(debits.amount, -charge, places=2)
+        self.assertEqual(shipment.state, 'pickup_requested')
+        self.wallet.invalidate_recordset(['balance'])
+        self.assertAlmostEqual(self.wallet.balance, opening - charge, places=2)
+
+        shipment._kx_post_delivery_charge_debit()
+        self.assertEqual(
+            self.env['logistics.wallet.transaction'].search_count([
+                ('shipment_id', '=', shipment.id),
+                ('amount', '<', 0),
+            ]),
+            1,
+        )
 
     # ------------------------------------------------------------------
     # Layer 1: ops overrides survive

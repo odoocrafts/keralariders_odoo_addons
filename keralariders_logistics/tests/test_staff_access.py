@@ -280,8 +280,11 @@ class TestStaffAccess(TransactionCase):
             'name', 'cod_payment_transfer_ids', 'wallet_transaction_id',
             'indiapost_barcode_id', 'seller_id',
         ])
-        with self.assertRaises(AccessError):
-            shipment.with_user(staff).action_add_wallet_transaction()
+        with self.assertRaises(AccessError) as caught:
+            shipment.with_user(staff).with_context(
+                kx_allow_wallet_debit=True,
+            ).action_add_wallet_transaction()
+        self.assertIn('wallet staff', str(caught.exception).lower())
         with self.assertRaises(AccessError):
             shipment.with_user(staff).action_add_cod_payment_transfer()
 
@@ -306,6 +309,79 @@ class TestStaffAccess(TransactionCase):
             shipment.with_user(staff).write({'shipping_to_name': 'Changed'})
         with self.assertRaises(AccessError):
             shipment.with_user(staff).unlink()
+
+    def _draft_shipment(self):
+        return self.env['logistics.shipment'].create({
+            'seller_id': self.seller.id,
+            'shipping_to_name': 'Deduct Customer',
+            'shipping_to_address': '1 Staff Road',
+            'shipping_to_zip': '682001',
+            'shipping_to_mobile': '9999999999',
+            'item_description': 'Manual deduct',
+            'total_weight': 0.5,
+        })
+
+    def test_manual_deduct_stays_with_wallet_staff_and_admin(self):
+        """Deduct from Wallet is the button. Request Pickup is not this path."""
+        self.seller.write({'fulfilment_method': 'own_network'})
+        self.env['logistics.wallet.transaction'].create({
+            'wallet_id': self.wallet.id,
+            'amount': 5000.0,
+            'reference': 'Staff deduct top-up',
+        })
+        self.wallet.invalidate_recordset(['balance'])
+
+        ops = self._create_staff('kx_ops_no_deduct', [self.pack_operations])
+        self.assertFalse(ops.has_group(WALLET_GROUP_XMLID))
+        self.assertFalse(ops.has_group(ADMIN_GROUP_XMLID))
+        blocked = self._draft_shipment()
+        opening = self.wallet.balance
+        with self.assertRaises(AccessError) as caught:
+            blocked.with_user(ops).action_add_wallet_transaction()
+        self.assertIn('wallet staff', str(caught.exception).lower())
+        self.assertFalse(blocked.wallet_transaction_id)
+        self.wallet.invalidate_recordset(['balance'])
+        self.assertAlmostEqual(self.wallet.balance, opening, places=2)
+
+        pack_network = self.env.ref('keralariders_logistics.staff_pack_network')
+        wallet_staff = self._create_staff(
+            'kx_wallet_can_deduct',
+            [self.pack_wallet, self.pack_sellers, pack_network],
+        )
+        self.assertTrue(wallet_staff.has_group(WALLET_GROUP_XMLID))
+        self.assertFalse(wallet_staff.has_group(ADMIN_GROUP_XMLID))
+        by_wallet = self._draft_shipment()
+        charge = by_wallet.delivery_charges_total
+        self.assertGreater(charge, 0.0)
+        by_wallet.with_user(wallet_staff).action_add_wallet_transaction()
+        self.assertAlmostEqual(
+            by_wallet.wallet_transaction_id.amount, -charge, places=2,
+        )
+        by_wallet.with_user(wallet_staff).action_add_wallet_transaction()
+        self.assertEqual(
+            self.env['logistics.wallet.transaction'].search_count([
+                ('shipment_id', '=', by_wallet.id),
+                ('amount', '<', 0),
+            ]),
+            1,
+        )
+
+        admin = self.env['res.users'].create({
+            'name': 'KX Logistics Admin Deduct',
+            'login': 'kx_logistics_admin_deduct',
+            'email': 'kx_logistics_admin_deduct@example.com',
+            'group_ids': [(6, 0, [
+                self.env.ref('base.group_user').id,
+                self.env.ref(ADMIN_GROUP_XMLID).id,
+            ])],
+        })
+        self.assertFalse(admin.has_group(WALLET_GROUP_XMLID))
+        by_admin = self._draft_shipment()
+        admin_charge = by_admin.delivery_charges_total
+        by_admin.with_user(admin).action_add_wallet_transaction()
+        self.assertAlmostEqual(
+            by_admin.wallet_transaction_id.amount, -admin_charge, places=2,
+        )
 
     def test_create_requires_a_pack(self):
         with self.assertRaises(UserError):

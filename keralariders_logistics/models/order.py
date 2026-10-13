@@ -136,7 +136,10 @@ class Order(models.Model):
                 raise UserError("Only draft orders can request pickup.")
                 
             for shipment in order.shipment_ids:
-                shipment.action_add_wallet_transaction()
+                # Booking debit, not the manual Deduct from Wallet button.
+                # Set here so a staff RPC cannot pass a context flag into
+                # action_add_wallet_transaction and skip the group check.
+                shipment._kx_post_delivery_charge_debit()
                 # Ensure pickup DE / pickup leg assignment (wallet unchanged).
                 # India Post collects from the seller itself, so those get no
                 # KeralaXpress pickup executive and no pickup leg assignment.
