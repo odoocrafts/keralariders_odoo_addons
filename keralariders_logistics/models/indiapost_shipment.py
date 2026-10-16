@@ -1777,9 +1777,11 @@ class Shipment(models.Model):
         India Post's own naming is preferred because that is what the booking
         and label endpoints expect to see; the Odoo district/state is the
         fallback when the office cache is cold and the API is unreachable.
+        A destination office that is not bookable for pickup is still used
+        for the city and state. Pickup office id stays on the bookable rule.
         """
         Office = self.env['logistics.indiapost.office'].sudo()
-        office = Office.resolve_booking_office(pincode, raise_if_missing=False)
+        office = Office.resolve_destination_office(pincode, raise_if_missing=False)
         city = (office.city_name or office.taluk_name or '').strip()
         state = (office.state_name or '').strip()
         return (city or (fallback_city or '').strip(),

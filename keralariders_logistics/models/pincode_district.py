@@ -223,9 +223,12 @@ class District(models.Model):
 
         1. Kerala ``logistics.pincode`` / :meth:`get_district_from_pincode`.
         2. When ``allow_indiapost`` and that misses: sync
-           ``logistics.indiapost.office`` via ``resolve_booking_office``
-           (``/v1/pincode-search``, TTL cache) and map ``city_name`` (else
-           ``taluk_name``) + ``state_name`` onto a district (created on demand).
+           ``logistics.indiapost.office`` via ``resolve_destination_office``
+           (``/v1/pincode-search``, TTL cache). A bookable office is preferred,
+           but any office India Post returned supplies city and state. The
+           tariff call, not this lookup, decides whether the PIN delivers.
+           Map ``city_name`` (else ``taluk_name``) + ``state_name`` onto a
+           district (created on demand).
 
         Never inserts national PINs into the hub ``logistics.pincode`` table.
         """
@@ -273,7 +276,7 @@ class District(models.Model):
 
         Office = self.env['logistics.indiapost.office'].sudo()
         try:
-            office = Office.resolve_booking_office(pin, raise_if_missing=True)
+            office = Office.resolve_destination_office(pin, raise_if_missing=True)
         except IndiapostApiError as exc:
             _logger.warning(
                 'India Post pincode-search failed for %s: %s', pin, exc)
@@ -308,7 +311,10 @@ class District(models.Model):
                 raise UserError(_('%s is not a valid delivery pincode.') % pin)
             return empty
 
-        city = (office.city_name or office.taluk_name or '').strip()
+        city = (
+            office.city_name or office.taluk_name or office.village_name
+            or office.office_name or ''
+        ).strip()
         state_name = (office.state_name or '').strip()
         district = self._ensure_district_for_locality(city, state_name)
         return {

@@ -110,7 +110,7 @@ class TestHybridPincodeLookup(IndiapostHermeticMixin, TransactionCase):
             self.District.resolve_destination_from_pincode(
                 CHENNAI_PIN, allow_indiapost=True, raise_if_missing=True,
             )
-            # Warm TTL cache: resolve_booking_office must not call the API again.
+            # Warm TTL cache: resolve_destination_office must not call the API again.
             self.assertEqual(fetch.call_count, 1)
 
     def test_hub_seller_still_rejects_national_pin(self):
@@ -141,6 +141,46 @@ class TestHybridPincodeLookup(IndiapostHermeticMixin, TransactionCase):
             'thiruvananthapuram',
             (resolved['district_id'].name or '').lower(),
         )
+
+    def test_non_bookable_office_still_names_the_destination(self):
+        """A branch office or non-delivery office fills city and state.
+
+        Pickup still requires a bookable office. The tariff call, not this
+        lookup, decides whether the PIN can be delivered to.
+        """
+        pin = '600062'
+        self.Office.search([('pincode', '=', pin)]).unlink()
+        offices = [{
+            'office_id': '22606201',
+            'office_name': 'Virugambakkam BO',
+            'office_type_code': 'BPO',
+            'state_name': 'TAMIL NADU',
+            'city_name': 'CHENNAI',
+            'taluk_name': 'Chennai',
+            'delivery_office_flag': True,
+            'is_rolled_out': True,
+        }, {
+            'office_id': '22606202',
+            'office_name': 'Junction SO',
+            'office_type_code': 'SPO',
+            'state_name': 'TAMIL NADU',
+            'city_name': 'CHENNAI',
+            'delivery_office_flag': False,
+            'is_rolled_out': True,
+        }]
+        with patch.object(
+            self.OfficeModel, '_ip_fetch_offices', return_value=offices,
+        ):
+            resolved = self.District.resolve_destination_from_pincode(
+                pin, allow_indiapost=True, raise_if_missing=True,
+            )
+            with self.assertRaises(UserError) as err:
+                self.Office.resolve_booking_office(pin)
+        self.assertIn('no bookable post office', str(err.exception))
+        self.assertEqual(resolved['source'], 'indiapost')
+        self.assertEqual(resolved['district_id'].name, 'Chennai')
+        self.assertEqual(resolved['state_id'].code, 'TN')
+        self.assertFalse(self.Pincode.search([('name', '=', pin)]))
 
     def test_empty_indiapost_result_errors_without_inventing_district(self):
         self._clear_chennai_cache()

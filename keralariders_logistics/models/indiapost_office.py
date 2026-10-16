@@ -220,6 +220,71 @@ class IndiapostOffice(models.Model):
         return fresh
 
     @api.model
+    def _ip_best_destination_office(self, offices):
+        """Office used to name a destination, not to collect a pickup.
+
+        A bookable delivery office wins. When India Post only returned offices
+        that fail that pickup rule (no delivery flag, or a branch post office),
+        the first office that still has a city and state is enough: booking
+        sends the destination PIN, and the tariff call decides if it delivers.
+        """
+        if not offices:
+            return self.browse()
+        bookable = offices.filtered('is_bookable').sorted(
+            key=lambda office: (not office.is_preferred, office.id))
+        if bookable:
+            return bookable[0]
+
+        def _rank(office):
+            city = (office.city_name or office.taluk_name or '').strip()
+            state = (office.state_name or '').strip()
+            return (
+                0 if office.delivery_office_flag else 1,
+                0 if city and state else 1,
+                office.id,
+            )
+
+        return offices.sorted(key=_rank)[0]
+
+    @api.model
+    def resolve_destination_office(self, pincode, settings=None, refresh=False,
+                                   raise_if_missing=True):
+        """Office that names the destination city and state.
+
+        Same cache and pincode-search as :meth:`resolve_booking_office`, but a
+        non-bookable office is accepted. An empty search still fails. Pickup
+        keeps :meth:`resolve_booking_office`.
+        """
+        pincode = ipc.normalize_pincode(pincode)
+        settings = settings or self.env['logistics.indiapost.client']._ip_settings()
+        cached = self.sudo().search([('pincode', '=', pincode)])
+        fresh = cached.filtered(lambda office: self._ip_cache_is_fresh(office, settings))
+        if fresh and not refresh:
+            return self._ip_best_destination_office(fresh)
+
+        try:
+            self._ip_sync_pincode(pincode, settings=settings)
+        except (IndiapostApiError, UserError) as exc:
+            if cached:
+                _logger.warning(
+                    'India Post: destination pincode %s could not be refreshed '
+                    '(%s); using a cached office.',
+                    pincode, exc,
+                )
+                return self._ip_best_destination_office(cached)
+            if raise_if_missing:
+                raise
+            return self.browse()
+
+        synced = self.sudo().search([('pincode', '=', pincode)])
+        if not synced and raise_if_missing:
+            raise UserError(_(
+                'India Post has no bookable post office for pincode %s. '
+                'Speed Post cannot pick up from or deliver to this pincode.'
+            ) % pincode)
+        return self._ip_best_destination_office(synced)
+
+    @api.model
     def resolve_office_id(self, pincode, settings=None):
         """Just the 8-digit office id for a pincode."""
         return self.resolve_booking_office(pincode, settings=settings).office_id
