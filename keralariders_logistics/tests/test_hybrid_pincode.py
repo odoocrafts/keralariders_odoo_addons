@@ -310,6 +310,13 @@ class TestHybridPincodeLookup(IndiapostHermeticMixin, TransactionCase):
         )
         self.assertFalse(self.Pincode.search([('name', '=', ANDAMAN_PIN)]))
 
+    def test_chhattisgarh_state_alias_resolves(self):
+        """India Post 'Chhattisgarh' → Odoo 'Chattisgarh' (PIN 496005)."""
+        state = self.District._find_indian_state('Chhattisgarh')
+        self.assertTrue(state)
+        self.assertEqual(state.code, 'CG')
+        self.assertEqual(state, self.District._find_indian_state('Chattisgarh'))
+
     def test_unknown_indiapost_state_still_errors(self):
         offices = [{
             **CHENNAI_OFFICES[0],

@@ -12,6 +12,10 @@ _logger = logging.getLogger(__name__)
 _IN_STATE_ALIASES = {
     'andaman and nicobar islands': ['Andaman and Nicobar'],
     'andaman and nicobar': ['Andaman and Nicobar'],
+    # Odoo 19 base spells this "Chattisgarh" (one h). India Post sends the
+    # usual "Chhattisgarh".
+    'chhattisgarh': ['Chhattisgarh', 'Chattisgarh'],
+    'chattisgarh': ['Chattisgarh', 'Chhattisgarh'],
     'delhi': ['Delhi'],
     'nct of delhi': ['Delhi'],
     'national capital territory of delhi': ['Delhi'],
