@@ -60,6 +60,9 @@
                                 AWB <span t-field="o.name"/>
                             </t>
                         </div>
+                        <div t-if="o._awb_indiapost_customer_id()" class="awb-customer-id" style="font-size: 7px; font-weight: 700; margin-top: 0.3mm; letter-spacing: 0.2px;">
+                            CUSTOMER ID: <t t-esc="o._awb_indiapost_customer_id()"/>
+                        </div>
                     </td>
                     <td style="width: 25%; padding: 1mm; text-align: center; vertical-align: middle;">
                         <img t-att-src="o._awb_label_qr_img_src()"

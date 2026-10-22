@@ -284,6 +284,15 @@ class Shipment(models.Model):
         article = (self.indiapost_article_number or '').strip()
         return self._awb_barcode_png_data_uri('Code128', article)
 
+    def _awb_indiapost_customer_id(self):
+        """India Post contract customer id printed on shipping labels.
+
+        Read from settings so a change in Configuration updates every A4 and
+        100×150 label. Empty when the integration has no customer id yet.
+        """
+        settings = self.env['logistics.indiapost.client']._ip_settings()
+        return (settings.get('indiapost_customer_id') or '').strip()
+
     def _awb_indiapost_logo_data_uri(self):
         """Inline the official India Post wordmark so Print AWB needs no URL.
 

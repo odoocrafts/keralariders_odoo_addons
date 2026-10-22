@@ -251,6 +251,29 @@ class TestAwbPaperSize(IndiapostHermeticMixin, TransactionCase):
         self.assertFalse(shipment._awb_kx_barcode_img_src())
         assert_awb_barcodes_are_data_uris(self, html)
 
+    def test_labels_print_indiapost_customer_id(self):
+        """A4 and 100×150 labels show CUSTOMER ID from India Post settings."""
+        customer_id = '9999537187'
+        self.assertEqual(
+            self.env['logistics.shipment']._awb_indiapost_customer_id(),
+            customer_id,
+        )
+        ip = self._new_shipment(self.ip_seller)
+        hub = self._new_shipment(self.hub_seller)
+        line = 'CUSTOMER ID: %s' % customer_id
+        for shipment in (ip, hub):
+            thermal = self._label_html(shipment)
+            self.assertIn(line, thermal)
+            self.assertIn('awb-customer-id', thermal)
+            a4 = self.env['ir.actions.report']._render_qweb_html(
+                'keralariders_logistics.report_shipment_document',
+                shipment.ids,
+            )[0]
+            if isinstance(a4, bytes):
+                a4 = a4.decode('utf-8')
+            self.assertIn(line, a4)
+            self.assertIn('awb-customer-id', a4)
+
     def test_indiapost_100x150_without_arn_prints_awb_in_top_cell(self):
         shipment = self._new_shipment(self.ip_seller)
         self.assertFalse(shipment.portal_indiapost_arn())
