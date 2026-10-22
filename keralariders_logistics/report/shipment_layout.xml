@@ -183,6 +183,9 @@
                                             — <span t-field="o.indiapost_article_type"/>
                                         </t>
                                     </div>
+                                    <div t-if="o._awb_indiapost_customer_id()" class="awb-customer-id" style="font-size: 12px; font-weight: 700; margin-top: 4px;">
+                                        CUSTOMER ID: <span t-esc="o._awb_indiapost_customer_id()"/>
+                                    </div>
                                 </td>
                                 <td style="width: 25%; border: 2px solid black; padding: 8px; text-align: center; vertical-align: middle;">
                                     <img t-att-src="o._awb_indiapost_qr_img_src()"
@@ -193,6 +196,11 @@
                                 </td>
                             </tr>
                             </t>
+                            <tr t-if="not o.indiapost_article_number and o._awb_indiapost_customer_id()">
+                                <td colspan="3" class="awb-customer-id" style="border: 2px solid black; padding: 7px 15px; text-align: center; font-size: 13px; font-weight: 700;">
+                                    CUSTOMER ID: <span t-esc="o._awb_indiapost_customer_id()"/>
+                                </td>
+                            </tr>
 
                             <tr>
                                 <td colspan="2" class="awb-shipto" style="width: 70%; border: 2px solid black; padding: 10px 15px; vertical-align: middle; font-size: 15px;">
@@ -260,12 +268,6 @@
                                 </td>
                                 <td style="width: 30%; border: 2px solid black; border-top: none; text-align: right; padding: 7px; vertical-align: middle; font-size: 14px; font-weight: bold;">
                                     <span class="kx-awb-money" t-out="o._awb_format_money(o.total_order_value)"/>
-                                </td>
-                            </tr>
-
-                            <tr t-if="o._awb_indiapost_customer_id()">
-                                <td colspan="3" class="awb-customer-id" style="border: 2px solid black; padding: 7px 15px; font-size: 14px; font-weight: 700;">
-                                    CUSTOMER ID: <span t-esc="o._awb_indiapost_customer_id()"/>
                                 </td>
                             </tr>
 

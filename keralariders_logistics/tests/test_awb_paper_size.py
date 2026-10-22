@@ -273,6 +273,21 @@ class TestAwbPaperSize(IndiapostHermeticMixin, TransactionCase):
                 a4 = a4.decode('utf-8')
             self.assertIn(line, a4)
             self.assertIn('awb-customer-id', a4)
+        ip.sudo().write({
+            'indiapost_article_number': ARTICLE,
+            'indiapost_booking_state': 'booked',
+        })
+        ip_a4 = self.env['ir.actions.report']._render_qweb_html(
+            'keralariders_logistics.report_shipment_document',
+            ip.ids,
+        )[0]
+        if isinstance(ip_a4, bytes):
+            ip_a4 = ip_a4.decode('utf-8')
+        self.assertLess(
+            ip_a4.find(ARTICLE),
+            ip_a4.find(line),
+        )
+        self.assertLess(ip_a4.find(line), ip_a4.find('Ship To:'))
 
     def test_indiapost_100x150_without_arn_prints_awb_in_top_cell(self):
         shipment = self._new_shipment(self.ip_seller)
