@@ -1,0 +1,304 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Home cards: a separate inheritance so the logistics cards stay untouched. -->
+    <template id="portal_my_home_kx_finance" name="KeralaXpress Reports and Accounts Entries"
+              inherit_id="portal.portal_my_home" priority="20" customize_show="True">
+        <xpath expr="//div[hasclass('o_portal_docs')]" position="inside">
+            <t t-if="is_seller">
+                <t t-call="keralariders_logistics.logistics_portal_card">
+                    <t t-set="title">Reports</t>
+                    <t t-set="url" t-value="'/my/reports'"/>
+                    <t t-set="count_text" t-value="' '"/>
+                    <t t-set="icon" t-value="'/keralariders_logistics/static/src/img/shipment.svg'"/>
+                    <t t-set="text">Order and COD reports, downloadable in Excel</t>
+                </t>
+                <t t-call="keralariders_logistics.logistics_portal_card">
+                    <t t-set="title">Ledger</t>
+                    <t t-set="url" t-value="'/my/ledger'"/>
+                    <t t-set="count_text" t-value="' '"/>
+                    <t t-set="icon" t-value="'/keralariders_logistics/static/src/img/wallet.svg'"/>
+                    <t t-set="text">Every wallet and COD credit and debit with balances</t>
+                </t>
+                <t t-call="keralariders_logistics.logistics_portal_card">
+                    <t t-set="title">Monthly Invoices</t>
+                    <t t-set="url" t-value="'/my/kx_invoices'"/>
+                    <t t-set="count_text" t-value="kx_invoice_count if kx_invoice_count else '0'"/>
+                    <t t-set="icon" t-value="'/keralariders_logistics/static/src/img/bank.svg'"/>
+                    <t t-set="text">View and download your monthly invoices</t>
+                </t>
+            </t>
+        </xpath>
+    </template>
+
+    <template id="portal_breadcrumbs_kx_finance" name="KeralaXpress Finance Breadcrumbs"
+              inherit_id="portal.portal_breadcrumbs" priority="20">
+        <xpath expr="//ol[hasclass('o_portal_submenu')]" position="inside">
+            <li t-if="page_name == 'kx_reports'" class="breadcrumb-item">Reports</li>
+            <li t-if="page_name == 'kx_ledger'" class="breadcrumb-item">Ledger</li>
+            <li t-if="page_name == 'kx_invoices'" class="breadcrumb-item">Monthly Invoices</li>
+        </xpath>
+    </template>
+
+    <template id="kx_portal_period_form" name="Period filter">
+        <form method="get" t-att-action="action_url" class="row g-2 align-items-end mb-4">
+            <div class="col-sm-3">
+                <label class="form-label small text-muted" for="kx_date_from">From</label>
+                <input type="date" id="kx_date_from" name="date_from" class="form-control"
+                       t-att-value="date_from and date_from.isoformat()"/>
+            </div>
+            <div class="col-sm-3">
+                <label class="form-label small text-muted" for="kx_date_to">To</label>
+                <input type="date" id="kx_date_to" name="date_to" class="form-control"
+                       t-att-value="date_to and date_to.isoformat()"/>
+            </div>
+            <t t-out="0"/>
+            <div class="col-sm-2">
+                <button type="submit" class="btn btn-primary w-100">Apply</button>
+            </div>
+        </form>
+    </template>
+
+    <template id="portal_my_kx_reports" name="My Reports">
+        <t t-call="portal.portal_layout">
+            <t t-set="breadcrumbs_searchbar" t-value="True"/>
+            <t t-call="portal.portal_searchbar">
+                <t t-set="title">Reports</t>
+            </t>
+            <t t-call="keralaxpress_finance.kx_portal_period_form">
+                <t t-set="action_url" t-value="'/my/reports'"/>
+                <div class="col-sm-4">
+                    <label class="form-label small text-muted" for="kx_state">Status</label>
+                    <select id="kx_state" name="state" class="form-select">
+                        <option value="">All statuses</option>
+                        <t t-foreach="state_options" t-as="opt">
+                            <option t-att-value="opt[0]" t-att-selected="opt[0] == state" t-esc="opt[1]"/>
+                        </t>
+                    </select>
+                </div>
+            </t>
+
+            <h4 class="mb-3">Orders</h4>
+            <div class="row g-3 mb-3">
+                <div class="col-6 col-md-3">
+                    <div class="card shadow-sm h-100"><div class="card-body">
+                        <div class="small text-muted">Total orders</div>
+                        <div class="fs-3 fw-bold" t-esc="orders['totals']['count']"/>
+                    </div></div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="card shadow-sm h-100"><div class="card-body">
+                        <div class="small text-muted">Total order value</div>
+                        <div class="fs-4 fw-bold" t-esc="orders['totals']['value']"
+                             t-options='{"widget": "monetary", "display_currency": currency}'/>
+                    </div></div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="card shadow-sm h-100"><div class="card-body">
+                        <div class="small text-muted">Delivered</div>
+                        <div class="fs-3 fw-bold text-success" t-esc="orders['totals']['delivered']"/>
+                    </div></div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="card shadow-sm h-100"><div class="card-body">
+                        <div class="small text-muted">Cancelled</div>
+                        <div class="fs-3 fw-bold text-danger" t-esc="orders['totals']['cancelled']"/>
+                    </div></div>
+                </div>
+            </div>
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <h5 class="mb-0">Order status summary</h5>
+                <a class="btn btn-sm btn-outline-primary"
+                   t-attf-href="/my/reports/export?report=orders&amp;date_from={{ export_query['date_from'] }}&amp;date_to={{ export_query['date_to'] }}&amp;state={{ export_query['state'] }}">
+                    <i class="fa fa-file-excel-o me-1"/>Download Excel
+                </a>
+            </div>
+            <table class="table table-sm table-hover bg-white mb-5">
+                <thead><tr><th>Status</th><th class="text-end">Orders</th><th class="text-end">Order value</th></tr></thead>
+                <tbody>
+                    <tr t-foreach="orders['status_rows']" t-as="row">
+                        <td t-esc="row['label']"/>
+                        <td class="text-end" t-esc="row['count']"/>
+                        <td class="text-end" t-esc="row['value']" t-options='{"widget": "monetary", "display_currency": currency}'/>
+                    </tr>
+                    <tr t-if="not orders['status_rows']">
+                        <td colspan="3" class="text-muted">No orders in this period.</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h4 class="mb-0">COD wallet</h4>
+                <a class="btn btn-sm btn-outline-primary"
+                   t-attf-href="/my/reports/export?report=cod&amp;date_from={{ export_query['date_from'] }}&amp;date_to={{ export_query['date_to'] }}">
+                    <i class="fa fa-file-excel-o me-1"/>Download Excel
+                </a>
+            </div>
+            <div class="row g-3 mb-3">
+                <div class="col-md-4">
+                    <div class="card shadow-sm h-100"><div class="card-body">
+                        <div class="small text-muted">Current COD balance</div>
+                        <div class="fs-4 fw-bold" t-esc="cod_now" t-options='{"widget": "monetary", "display_currency": currency}'/>
+                    </div></div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card shadow-sm h-100"><div class="card-body">
+                        <div class="small text-muted">COD balance at period end</div>
+                        <div class="fs-4 fw-bold" t-esc="cod['total_balance']" t-options='{"widget": "monetary", "display_currency": currency}'/>
+                    </div></div>
+                </div>
+            </div>
+            <table class="table table-sm table-hover bg-white">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th class="text-end">Opening</th>
+                        <th class="text-end">Credit</th>
+                        <th class="text-end">Debit</th>
+                        <th class="text-end">Closing balance</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr t-foreach="cod['day_rows']" t-as="row">
+                        <td t-esc="row['date']" t-options='{"widget": "date"}'/>
+                        <td class="text-end" t-esc="row['opening']" t-options='{"widget": "monetary", "display_currency": currency}'/>
+                        <td class="text-end text-success" t-esc="row['credit']" t-options='{"widget": "monetary", "display_currency": currency}'/>
+                        <td class="text-end text-danger" t-esc="row['debit']" t-options='{"widget": "monetary", "display_currency": currency}'/>
+                        <td class="text-end fw-bold" t-esc="row['closing']" t-options='{"widget": "monetary", "display_currency": currency}'/>
+                    </tr>
+                    <tr t-if="not cod['day_rows']">
+                        <td colspan="5" class="text-muted">No COD movements in this period.</td>
+                    </tr>
+                </tbody>
+            </table>
+        </t>
+    </template>
+
+    <template id="portal_my_kx_ledger" name="My Ledger">
+        <t t-call="portal.portal_layout">
+            <t t-set="breadcrumbs_searchbar" t-value="True"/>
+            <t t-call="portal.portal_searchbar">
+                <t t-set="title">Ledger</t>
+            </t>
+            <t t-call="keralaxpress_finance.kx_portal_period_form">
+                <t t-set="action_url" t-value="'/my/ledger'"/>
+                <div class="col-sm-4">
+                    <label class="form-label small text-muted" for="kx_source">Lines</label>
+                    <select id="kx_source" name="source" class="form-select">
+                        <option value="">Wallet and COD</option>
+                        <option value="wallet" t-att-selected="source == 'wallet'">Wallet only</option>
+                        <option value="cod" t-att-selected="source == 'cod'">COD only</option>
+                    </select>
+                </div>
+            </t>
+            <div class="row g-3 mb-3">
+                <div class="col-6 col-md-3">
+                    <div class="card shadow-sm h-100"><div class="card-body">
+                        <div class="small text-muted">Opening wallet balance</div>
+                        <div class="fs-5 fw-bold" t-esc="statement['opening_wallet']" t-options='{"widget": "monetary", "display_currency": currency}'/>
+                    </div></div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="card shadow-sm h-100"><div class="card-body">
+                        <div class="small text-muted">Closing wallet balance</div>
+                        <div class="fs-5 fw-bold" t-esc="statement['closing_wallet']" t-options='{"widget": "monetary", "display_currency": currency}'/>
+                    </div></div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="card shadow-sm h-100"><div class="card-body">
+                        <div class="small text-muted">Opening COD balance</div>
+                        <div class="fs-5 fw-bold" t-esc="statement['opening_cod']" t-options='{"widget": "monetary", "display_currency": currency}'/>
+                    </div></div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="card shadow-sm h-100"><div class="card-body">
+                        <div class="small text-muted">Closing COD balance</div>
+                        <div class="fs-5 fw-bold" t-esc="statement['closing_cod']" t-options='{"widget": "monetary", "display_currency": currency}'/>
+                    </div></div>
+                </div>
+            </div>
+            <div class="d-flex justify-content-end gap-2 mb-2">
+                <a class="btn btn-sm btn-outline-primary"
+                   t-attf-href="/my/ledger/export?file_format=pdf&amp;date_from={{ export_query['date_from'] }}&amp;date_to={{ export_query['date_to'] }}&amp;source={{ export_query['source'] }}">
+                    <i class="fa fa-file-pdf-o me-1"/>Download PDF
+                </a>
+                <a class="btn btn-sm btn-outline-primary"
+                   t-attf-href="/my/ledger/export?file_format=xlsx&amp;date_from={{ export_query['date_from'] }}&amp;date_to={{ export_query['date_to'] }}&amp;source={{ export_query['source'] }}">
+                    <i class="fa fa-file-excel-o me-1"/>Download Excel
+                </a>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-sm table-hover bg-white">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Reference</th>
+                            <th>Description</th>
+                            <th>Type</th>
+                            <th>Cr/Dr</th>
+                            <th class="text-end">Credit</th>
+                            <th class="text-end">Debit</th>
+                            <th class="text-end">Wallet balance</th>
+                            <th class="text-end">COD balance</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr t-foreach="statement['lines']" t-as="l">
+                            <td t-esc="l['date']" t-options='{"widget": "date"}'/>
+                            <td t-esc="l['reference']"/>
+                            <td t-esc="l['description']"/>
+                            <td><span t-esc="l['source']" class="badge text-bg-light me-1"/><t t-esc="l['category']"/></td>
+                            <td t-esc="l['entry_type']"/>
+                            <td class="text-end text-success"><t t-if="l['credit']" t-esc="l['credit']" t-options='{"widget": "monetary", "display_currency": currency}'/></td>
+                            <td class="text-end text-danger"><t t-if="l['debit']" t-esc="l['debit']" t-options='{"widget": "monetary", "display_currency": currency}'/></td>
+                            <td class="text-end" t-esc="l['wallet_balance']" t-options='{"widget": "monetary", "display_currency": currency}'/>
+                            <td class="text-end" t-esc="l['cod_balance']" t-options='{"widget": "monetary", "display_currency": currency}'/>
+                        </tr>
+                        <tr t-if="not statement['lines']">
+                            <td colspan="9" class="text-muted">No transactions in this period.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </t>
+    </template>
+
+    <template id="portal_my_kx_invoices" name="My Monthly Invoices">
+        <t t-call="portal.portal_layout">
+            <t t-set="breadcrumbs_searchbar" t-value="True"/>
+            <t t-call="portal.portal_searchbar">
+                <t t-set="title">Monthly Invoices</t>
+            </t>
+            <t t-if="not invoices">
+                <p class="alert alert-info">No invoices yet. Your invoice for a month is issued at the start of the following month.</p>
+            </t>
+            <t t-if="invoices" t-call="portal.portal_table">
+                <thead>
+                    <tr class="active">
+                        <th>Invoice</th>
+                        <th>Period</th>
+                        <th>Invoice date</th>
+                        <th class="text-end">Bookings</th>
+                        <th class="text-end">Total recharge</th>
+                        <th class="text-end">Invoice total (incl. GST)</th>
+                        <th/>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr t-foreach="invoices" t-as="inv">
+                        <td t-esc="inv.name"/>
+                        <td t-esc="inv.period_label"/>
+                        <td><span t-field="inv.invoice_date"/></td>
+                        <td class="text-end" t-esc="inv.booking_count"/>
+                        <td class="text-end"><span t-field="inv.recharge_total" t-options='{"widget": "monetary", "display_currency": inv.currency_id}'/></td>
+                        <td class="text-end fw-bold"><span t-field="inv.amount_total" t-options='{"widget": "monetary", "display_currency": inv.currency_id}'/></td>
+                        <td class="text-end">
+                            <a class="btn btn-sm btn-outline-primary" t-attf-href="/my/kx_invoices/{{ inv.id }}/pdf">
+                                <i class="fa fa-download me-1"/>PDF
+                            </a>
+                        </td>
+                    </tr>
+                </tbody>
+            </t>
+        </t>
+    </template>
+</odoo>

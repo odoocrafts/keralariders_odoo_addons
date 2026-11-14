@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+        <record id="kx_seller_invoice_portal_rule" model="ir.rule">
+            <field name="name">Portal: own posted invoices</field>
+            <field name="model_id" ref="model_kx_seller_invoice"/>
+            <field name="domain_force">[('seller_id.partner_id', '=', user.partner_id.id), ('state', '=', 'posted')]</field>
+            <field name="groups" eval="[(4, ref('base.group_portal'))]"/>
+            <field name="perm_read" eval="True"/>
+            <field name="perm_write" eval="False"/>
+            <field name="perm_create" eval="False"/>
+            <field name="perm_unlink" eval="False"/>
+        </record>
+
+        <record id="kx_seller_invoice_line_portal_rule" model="ir.rule">
+            <field name="name">Portal: lines of own posted invoices</field>
+            <field name="model_id" ref="model_kx_seller_invoice_line"/>
+            <field name="domain_force">[('invoice_id.seller_id.partner_id', '=', user.partner_id.id), ('invoice_id.state', '=', 'posted')]</field>
+            <field name="groups" eval="[(4, ref('base.group_portal'))]"/>
+            <field name="perm_read" eval="True"/>
+            <field name="perm_write" eval="False"/>
+            <field name="perm_create" eval="False"/>
+            <field name="perm_unlink" eval="False"/>
+        </record>
+    </data>
+</odoo>

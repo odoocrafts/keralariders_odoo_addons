@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="res_config_settings_view_form" model="ir.ui.view">
+        <field name="name">res.config.settings.view.form.inherit.keralaxpress_finance</field>
+        <field name="model">res.config.settings</field>
+        <field name="inherit_id" ref="keralariders_logistics.res_config_settings_view_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//block[@name='payment_settings_setting_container']" position="after">
+                <block title="Seller Invoices" name="kx_seller_invoice_setting_container">
+                    <setting id="kx_invoice_gst" string="GST included in invoices (%)"
+                             help="Monthly seller invoices bill the services used; this share of the amount is shown as GST. Enter 18 for 18%. Posted invoices keep their rate.">
+                        <field name="kx_invoice_gst_percent"/>
+                    </setting>
+                    <setting id="kx_invoice_sac" string="SAC code"
+                             help="Printed on every seller invoice.">
+                        <field name="kx_invoice_sac_code"/>
+                    </setting>
+                </block>
+            </xpath>
+        </field>
+    </record>
+</odoo>

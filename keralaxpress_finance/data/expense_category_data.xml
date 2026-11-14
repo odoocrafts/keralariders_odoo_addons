@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+        <record id="expense_category_fuel" model="kx.expense.category">
+            <field name="name">Fuel</field>
+            <field name="sequence">10</field>
+        </record>
+        <record id="expense_category_office" model="kx.expense.category">
+            <field name="name">Office</field>
+            <field name="sequence">20</field>
+        </record>
+        <record id="expense_category_operational" model="kx.expense.category">
+            <field name="name">Operational</field>
+            <field name="sequence">30</field>
+        </record>
+        <record id="expense_category_salary" model="kx.expense.category">
+            <field name="name">Staff Salary</field>
+            <field name="sequence">40</field>
+        </record>
+        <record id="expense_category_rent" model="kx.expense.category">
+            <field name="name">Rent</field>
+            <field name="sequence">50</field>
+        </record>
+        <record id="expense_category_maintenance" model="kx.expense.category">
+            <field name="name">Maintenance</field>
+            <field name="sequence">60</field>
+        </record>
+        <record id="expense_category_other" model="kx.expense.category">
+            <field name="name">Other</field>
+            <field name="sequence">90</field>
+        </record>
+    </data>
+</odoo>

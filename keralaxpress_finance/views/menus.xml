@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- The existing Finance menu is Administrator-only, so the new seller
+         accounts get their own menu that finance staff can also open. -->
+    <menuitem id="menu_kx_reports_root" name="Reports" parent="keralariders_logistics.menu_logistics_root" sequence="42"
+              groups="keralariders_logistics.group_logistics_admin,keralariders_logistics.group_staff_operations,keralariders_logistics.group_staff_finance"/>
+
+    <menuitem id="menu_kx_order_analysis" name="Order Analysis" parent="menu_kx_reports_root" sequence="10"
+              action="action_kx_order_analysis"
+              groups="keralariders_logistics.group_logistics_admin,keralariders_logistics.group_staff_operations,keralariders_logistics.group_staff_finance"/>
+    <menuitem id="menu_kx_order_report" name="Order Report (Excel)" parent="menu_kx_reports_root" sequence="20"
+              action="action_kx_order_report_wizard"
+              groups="keralariders_logistics.group_logistics_admin,keralariders_logistics.group_staff_operations,keralariders_logistics.group_staff_finance"/>
+    <menuitem id="menu_kx_cod_wallet" name="COD Wallet" parent="menu_kx_reports_root" sequence="30"
+              action="action_kx_cod_ledger_line"
+              groups="keralariders_logistics.group_logistics_admin,keralariders_logistics.group_staff_finance"/>
+    <menuitem id="menu_kx_cod_report" name="COD Wallet Report (Excel)" parent="menu_kx_reports_root" sequence="40"
+              action="action_kx_cod_report_wizard"
+              groups="keralariders_logistics.group_logistics_admin,keralariders_logistics.group_staff_finance"/>
+
+    <menuitem id="menu_kx_accounts_root" name="Accounts" parent="keralariders_logistics.menu_logistics_root" sequence="44"
+              groups="keralariders_logistics.group_logistics_admin,keralariders_logistics.group_staff_finance"/>
+
+    <menuitem id="menu_kx_seller_invoice" name="Seller Invoices" parent="menu_kx_accounts_root" sequence="10"
+              action="action_kx_seller_invoice"
+              groups="keralariders_logistics.group_logistics_admin,keralariders_logistics.group_staff_finance"/>
+    <menuitem id="menu_kx_invoice_generate" name="Generate Invoices" parent="menu_kx_accounts_root" sequence="15"
+              action="action_kx_invoice_generate_wizard"
+              groups="keralariders_logistics.group_logistics_admin"/>
+    <menuitem id="menu_kx_seller_ledger" name="Seller Ledger" parent="menu_kx_accounts_root" sequence="20"
+              action="action_kx_seller_ledger_line"
+              groups="keralariders_logistics.group_logistics_admin,keralariders_logistics.group_staff_finance"/>
+    <menuitem id="menu_kx_ledger_statement" name="Ledger Statement" parent="menu_kx_accounts_root" sequence="25"
+              action="action_kx_ledger_statement_wizard"
+              groups="keralariders_logistics.group_logistics_admin,keralariders_logistics.group_staff_finance"/>
+    <menuitem id="menu_kx_expense" name="Expenses" parent="menu_kx_accounts_root" sequence="30"
+              action="action_kx_expense"
+              groups="keralariders_logistics.group_logistics_admin,keralariders_logistics.group_staff_finance"/>
+    <menuitem id="menu_kx_expense_report" name="Expense Report (Excel)" parent="menu_kx_accounts_root" sequence="35"
+              action="action_kx_expense_report_wizard"
+              groups="keralariders_logistics.group_logistics_admin,keralariders_logistics.group_staff_finance"/>
+    <menuitem id="menu_kx_expense_category" name="Expense Categories" parent="menu_kx_accounts_root" sequence="40"
+              action="action_kx_expense_category"
+              groups="keralariders_logistics.group_logistics_admin"/>
+</odoo>

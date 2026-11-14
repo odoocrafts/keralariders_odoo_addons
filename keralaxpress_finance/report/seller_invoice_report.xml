@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="action_report_seller_invoice" model="ir.actions.report">
+        <field name="name">Seller Invoice</field>
+        <field name="model">kx.seller.invoice</field>
+        <field name="report_type">qweb-pdf</field>
+        <field name="report_name">keralaxpress_finance.report_seller_invoice</field>
+        <field name="report_file">keralaxpress_finance.report_seller_invoice</field>
+        <field name="print_report_name">object._report_filename()</field>
+        <field name="paperformat_id" ref="paperformat_kx_finance_a4"/>
+        <field name="binding_model_id" ref="model_kx_seller_invoice"/>
+        <field name="binding_type">report</field>
+    </record>
+
+    <template id="report_seller_invoice_document">
+        <t t-call="web.external_layout">
+            <t t-set="o" t-value="o.with_context(lang=lang)"/>
+            <t t-set="currency" t-value="o.currency_id"/>
+            <div class="page">
+                <h3 class="mb-1">
+                    <t t-if="o.state == 'posted'">Tax Invoice</t>
+                    <t t-elif="o.state == 'cancelled'">Cancelled Invoice</t>
+                    <t t-else="">Draft Invoice</t>
+                    <span t-if="o.name and o.name != '/'" t-field="o.name"/>
+                </h3>
+                <div class="row mt-3 mb-3">
+                    <div class="col-6">
+                        <strong>Billed to</strong>
+                        <div t-field="o.seller_id.partner_id"
+                             t-options='{"widget": "contact", "fields": ["name", "address", "phone", "email"], "no_marker": True}'/>
+                        <div t-if="o.seller_gstin">GSTIN: <span t-field="o.seller_gstin"/></div>
+                        <div t-if="o.seller_state_id">Place of supply: <span t-field="o.seller_state_id.name"/></div>
+                    </div>
+                    <div class="col-6 text-end">
+                        <div t-if="o.company_gstin">Our GSTIN: <span t-field="o.company_gstin"/></div>
+                        <div>Invoice date: <span t-field="o.invoice_date"/></div>
+                        <div>Period: <span t-field="o.date_from"/> to <span t-field="o.date_to"/></div>
+                        <div>SAC: <span t-field="o.sac_code"/></div>
+                    </div>
+                </div>
+
+                <table class="table table-sm o_main_table">
+                    <thead>
+                        <tr>
+                            <th>Description</th>
+                            <th class="text-end">Qty</th>
+                            <th class="text-end">Amount</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr t-foreach="o.line_ids" t-as="line">
+                            <td><span t-field="line.name"/></td>
+                            <td class="text-end"><span t-field="line.quantity"/></td>
+                            <td class="text-end">
+                                <span t-field="line.amount" t-options='{"widget": "monetary", "display_currency": currency}'/>
+                            </td>
+                        </tr>
+                        <tr t-if="not o.line_ids">
+                            <td colspan="3" class="text-muted">No billable services in this period.</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <div class="row">
+                    <div class="col-6">
+                        <table class="table table-sm table-borderless">
+                            <tr><td>Total recharge in period</td>
+                                <td class="text-end"><span t-field="o.recharge_total" t-options='{"widget": "monetary", "display_currency": currency}'/></td></tr>
+                            <tr><td>Bookings</td>
+                                <td class="text-end"><span t-field="o.booking_count"/></td></tr>
+                            <tr><td>Shipment charges</td>
+                                <td class="text-end"><span t-field="o.shipment_charges" t-options='{"widget": "monetary", "display_currency": currency}'/></td></tr>
+                            <tr><td>Additional charges</td>
+                                <td class="text-end"><span t-field="o.additional_charges" t-options='{"widget": "monetary", "display_currency": currency}'/></td></tr>
+                            <tr><td>Refunds and credits</td>
+                                <td class="text-end">-<span t-field="o.refunds" t-options='{"widget": "monetary", "display_currency": currency}'/></td></tr>
+                        </table>
+                    </div>
+                    <div class="col-6">
+                        <table class="table table-sm">
+                            <tr><td>Taxable value</td>
+                                <td class="text-end"><span t-field="o.taxable_amount" t-options='{"widget": "monetary", "display_currency": currency}'/></td></tr>
+                            <t t-if="o.tax_mode == 'inter'">
+                                <tr><td>IGST <t t-esc="'%g' % o.gst_percent"/>%</td>
+                                    <td class="text-end"><span t-field="o.igst_amount" t-options='{"widget": "monetary", "display_currency": currency}'/></td></tr>
+                            </t>
+                            <t t-else="">
+                                <tr><td>CGST <t t-esc="'%g' % (o.gst_percent / 2)"/>%</td>
+                                    <td class="text-end"><span t-field="o.cgst_amount" t-options='{"widget": "monetary", "display_currency": currency}'/></td></tr>
+                                <tr><td>SGST <t t-esc="'%g' % (o.gst_percent / 2)"/>%</td>
+                                    <td class="text-end"><span t-field="o.sgst_amount" t-options='{"widget": "monetary", "display_currency": currency}'/></td></tr>
+                            </t>
+                            <tr class="fw-bold border-top"><td>Final amount (incl. GST)</td>
+                                <td class="text-end"><span t-field="o.amount_total" t-options='{"widget": "monetary", "display_currency": currency}'/></td></tr>
+                        </table>
+                    </div>
+                </div>
+                <p class="small">Amount in words: <span t-esc="o._amount_in_words()"/></p>
+                <p class="small text-muted">
+                    Charges were paid from the prepaid KeralaXpress wallet during the
+                    period. The amounts above include GST.
+                </p>
+            </div>
+        </t>
+    </template>
+
+    <template id="report_seller_invoice">
+        <t t-call="web.html_container">
+            <t t-foreach="docs" t-as="o">
+                <t t-set="lang" t-value="o.seller_id.partner_id.lang or user.lang"/>
+                <t t-call="keralaxpress_finance.report_seller_invoice_document" t-lang="lang"/>
+            </t>
+        </t>
+    </template>
+</odoo>

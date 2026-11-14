@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_kx_cod_ledger_line_list" model="ir.ui.view">
+        <field name="name">kx.cod.ledger.line.list</field>
+        <field name="model">kx.cod.ledger.line</field>
+        <field name="arch" type="xml">
+            <list string="COD Wallet" create="false" edit="false" delete="false">
+                <field name="date"/>
+                <field name="seller_id"/>
+                <field name="reference"/>
+                <field name="description" optional="show"/>
+                <field name="category" widget="badge"
+                       decoration-success="category in ('cod_collected', 'cod_pickup_advance')"
+                       decoration-warning="category == 'cod_charge'"/>
+                <field name="shipment_id" optional="hide"/>
+                <field name="currency_id" column_invisible="1"/>
+                <field name="credit" sum="Total"/>
+                <field name="debit" sum="Total"/>
+                <field name="balance"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_kx_cod_ledger_line_pivot" model="ir.ui.view">
+        <field name="name">kx.cod.ledger.line.pivot</field>
+        <field name="model">kx.cod.ledger.line</field>
+        <field name="arch" type="xml">
+            <pivot string="COD Wallet">
+                <field name="seller_id" type="row"/>
+                <field name="category" type="col"/>
+                <field name="amount" type="measure"/>
+            </pivot>
+        </field>
+    </record>
+
+    <record id="view_kx_cod_ledger_line_graph" model="ir.ui.view">
+        <field name="name">kx.cod.ledger.line.graph</field>
+        <field name="model">kx.cod.ledger.line</field>
+        <field name="arch" type="xml">
+            <graph string="COD Wallet" type="line">
+                <field name="date" interval="day"/>
+                <field name="amount" type="measure"/>
+            </graph>
+        </field>
+    </record>
+
+    <record id="view_kx_cod_ledger_line_search" model="ir.ui.view">
+        <field name="name">kx.cod.ledger.line.search</field>
+        <field name="model">kx.cod.ledger.line</field>
+        <field name="arch" type="xml">
+            <search string="COD Wallet">
+                <field name="seller_id"/>
+                <field name="reference"/>
+                <field name="shipment_id"/>
+                <filter name="filter_date" string="Date" date="date"/>
+                <separator/>
+                <filter name="credits" string="Credits" domain="[('amount', '>', 0)]"/>
+                <filter name="debits" string="Debits" domain="[('amount', '&lt;', 0)]"/>
+                <filter name="charges" string="COD approval deductions" domain="[('category', '=', 'cod_charge')]"/>
+                <group>
+                    <filter name="group_seller" string="Seller" context="{'group_by': 'seller_id'}"/>
+                    <filter name="group_category" string="Type" context="{'group_by': 'category'}"/>
+                    <filter name="group_day" string="Date" context="{'group_by': 'date:day'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_kx_cod_ledger_line" model="ir.actions.act_window">
+        <field name="name">COD Wallet</field>
+        <field name="res_model">kx.cod.ledger.line</field>
+        <field name="view_mode">pivot,list,graph</field>
+        <field name="search_view_id" ref="view_kx_cod_ledger_line_search"/>
+        <field name="context">{'search_default_group_seller': 1}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">No COD movements yet</p>
+            <p>Posted COD collections, pickups, returns, settlements and withdrawals
+               appear here with the seller's running COD balance.</p>
+        </field>
+    </record>
+</odoo>

@@ -1,0 +1,158 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_kx_expense_category_list" model="ir.ui.view">
+        <field name="name">kx.expense.category.list</field>
+        <field name="model">kx.expense.category</field>
+        <field name="arch" type="xml">
+            <list string="Expense Categories" editable="bottom">
+                <field name="sequence" widget="handle"/>
+                <field name="name"/>
+                <field name="description"/>
+                <field name="active" widget="boolean_toggle"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="action_kx_expense_category" model="ir.actions.act_window">
+        <field name="name">Expense Categories</field>
+        <field name="res_model">kx.expense.category</field>
+        <field name="view_mode">list</field>
+        <field name="context">{'active_test': False}</field>
+    </record>
+
+    <record id="view_kx_expense_list" model="ir.ui.view">
+        <field name="name">kx.expense.list</field>
+        <field name="model">kx.expense</field>
+        <field name="arch" type="xml">
+            <list string="Expenses" decoration-muted="state == 'cancelled'" decoration-info="state == 'draft'">
+                <field name="date"/>
+                <field name="name"/>
+                <field name="description"/>
+                <field name="category_id"/>
+                <field name="payee_display" string="Paid To" optional="show"/>
+                <field name="payment_mode" optional="show"/>
+                <field name="hub_id" optional="hide"/>
+                <field name="bill_reference" optional="hide"/>
+                <field name="currency_id" column_invisible="1"/>
+                <field name="amount" sum="Total"/>
+                <field name="state" widget="badge"
+                       decoration-success="state == 'approved'" decoration-info="state == 'draft'"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_kx_expense_form" model="ir.ui.view">
+        <field name="name">kx.expense.form</field>
+        <field name="model">kx.expense</field>
+        <field name="arch" type="xml">
+            <form string="Expense">
+                <header>
+                    <button name="action_approve" type="object" string="Approve" class="btn-primary"
+                            invisible="state != 'draft'" groups="keralariders_logistics.group_logistics_admin"/>
+                    <button name="action_cancel" type="object" string="Cancel"
+                            invisible="state == 'cancelled'" groups="keralariders_logistics.group_logistics_admin"/>
+                    <button name="action_reset_draft" type="object" string="Reset to Draft"
+                            invisible="state == 'draft'" groups="keralariders_logistics.group_logistics_admin"/>
+                    <field name="state" widget="statusbar" statusbar_visible="draft,approved"/>
+                </header>
+                <sheet>
+                    <div class="oe_title">
+                        <h1><field name="name" readonly="1"/></h1>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="date" readonly="state != 'draft'"/>
+                            <field name="category_id" readonly="state != 'draft'" options="{'no_create': True}"/>
+                            <field name="description" readonly="state != 'draft'"/>
+                            <field name="currency_id" invisible="1"/>
+                            <field name="amount" readonly="state != 'draft'"/>
+                            <field name="payment_mode" readonly="state != 'draft'"/>
+                        </group>
+                        <group>
+                            <field name="payee_partner_id" readonly="state != 'draft'"/>
+                            <field name="payee_name" readonly="state != 'draft'" invisible="payee_partner_id"/>
+                            <field name="account_id" readonly="state != 'draft'" options="{'no_create': True}"/>
+                            <field name="hub_id" readonly="state != 'draft'" options="{'no_create': True}"/>
+                            <field name="bill_reference" readonly="state != 'draft'"/>
+                            <field name="approved_by" invisible="not approved_by"/>
+                            <field name="approved_on" invisible="not approved_on"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Bills &amp; Receipts" name="attachments">
+                            <field name="attachment_ids" widget="many2many_binary" readonly="state != 'draft'"/>
+                        </page>
+                        <page string="Notes" name="notes">
+                            <field name="notes" readonly="state != 'draft'"/>
+                        </page>
+                    </notebook>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_kx_expense_pivot" model="ir.ui.view">
+        <field name="name">kx.expense.pivot</field>
+        <field name="model">kx.expense</field>
+        <field name="arch" type="xml">
+            <pivot string="Expenses">
+                <field name="category_id" type="row"/>
+                <field name="date" interval="month" type="col"/>
+                <field name="amount" type="measure"/>
+            </pivot>
+        </field>
+    </record>
+
+    <record id="view_kx_expense_graph" model="ir.ui.view">
+        <field name="name">kx.expense.graph</field>
+        <field name="model">kx.expense</field>
+        <field name="arch" type="xml">
+            <graph string="Expenses" type="bar" stacked="1">
+                <field name="date" interval="month"/>
+                <field name="category_id"/>
+                <field name="amount" type="measure"/>
+            </graph>
+        </field>
+    </record>
+
+    <record id="view_kx_expense_search" model="ir.ui.view">
+        <field name="name">kx.expense.search</field>
+        <field name="model">kx.expense</field>
+        <field name="arch" type="xml">
+            <search string="Expenses">
+                <field name="name"/>
+                <field name="description"/>
+                <field name="category_id"/>
+                <field name="payee_partner_id"/>
+                <field name="payee_name"/>
+                <field name="hub_id"/>
+                <field name="bill_reference"/>
+                <filter name="filter_date" string="Date" date="date"/>
+                <separator/>
+                <filter name="draft" string="Draft" domain="[('state', '=', 'draft')]"/>
+                <filter name="approved" string="Approved" domain="[('state', '=', 'approved')]"/>
+                <filter name="not_cancelled" string="Not cancelled" domain="[('state', '!=', 'cancelled')]"/>
+                <group>
+                    <filter name="group_category" string="Category" context="{'group_by': 'category_id'}"/>
+                    <filter name="group_hub" string="Hub" context="{'group_by': 'hub_id'}"/>
+                    <filter name="group_mode" string="Payment Mode" context="{'group_by': 'payment_mode'}"/>
+                    <filter name="group_month" string="Month" context="{'group_by': 'date:month'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_kx_expense" model="ir.actions.act_window">
+        <field name="name">Expenses</field>
+        <field name="res_model">kx.expense</field>
+        <field name="view_mode">list,form,pivot,graph</field>
+        <field name="search_view_id" ref="view_kx_expense_search"/>
+        <field name="context">{'search_default_not_cancelled': 1}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">Record a company expense</p>
+            <p>Fuel, office, operations, salaries, rent, maintenance and anything else
+               the company pays for. An administrator approves each expense.</p>
+        </field>
+    </record>
+</odoo>

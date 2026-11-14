@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_kx_seller_ledger_line_list" model="ir.ui.view">
+        <field name="name">kx.seller.ledger.line.list</field>
+        <field name="model">kx.seller.ledger.line</field>
+        <field name="arch" type="xml">
+            <list string="Seller Ledger" create="false" edit="false" delete="false">
+                <field name="date"/>
+                <field name="seller_id"/>
+                <field name="reference"/>
+                <field name="description" optional="show"/>
+                <field name="source" widget="badge"
+                       decoration-info="source == 'wallet'" decoration-warning="source == 'cod'"/>
+                <field name="category"/>
+                <field name="entry_type" optional="show"/>
+                <field name="shipment_id" optional="hide"/>
+                <field name="currency_id" column_invisible="1"/>
+                <field name="credit" sum="Total"/>
+                <field name="debit" sum="Total"/>
+                <field name="wallet_balance"/>
+                <field name="cod_balance"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_kx_seller_ledger_line_pivot" model="ir.ui.view">
+        <field name="name">kx.seller.ledger.line.pivot</field>
+        <field name="model">kx.seller.ledger.line</field>
+        <field name="arch" type="xml">
+            <pivot string="Seller Ledger">
+                <field name="seller_id" type="row"/>
+                <field name="category" type="col"/>
+                <field name="amount" type="measure"/>
+            </pivot>
+        </field>
+    </record>
+
+    <record id="view_kx_seller_ledger_line_search" model="ir.ui.view">
+        <field name="name">kx.seller.ledger.line.search</field>
+        <field name="model">kx.seller.ledger.line</field>
+        <field name="arch" type="xml">
+            <search string="Seller Ledger">
+                <field name="seller_id"/>
+                <field name="reference"/>
+                <field name="description"/>
+                <field name="shipment_id"/>
+                <filter name="filter_date" string="Date" date="date"/>
+                <separator/>
+                <filter name="wallet" string="Wallet" domain="[('source', '=', 'wallet')]"/>
+                <filter name="cod" string="COD" domain="[('source', '=', 'cod')]"/>
+                <separator/>
+                <filter name="credits" string="Credits" domain="[('entry_type', '=', 'credit')]"/>
+                <filter name="debits" string="Debits" domain="[('entry_type', '=', 'debit')]"/>
+                <separator/>
+                <filter name="recharges" string="Approved recharges" domain="[('category', '=', 'recharge')]"/>
+                <filter name="bookings" string="Booking charges" domain="[('category', '=', 'booking')]"/>
+                <filter name="cod_charges" string="COD approval deductions" domain="[('category', '=', 'cod_charge')]"/>
+                <group>
+                    <filter name="group_seller" string="Seller" context="{'group_by': 'seller_id'}"/>
+                    <filter name="group_source" string="Source" context="{'group_by': 'source'}"/>
+                    <filter name="group_category" string="Type" context="{'group_by': 'category'}"/>
+                    <filter name="group_month" string="Month" context="{'group_by': 'date:month'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_kx_seller_ledger_line" model="ir.actions.act_window">
+        <field name="name">Seller Ledger</field>
+        <field name="res_model">kx.seller.ledger.line</field>
+        <field name="view_mode">list,pivot</field>
+        <field name="search_view_id" ref="view_kx_seller_ledger_line_search"/>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">No ledger entries yet</p>
+            <p>Wallet recharges, booking charges, refunds and COD movements are listed
+               here for every seller, each with its running wallet and COD balance.</p>
+        </field>
+    </record>
+</odoo>

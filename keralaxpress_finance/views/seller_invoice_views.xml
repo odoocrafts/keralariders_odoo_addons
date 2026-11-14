@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_kx_seller_invoice_list" model="ir.ui.view">
+        <field name="name">kx.seller.invoice.list</field>
+        <field name="model">kx.seller.invoice</field>
+        <field name="arch" type="xml">
+            <list string="Seller Invoices" create="false"
+                  decoration-muted="state == 'cancelled'" decoration-info="state == 'draft'">
+                <field name="name"/>
+                <field name="seller_id"/>
+                <field name="period_label" string="Period"/>
+                <field name="invoice_date"/>
+                <field name="currency_id" column_invisible="1"/>
+                <field name="booking_count" sum="Total" optional="show"/>
+                <field name="recharge_total" sum="Total" optional="show"/>
+                <field name="taxable_amount" sum="Total" optional="show"/>
+                <field name="tax_amount" sum="Total" optional="show"/>
+                <field name="amount_total" sum="Total"/>
+                <field name="state" widget="badge"
+                       decoration-success="state == 'posted'" decoration-info="state == 'draft'"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_kx_seller_invoice_form" model="ir.ui.view">
+        <field name="name">kx.seller.invoice.form</field>
+        <field name="model">kx.seller.invoice</field>
+        <field name="arch" type="xml">
+            <form string="Seller Invoice" create="false">
+                <header>
+                    <button name="action_post" type="object" string="Post" class="btn-primary"
+                            invisible="state != 'draft'" groups="keralariders_logistics.group_logistics_admin"/>
+                    <button name="action_recompute" type="object" string="Recompute"
+                            invisible="state != 'draft'" groups="keralariders_logistics.group_logistics_admin"/>
+                    <button name="action_print" type="object" string="Print PDF" icon="fa-print"/>
+                    <button name="action_cancel" type="object" string="Cancel Invoice"
+                            invisible="state == 'cancelled'" groups="keralariders_logistics.group_logistics_admin"
+                            confirm="Cancel this invoice? The seller will no longer see it in the portal."/>
+                    <field name="state" widget="statusbar" statusbar_visible="draft,posted"/>
+                </header>
+                <sheet>
+                    <div class="oe_title">
+                        <h1><field name="name"/></h1>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="seller_id"/>
+                            <field name="seller_gstin"/>
+                            <field name="seller_state_id"/>
+                            <field name="company_gstin"/>
+                        </group>
+                        <group>
+                            <field name="period_label"/>
+                            <field name="date_from"/>
+                            <field name="date_to"/>
+                            <field name="invoice_date"/>
+                            <field name="sac_code"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Summary" name="summary">
+                            <field name="line_ids">
+                                <list>
+                                    <field name="sequence" column_invisible="1"/>
+                                    <field name="name"/>
+                                    <field name="line_key" optional="hide"/>
+                                    <field name="quantity"/>
+                                    <field name="currency_id" column_invisible="1"/>
+                                    <field name="amount"/>
+                                </list>
+                            </field>
+                            <group>
+                                <group string="Activity">
+                                    <field name="currency_id" invisible="1"/>
+                                    <field name="recharge_total"/>
+                                    <field name="booking_count"/>
+                                    <field name="shipment_charges"/>
+                                    <field name="additional_charges"/>
+                                    <field name="refunds"/>
+                                </group>
+                                <group string="Tax (included in the total)">
+                                    <field name="gst_percent"/>
+                                    <field name="tax_mode"/>
+                                    <field name="taxable_amount"/>
+                                    <field name="cgst_amount" invisible="tax_mode == 'inter'"/>
+                                    <field name="sgst_amount" invisible="tax_mode == 'inter'"/>
+                                    <field name="igst_amount" invisible="tax_mode != 'inter'"/>
+                                    <field name="tax_amount"/>
+                                    <field name="amount_total" class="fw-bold"/>
+                                </group>
+                            </group>
+                        </page>
+                    </notebook>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_kx_seller_invoice_search" model="ir.ui.view">
+        <field name="name">kx.seller.invoice.search</field>
+        <field name="model">kx.seller.invoice</field>
+        <field name="arch" type="xml">
+            <search string="Seller Invoices">
+                <field name="name"/>
+                <field name="seller_id"/>
+                <filter name="filter_period" string="Period" date="date_from"/>
+                <separator/>
+                <filter name="posted" string="Posted" domain="[('state', '=', 'posted')]"/>
+                <filter name="draft" string="Draft" domain="[('state', '=', 'draft')]"/>
+                <filter name="active_invoices" string="Not cancelled" domain="[('state', '!=', 'cancelled')]"/>
+                <group>
+                    <filter name="group_seller" string="Seller" context="{'group_by': 'seller_id'}"/>
+                    <filter name="group_month" string="Month" context="{'group_by': 'date_from:month'}"/>
+                    <filter name="group_state" string="Status" context="{'group_by': 'state'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_kx_seller_invoice" model="ir.actions.act_window">
+        <field name="name">Seller Invoices</field>
+        <field name="res_model">kx.seller.invoice</field>
+        <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="view_kx_seller_invoice_search"/>
+        <field name="context">{'search_default_active_invoices': 1}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">No seller invoices yet</p>
+            <p>Invoices are generated on the 1st of every month for the month before.
+               Use Generate Invoices to create a month by hand.</p>
+        </field>
+    </record>
+</odoo>

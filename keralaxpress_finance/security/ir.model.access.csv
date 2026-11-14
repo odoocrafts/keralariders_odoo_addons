@@ -1,0 +1,25 @@
+id,name,model_id/id,group_id/id,perm_read,perm_write,perm_create,perm_unlink
+access_kx_cod_ledger_line_admin,kx.cod.ledger.line admin,model_kx_cod_ledger_line,keralariders_logistics.group_logistics_admin,1,0,0,0
+access_kx_cod_ledger_line_finance,kx.cod.ledger.line finance,model_kx_cod_ledger_line,keralariders_logistics.group_staff_finance,1,0,0,0
+access_kx_seller_ledger_line_admin,kx.seller.ledger.line admin,model_kx_seller_ledger_line,keralariders_logistics.group_logistics_admin,1,0,0,0
+access_kx_seller_ledger_line_finance,kx.seller.ledger.line finance,model_kx_seller_ledger_line,keralariders_logistics.group_staff_finance,1,0,0,0
+access_kx_seller_invoice_admin,kx.seller.invoice admin,model_kx_seller_invoice,keralariders_logistics.group_logistics_admin,1,1,1,1
+access_kx_seller_invoice_finance,kx.seller.invoice finance,model_kx_seller_invoice,keralariders_logistics.group_staff_finance,1,0,0,0
+access_kx_seller_invoice_portal,kx.seller.invoice portal,model_kx_seller_invoice,base.group_portal,1,0,0,0
+access_kx_seller_invoice_line_admin,kx.seller.invoice.line admin,model_kx_seller_invoice_line,keralariders_logistics.group_logistics_admin,1,1,1,1
+access_kx_seller_invoice_line_finance,kx.seller.invoice.line finance,model_kx_seller_invoice_line,keralariders_logistics.group_staff_finance,1,0,0,0
+access_kx_seller_invoice_line_portal,kx.seller.invoice.line portal,model_kx_seller_invoice_line,base.group_portal,1,0,0,0
+access_kx_expense_admin,kx.expense admin,model_kx_expense,keralariders_logistics.group_logistics_admin,1,1,1,1
+access_kx_expense_finance,kx.expense finance,model_kx_expense,keralariders_logistics.group_staff_finance,1,1,1,0
+access_kx_expense_category_admin,kx.expense.category admin,model_kx_expense_category,keralariders_logistics.group_logistics_admin,1,1,1,1
+access_kx_expense_category_finance,kx.expense.category finance,model_kx_expense_category,keralariders_logistics.group_staff_finance,1,0,0,0
+access_kx_order_report_wizard_admin,kx.order.report.wizard admin,model_kx_order_report_wizard,keralariders_logistics.group_logistics_admin,1,1,1,1
+access_kx_order_report_wizard_ops,kx.order.report.wizard operations,model_kx_order_report_wizard,keralariders_logistics.group_staff_operations,1,1,1,1
+access_kx_order_report_wizard_finance,kx.order.report.wizard finance,model_kx_order_report_wizard,keralariders_logistics.group_staff_finance,1,1,1,1
+access_kx_cod_report_wizard_admin,kx.cod.report.wizard admin,model_kx_cod_report_wizard,keralariders_logistics.group_logistics_admin,1,1,1,1
+access_kx_cod_report_wizard_finance,kx.cod.report.wizard finance,model_kx_cod_report_wizard,keralariders_logistics.group_staff_finance,1,1,1,1
+access_kx_ledger_statement_wizard_admin,kx.ledger.statement.wizard admin,model_kx_ledger_statement_wizard,keralariders_logistics.group_logistics_admin,1,1,1,1
+access_kx_ledger_statement_wizard_finance,kx.ledger.statement.wizard finance,model_kx_ledger_statement_wizard,keralariders_logistics.group_staff_finance,1,1,1,1
+access_kx_invoice_generate_wizard_admin,kx.invoice.generate.wizard admin,model_kx_invoice_generate_wizard,keralariders_logistics.group_logistics_admin,1,1,1,1
+access_kx_expense_report_wizard_admin,kx.expense.report.wizard admin,model_kx_expense_report_wizard,keralariders_logistics.group_logistics_admin,1,1,1,1
+access_kx_expense_report_wizard_finance,kx.expense.report.wizard finance,model_kx_expense_report_wizard,keralariders_logistics.group_staff_finance,1,1,1,1

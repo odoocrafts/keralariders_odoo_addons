@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="action_report_ledger_statement" model="ir.actions.report">
+        <field name="name">Seller Ledger Statement</field>
+        <field name="model">logistics.seller</field>
+        <field name="report_type">qweb-pdf</field>
+        <field name="report_name">keralaxpress_finance.report_ledger_statement</field>
+        <field name="report_file">keralaxpress_finance.report_ledger_statement</field>
+        <field name="print_report_name">'Ledger-%s' % (object.name or '')</field>
+        <field name="paperformat_id" ref="paperformat_kx_finance_a4"/>
+    </record>
+
+    <template id="report_ledger_statement">
+        <t t-call="web.html_container">
+            <t t-foreach="statements" t-as="st">
+                <t t-set="o" t-value="st['seller']"/>
+                <t t-set="currency" t-value="st['currency']"/>
+                <t t-call="web.external_layout">
+                    <div class="page">
+                        <h3>Ledger Statement</h3>
+                        <div class="row mb-3">
+                            <div class="col-6">
+                                <strong t-esc="o.name"/>
+                                <div t-if="o.tax_id">GSTIN: <span t-esc="o.tax_id"/></div>
+                            </div>
+                            <div class="col-6 text-end">
+                                <div>From: <span t-esc="st['date_from'] or 'Beginning'"/></div>
+                                <div>To: <span t-esc="st['date_to'] or 'Today'"/></div>
+                                <div t-if="st['source']">Lines: <span t-esc="'Wallet only' if st['source'] == 'wallet' else 'COD only'"/></div>
+                            </div>
+                        </div>
+                        <table class="table table-sm o_main_table" style="font-size: 11px;">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Reference</th>
+                                    <th>Description</th>
+                                    <th>Type</th>
+                                    <th>Cr/Dr</th>
+                                    <th class="text-end">Credit</th>
+                                    <th class="text-end">Debit</th>
+                                    <th class="text-end">Wallet Bal.</th>
+                                    <th class="text-end">COD Bal.</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr class="fw-bold">
+                                    <td colspan="7">Opening balance</td>
+                                    <td class="text-end" t-esc="st['opening_wallet']" t-options='{"widget": "monetary", "display_currency": currency}'/>
+                                    <td class="text-end" t-esc="st['opening_cod']" t-options='{"widget": "monetary", "display_currency": currency}'/>
+                                </tr>
+                                <tr t-foreach="st['lines']" t-as="l">
+                                    <td t-esc="l['date']" t-options='{"widget": "date"}'/>
+                                    <td t-esc="l['reference']"/>
+                                    <td t-esc="l['description']"/>
+                                    <td t-esc="l['category']"/>
+                                    <td t-esc="l['entry_type']"/>
+                                    <td class="text-end"><t t-if="l['credit']" t-esc="l['credit']" t-options='{"widget": "monetary", "display_currency": currency}'/></td>
+                                    <td class="text-end"><t t-if="l['debit']" t-esc="l['debit']" t-options='{"widget": "monetary", "display_currency": currency}'/></td>
+                                    <td class="text-end" t-esc="l['wallet_balance']" t-options='{"widget": "monetary", "display_currency": currency}'/>
+                                    <td class="text-end" t-esc="l['cod_balance']" t-options='{"widget": "monetary", "display_currency": currency}'/>
+                                </tr>
+                                <tr t-if="not st['lines']">
+                                    <td colspan="9" class="text-muted">No transactions in this period.</td>
+                                </tr>
+                                <tr class="fw-bold border-top">
+                                    <td colspan="5">Totals and closing balance</td>
+                                    <td class="text-end" t-esc="st['total_credit']" t-options='{"widget": "monetary", "display_currency": currency}'/>
+                                    <td class="text-end" t-esc="st['total_debit']" t-options='{"widget": "monetary", "display_currency": currency}'/>
+                                    <td class="text-end" t-esc="st['closing_wallet']" t-options='{"widget": "monetary", "display_currency": currency}'/>
+                                    <td class="text-end" t-esc="st['closing_cod']" t-options='{"widget": "monetary", "display_currency": currency}'/>
+                                </tr>
+                            </tbody>
+                        </table>
+                        <p class="small text-muted">
+                            Wallet lines change the prepaid wallet balance only; COD lines
+                            change the pending COD balance only.
+                        </p>
+                    </div>
+                </t>
+            </t>
+        </t>
+    </template>
+</odoo>
