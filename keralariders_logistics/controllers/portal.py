@@ -756,9 +756,11 @@ class LogisticsPortal(CustomerPortal):
             return request.redirect('/my')
             
         Order = request.env['logistics.order']
-        carrier = kw.get('carrier') or 'own_network'
+        # The carrier is chosen on the seller by an administrator. The portal
+        # does not offer a switch, and a query parameter cannot change it.
+        carrier = seller._ip_fulfilment_method()
         if carrier not in ('own_network', 'indiapost'):
-            carrier = 'own_network'
+            carrier = 'indiapost'
         domain = [
             ('seller_id', '=', seller.id),
             ('shipment_ids.fulfilment_method', '=', carrier),
@@ -777,7 +779,7 @@ class LogisticsPortal(CustomerPortal):
             url="/my/orders",
             url_args={
                 'date_begin': date_begin, 'date_end': date_end,
-                'sortby': sortby, 'carrier': carrier,
+                'sortby': sortby,
             },
             total=order_count,
             page=page,
@@ -793,7 +795,6 @@ class LogisticsPortal(CustomerPortal):
             'default_url': '/my/orders',
             'searchbar_sortings': searchbar_sortings,
             'sortby': sortby,
-            'carrier': carrier,
             'error': request.session.pop('error', None),
             'success': request.session.pop('success', None),
         }

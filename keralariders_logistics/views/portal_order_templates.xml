@@ -17,17 +17,6 @@
                     <i class="fa fa-upload me-1"/> Bulk Upload Order
                 </a>
             </div>
-            <ul class="nav nav-pills mb-3">
-                <li class="nav-item">
-                    <a t-attf-class="nav-link #{'active' if carrier == 'own_network' else ''}"
-                       t-attf-href="/my/orders?carrier=own_network&amp;sortby=#{sortby}">KeralaXpress</a>
-                </li>
-                <li class="nav-item">
-                    <a t-attf-class="nav-link #{'active' if carrier == 'indiapost' else ''}"
-                       t-attf-href="/my/orders?carrier=indiapost&amp;sortby=#{sortby}">India Post</a>
-                </li>
-            </ul>
-            
             <t t-if="error">
                 <div class="alert alert-danger" role="alert"><t t-esc="error"/></div>
             </t>
@@ -36,10 +25,7 @@
             </t>
             
             <t t-if="not orders">
-                <p class="alert alert-info">
-                    <t t-if="carrier == 'indiapost'">You don't have any India Post orders yet.</t>
-                    <t t-else="">You don't have any KeralaXpress orders yet.</t>
-                </p>
+                <p class="alert alert-info">You don't have any orders yet.</p>
             </t>
             <t t-if="orders" t-call="portal.portal_table">
                 <thead>
