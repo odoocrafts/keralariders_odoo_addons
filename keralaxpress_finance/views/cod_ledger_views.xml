@@ -49,10 +49,18 @@
         <field name="model">kx.cod.ledger.line</field>
         <field name="arch" type="xml">
             <search string="COD Wallet">
+                <searchpanel>
+                    <field name="fulfilment_method" string="Carrier" enable_counters="1" icon="fa-truck"/>
+                </searchpanel>
                 <field name="seller_id"/>
                 <field name="reference"/>
                 <field name="shipment_id"/>
                 <filter name="filter_date" string="Date" date="date"/>
+                <separator/>
+                <filter name="carrier_kx" string="KeralaXpress"
+                        domain="[('fulfilment_method', '=', 'own_network')]"/>
+                <filter name="carrier_ip" string="India Post"
+                        domain="[('fulfilment_method', '=', 'indiapost')]"/>
                 <separator/>
                 <filter name="credits" string="Credits" domain="[('amount', '>', 0)]"/>
                 <filter name="debits" string="Debits" domain="[('amount', '&lt;', 0)]"/>

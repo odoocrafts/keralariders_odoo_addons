@@ -163,6 +163,9 @@
         <field name="model">logistics.wallet</field>
         <field name="arch" type="xml">
             <search string="Search Wallets">
+                <searchpanel>
+                    <field name="fulfilment_method" string="Carrier" enable_counters="1" icon="fa-truck"/>
+                </searchpanel>
 
                 <!-- Global Search -->
                 <field name="name"
@@ -171,6 +174,13 @@
 
                 <field name="seller_id"
                        groups="keralariders_logistics.group_logistics_admin,keralariders_logistics.group_staff_sellers"/>
+
+                <separator/>
+
+                <filter name="carrier_kx" string="KeralaXpress"
+                        domain="[('fulfilment_method', '=', 'own_network')]"/>
+                <filter name="carrier_ip" string="India Post"
+                        domain="[('fulfilment_method', '=', 'indiapost')]"/>
 
                 <separator/>
 

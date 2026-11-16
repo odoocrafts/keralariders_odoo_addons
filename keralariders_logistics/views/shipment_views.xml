@@ -6,6 +6,9 @@
         <field name="model">logistics.shipment</field>
         <field name="arch" type="xml">
             <search string="Search Shipments">
+                <searchpanel>
+                    <field name="fulfilment_method" string="Carrier" enable_counters="1" icon="fa-truck"/>
+                </searchpanel>
 
                 <!-- Search -->
                 <field name="name"/>
@@ -26,7 +29,7 @@
                         domain="[('fulfilment_method', '=', 'indiapost')]"/>
 
                 <filter name="own_network"
-                        string="Hub Network"
+                        string="KeralaXpress"
                         domain="[('fulfilment_method', '=', 'own_network')]"/>
 
                 <filter name="indiapost_awaiting_booking"

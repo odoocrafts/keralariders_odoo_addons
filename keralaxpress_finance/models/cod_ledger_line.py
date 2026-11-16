@@ -50,6 +50,14 @@ class CodLedgerLine(models.Model):
         help='Seller pending COD after this line, over the full history.',
     )
     currency_id = fields.Many2one('res.currency', string='Currency', readonly=True)
+    fulfilment_method = fields.Selection(
+        [
+            ('own_network', 'KeralaXpress'),
+            ('indiapost', 'India Post'),
+        ],
+        string='Carrier',
+        readonly=True,
+    )
 
     def _movements_query(self):
         """Signed COD movements, one row each, without the running balance."""
@@ -78,8 +86,10 @@ class CodLedgerLine(models.Model):
                             THEN -(t.amount - COALESCE(t.cod_charge_amount, 0))
                         ELSE -t.amount
                    END AS amount,
-                   COALESCE(t.currency_id, {company_currency}) AS currency_id
+                   COALESCE(t.currency_id, {company_currency}) AS currency_id,
+                   s.fulfilment_method AS fulfilment_method
               FROM logistics_account_transfer t
+              JOIN logistics_seller s ON s.id = t.related_seller_id
              WHERE t.state = 'posted'
                AND t.related_seller_id IS NOT NULL
                AND t.transfer_type IN ({credit_types}, {settlement_types}, 'cod_withdrawal')
@@ -95,8 +105,10 @@ class CodLedgerLine(models.Model):
                        || '%' AS description,
                    t.shipment_id AS shipment_id,
                    -t.cod_charge_amount AS amount,
-                   COALESCE(t.currency_id, {company_currency}) AS currency_id
+                   COALESCE(t.currency_id, {company_currency}) AS currency_id,
+                   s.fulfilment_method AS fulfilment_method
               FROM logistics_account_transfer t
+              JOIN logistics_seller s ON s.id = t.related_seller_id
              WHERE t.state = 'posted'
                AND t.related_seller_id IS NOT NULL
                AND t.transfer_type = 'cod_withdrawal'

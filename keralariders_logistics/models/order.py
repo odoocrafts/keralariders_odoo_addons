@@ -14,6 +14,24 @@ class Order(models.Model):
     pickup_date = fields.Date(string='Pickup Date', required=True, default=fields.Date.context_today)
 
     shipment_ids = fields.One2many('logistics.shipment', 'order_id', string='Shipments')
+    fulfilment_method = fields.Selection(
+        [
+            ('own_network', 'KeralaXpress'),
+            ('indiapost', 'India Post'),
+        ],
+        string='Carrier',
+        compute='_compute_fulfilment_method',
+        store=True,
+        index=True,
+        help='Taken from the shipments. An order stays with the carrier it was booked on.',
+    )
+
+    @api.depends('shipment_ids.fulfilment_method')
+    def _compute_fulfilment_method(self):
+        for order in self:
+            methods = set(order.shipment_ids.mapped('fulfilment_method'))
+            methods.discard(False)
+            order.fulfilment_method = methods.pop() if len(methods) == 1 else False
     
     shipment_count = fields.Integer(string='Number of Shipments', compute='_compute_shipment_details')
     delivered_shipment_count = fields.Integer(string="Number of Delivered Shipments")

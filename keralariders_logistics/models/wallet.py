@@ -44,6 +44,21 @@ class Wallet(models.Model):
         for wallet in self:
             wallet.name = f"{wallet.seller_id.name} - Wallet" if wallet.seller_id else ''
     seller_id = fields.Many2one('logistics.seller', string='Seller', required=True, ondelete="cascade")
+    fulfilment_method = fields.Selection(
+        [
+            ('own_network', 'KeralaXpress'),
+            ('indiapost', 'India Post'),
+        ],
+        string='Carrier',
+        compute='_compute_fulfilment_method',
+        store=True,
+        index=True,
+    )
+
+    @api.depends('seller_id', 'seller_id.fulfilment_method')
+    def _compute_fulfilment_method(self):
+        for wallet in self:
+            wallet.fulfilment_method = wallet.seller_id.sudo().fulfilment_method or False
     transaction_ids = fields.One2many('logistics.wallet.transaction', 'wallet_id', string='Transactions')
     balance = fields.Monetary(string='Balance', compute="_compute_balance", currency_field='currency_id')
 
@@ -170,6 +185,21 @@ class WalletRechargeRequest(models.Model):
     
     request_date = fields.Datetime(string="Request Date", default=fields.Datetime.now)
     seller_id = fields.Many2one('logistics.seller', string="Seller", required=True)
+    fulfilment_method = fields.Selection(
+        [
+            ('own_network', 'KeralaXpress'),
+            ('indiapost', 'India Post'),
+        ],
+        string='Carrier',
+        compute='_compute_fulfilment_method',
+        store=True,
+        index=True,
+    )
+
+    @api.depends('seller_id', 'seller_id.fulfilment_method')
+    def _compute_fulfilment_method(self):
+        for request in self:
+            request.fulfilment_method = request.seller_id.sudo().fulfilment_method or False
     wallet_id = fields.Many2one('logistics.wallet', string="Wallet", required=True, domain="[('seller_id', '=', seller_id)]", compute="_compute_wallet_id", store=True, readonly=False)
     @api.depends('seller_id')
     def _compute_wallet_id(self):

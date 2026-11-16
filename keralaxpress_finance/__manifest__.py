@@ -1,6 +1,6 @@
 {
     'name': 'KeralaXpress Reports & Accounts',
-    'version': '19.0.1.0.0',
+    'version': '19.0.1.1.0',
     'category': 'Operations/Logistics',
     'summary': 'Order and COD reports, seller ledger, monthly seller invoices '
                'and company expenses for KeralaXpress',

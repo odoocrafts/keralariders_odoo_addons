@@ -88,6 +88,9 @@
         <field name="model">logistics.wallet.recharge.request</field>
         <field name="arch" type="xml">
             <search string="Search Recharge Requests">
+                <searchpanel>
+                    <field name="fulfilment_method" string="Carrier" enable_counters="1" icon="fa-truck"/>
+                </searchpanel>
 
                 <!-- Global Search -->
                 <field name="name"
@@ -105,6 +108,13 @@
                 <field name="wallet_id"/>
                 <field name="approved_by"/>
                 <field name="request_date"/>
+
+                <separator/>
+
+                <filter name="carrier_kx" string="KeralaXpress"
+                        domain="[('fulfilment_method', '=', 'own_network')]"/>
+                <filter name="carrier_ip" string="India Post"
+                        domain="[('fulfilment_method', '=', 'indiapost')]"/>
 
                 <separator/>
 
