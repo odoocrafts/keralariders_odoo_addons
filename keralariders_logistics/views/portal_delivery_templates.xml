@@ -207,6 +207,19 @@
                 </div>
             </t>
             <t t-call="keralariders_logistics.portal_qr_scanner_modal"/>
+            <ul class="nav nav-pills mb-3">
+                <li class="nav-item">
+                    <a t-attf-class="nav-link #{'active' if task != 'delivery' else ''}"
+                       href="/my/deliveries?task=pickup">Pickup</a>
+                </li>
+                <li class="nav-item">
+                    <a t-attf-class="nav-link #{'active' if task == 'delivery' else ''}"
+                       href="/my/deliveries?task=delivery">Delivery</a>
+                </li>
+            </ul>
+            <div t-if="task != 'delivery'" class="mb-3">
+                <a href="/my/delivery/pickup-scan" class="btn btn-success btn-sm">Scan pickup</a>
+            </div>
             
             <t t-if="error">
                 <div class="alert alert-danger" role="alert"><t t-esc="error"/></div>
@@ -216,7 +229,10 @@
             </t>
             
             <t t-if="not shipments">
-                <p class="alert alert-info">You don't have any pending deliveries assigned.</p>
+                <p class="alert alert-info">
+                    <t t-if="task == 'delivery'">You don't have any deliveries assigned.</t>
+                    <t t-else="">You don't have any pickups assigned.</t>
+                </p>
             </t>
             <t t-if="shipments" t-call="portal.portal_table">
                 <thead>
@@ -281,6 +297,76 @@
                     </t>
                 </tbody>
             </t>
+        </t>
+    </template>
+
+    <template id="portal_my_pickup_scan" name="Pickup Scan Sheet">
+        <t t-call="portal.portal_layout">
+            <div class="container py-3" style="max-width: 720px;">
+                <a href="/my/deliveries?task=pickup" class="btn btn-link ps-0 mb-2"><i class="fa fa-arrow-left"/> Back to pickups</a>
+                <h3 class="mb-1">Scan pickup</h3>
+                <p class="text-muted small">Each AWB is checked and listed. Nothing is marked picked, and no COD or delivery charge moves, until you confirm the count.</p>
+                <t t-if="error">
+                    <div class="alert alert-danger"><t t-esc="error"/></div>
+                </t>
+                <t t-if="success">
+                    <div class="alert alert-success"><t t-esc="success"/></div>
+                </t>
+                <form action="/my/delivery/pickup-scan" method="post" class="card shadow-sm p-3 mb-3">
+                    <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                    <input type="hidden" name="action" value="add"/>
+                    <label class="form-label">AWB</label>
+                    <div class="input-group">
+                        <input type="text" name="awb" id="kx_pickup_scan_awb" class="form-control" placeholder="Scan or enter AWB" required="1" autofocus="1"/>
+                        <button type="button" class="btn btn-primary btn-scan-qr" data-scan-target="#kx_pickup_scan_awb" data-scan-auto-submit="1" title="Scan AWB">
+                            <i class="fa fa-camera"/>
+                        </button>
+                        <button type="submit" class="btn btn-outline-primary">Add</button>
+                    </div>
+                </form>
+                <t t-call="keralariders_logistics.portal_qr_scanner_modal"/>
+                <t t-if="not shipments">
+                    <p class="alert alert-info">No AWBs on this sheet yet.</p>
+                </t>
+                <t t-else="">
+                    <ul class="list-group mb-3">
+                        <t t-foreach="shipments" t-as="shipment">
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                <span>
+                                    <strong><t t-esc="shipment.name"/></strong>
+                                    <span class="text-muted"> — <t t-esc="shipment.shipping_from_name or shipment.seller_id.name or ''"/></span>
+                                </span>
+                                <form action="/my/delivery/pickup-scan" method="post" class="mb-0">
+                                    <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                                    <input type="hidden" name="action" value="remove"/>
+                                    <input type="hidden" name="shipment_id" t-att-value="shipment.id"/>
+                                    <button type="submit" class="btn btn-sm btn-outline-secondary">Remove</button>
+                                </form>
+                            </li>
+                        </t>
+                    </ul>
+                    <form action="/my/delivery/pickup-scan" method="post" class="card shadow-sm p-3">
+                        <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                        <input type="hidden" name="action" value="confirm"/>
+                        <input type="hidden" name="expected_count" t-att-value="len(shipments)"/>
+                        <p class="mb-2">Confirm pickup of <strong><t t-esc="len(shipments)"/></strong> shipments.</p>
+                        <div class="mb-3">
+                            <label class="form-label small mb-1">Remark</label>
+                            <input type="text" name="remark" class="form-control form-control-sm" placeholder="Optional remark"/>
+                        </div>
+                        <button type="submit" class="btn btn-success"
+                                t-att-data-count="len(shipments)"
+                                onclick="return confirm('Pick up ' + this.getAttribute('data-count') + ' shipments?');">
+                            Pick up <t t-esc="len(shipments)"/> shipments
+                        </button>
+                    </form>
+                    <form action="/my/delivery/pickup-scan" method="post" class="mt-2">
+                        <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                        <input type="hidden" name="action" value="clear"/>
+                        <button type="submit" class="btn btn-link btn-sm ps-0">Clear sheet</button>
+                    </form>
+                </t>
+            </div>
         </t>
     </template>
 

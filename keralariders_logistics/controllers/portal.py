@@ -13,6 +13,9 @@ from odoo.addons.keralariders_logistics.models import indiapost_common as ipc
 from odoo.addons.keralariders_logistics.models.indiapost_client import (
     IndiapostApiError,
 )
+from odoo.addons.keralariders_logistics.models.seller import (
+    COD_LEDGER_TRANSFER_TYPES,
+)
 from odoo.addons.keralariders_logistics.models.whatsapp_order_paste import (
     WHATSAPP_ORDER_LIMIT,
     WHATSAPP_ORDER_TEMPLATE,
@@ -24,6 +27,8 @@ _logger = logging.getLogger(__name__)
 # Seller-facing labels for /my/cod_settlements (backend transfer_type keys unchanged).
 _COD_SETTLEMENT_SELLER_TYPE_LABELS = {
     'cod_payment': _('COD collected from customer'),
+    'cod_pickup': _('COD credited on pickup'),
+    'cod_return': _('COD reversed on return'),
     'cod_clearance': _('Settlement to your account'),
     'cod_withdrawal': _('Payout to your bank'),
     'other': _('Transfer to your bank'),
@@ -63,7 +68,7 @@ class LogisticsPortal(CustomerPortal):
         """Soft badge classes: payments vs payouts (draft stays warning)."""
         if state == 'draft':
             return 'bg-warning text-dark'
-        if transfer_type == 'cod_payment':
+        if transfer_type in ('cod_payment', 'cod_pickup'):
             return 'bg-info text-dark'
         return 'bg-secondary'
 
@@ -339,10 +344,18 @@ class LogisticsPortal(CustomerPortal):
             'hide_indiapost_pickup_date': False,
             'error': request.session.pop('error', None),
             'whatsapp_order_template': WHATSAPP_ORDER_TEMPLATE,
+            'sale_points': self._portal_sale_points(seller),
             **self._shipment_form_indiapost_values(seller),
         }
         values.update(extra)
         return values
+
+    def _portal_sale_points(self, seller):
+        if not seller:
+            return request.env['logistics.seller.location'].browse()
+        return request.env['logistics.seller.location'].sudo().search([
+            ('seller_id', '=', seller.id),
+        ], order='name, id')
 
     @staticmethod
     def _portal_default_state(states):
@@ -464,7 +477,9 @@ class LogisticsPortal(CustomerPortal):
         if total_weight <= 0:
             raise UserError("Weight must be greater than 0.")
 
-        shipping_from_vals = request.env['logistics.shipment'].sudo()._shipping_from_vals_for_seller(seller)
+        Shipment = request.env['logistics.shipment'].sudo()
+        sale_point = Shipment._sale_point_from_name(seller, post.get('sale_point'))
+        shipping_from_vals = Shipment._shipping_from_vals_for_seller(seller, sale_point)
         if not shipping_from_vals.get('shipping_from_zip'):
             raise UserError(_("Update seller pickup pincode before creating shipments."))
 
@@ -705,6 +720,7 @@ class LogisticsPortal(CustomerPortal):
             'Length (cm)*' if uses_indiapost else 'Length (cm)',
             'Breadth (cm)*' if uses_indiapost else 'Breadth (cm)',
             'Height (cm)*' if uses_indiapost else 'Height (cm)',
+            'Sale point',
         ]
         writer.writerow(headers + dimension_headers)
 
@@ -740,7 +756,13 @@ class LogisticsPortal(CustomerPortal):
             return request.redirect('/my')
             
         Order = request.env['logistics.order']
-        domain = [('seller_id', '=', seller.id)]
+        carrier = kw.get('carrier') or 'own_network'
+        if carrier not in ('own_network', 'indiapost'):
+            carrier = 'own_network'
+        domain = [
+            ('seller_id', '=', seller.id),
+            ('shipment_ids.fulfilment_method', '=', carrier),
+        ]
         
         searchbar_sortings = {
             'date': {'label': _('Newest'), 'order': 'create_date desc, id desc'},
@@ -753,7 +775,10 @@ class LogisticsPortal(CustomerPortal):
         order_count = Order.search_count(domain)
         pager = portal_pager(
             url="/my/orders",
-            url_args={'date_begin': date_begin, 'date_end': date_end, 'sortby': sortby},
+            url_args={
+                'date_begin': date_begin, 'date_end': date_end,
+                'sortby': sortby, 'carrier': carrier,
+            },
             total=order_count,
             page=page,
             step=self._items_per_page
@@ -768,6 +793,7 @@ class LogisticsPortal(CustomerPortal):
             'default_url': '/my/orders',
             'searchbar_sortings': searchbar_sortings,
             'sortby': sortby,
+            'carrier': carrier,
             'error': request.session.pop('error', None),
             'success': request.session.pop('success', None),
         }
@@ -902,6 +928,7 @@ class LogisticsPortal(CustomerPortal):
             'whatsapp_create_token': self._issue_oneshot_token(
                 self._WHATSAPP_CREATE_TOKEN_KEY,
             ),
+            'sale_points': self._portal_sale_points(seller),
             **self._shipment_form_indiapost_values(seller),
         }
         return request.render("keralariders_logistics.portal_my_order_new", values)
@@ -1166,6 +1193,18 @@ class LogisticsPortal(CustomerPortal):
                             f"Row {row_num}: {exc.args[0] if exc.args else exc}")
                     continue
 
+                try:
+                    sale_point = Shipment._sale_point_from_name(
+                        seller, _csv_cell(row, 'Sale point', 'Sale Point', 'Salepoint'),
+                    )
+                    row_from = Shipment._shipping_from_vals_for_seller(seller, sale_point)
+                except UserError as exc:
+                    failed_count += 1
+                    if len(failure_reasons) < 5:
+                        failure_reasons.append(
+                            f"Row {row_num}: {exc.args[0] if exc.args else exc}")
+                    continue
+
                 shipment_vals = {
                     'order_id': order.id,
                     'seller_id': seller.id,
@@ -1181,8 +1220,8 @@ class LogisticsPortal(CustomerPortal):
                     'total_order_value': order_value,
                     'billing_same_as_shipping': True,
                     'state': 'order_added',
-                    # Seller origin (pickup) — mirrors single-shipment / compute from seller
-                    **shipping_from_vals,
+                    # Seller origin, or this row's sale point when the column names one.
+                    **row_from,
                     **package_vals,
                 }
 
@@ -1392,6 +1431,10 @@ class LogisticsPortal(CustomerPortal):
             shipment_post = self._portal_whatsapp_post(
                 block['post'], pickup_date, article_type,
             )
+            if not (shipment_post.get('sale_point') or '').strip():
+                chosen = (post.get('sale_point') or '').strip()
+                if chosen:
+                    shipment_post['sale_point'] = chosen
             try:
                 with request.env.cr.savepoint():
                     order = request.env['logistics.order'].sudo().create({
@@ -2038,9 +2081,13 @@ class LogisticsPortal(CustomerPortal):
             return request.redirect('/my')
             
         Shipment = request.env['logistics.shipment'].sudo()
-        domain = delivery_executive._my_tasks_domain() + [
-                ('state', 'not in', ('delivered', 'cancelled', 'returned')),
-            ]
+        task = kw.get('task') or 'pickup'
+        if task not in ('pickup', 'delivery'):
+            task = 'pickup'
+        if task == 'delivery':
+            domain = delivery_executive._delivery_tasks_domain()
+        else:
+            domain = delivery_executive._pickup_tasks_domain()
             
         searchbar_sortings = {
             'date': {'label': _('Newest'), 'order': 'create_date desc, id desc'},
@@ -2053,7 +2100,10 @@ class LogisticsPortal(CustomerPortal):
         shipment_count = Shipment.search_count(domain)
         pager = portal_pager(
             url="/my/deliveries",
-            url_args={'date_begin': date_begin, 'date_end': date_end, 'sortby': sortby},
+            url_args={
+                'date_begin': date_begin, 'date_end': date_end,
+                'sortby': sortby, 'task': task,
+            },
             total=shipment_count,
             page=page,
             step=self._items_per_page
@@ -2068,11 +2118,120 @@ class LogisticsPortal(CustomerPortal):
             'default_url': '/my/deliveries',
             'searchbar_sortings': searchbar_sortings,
             'sortby': sortby,
+            'task': task,
             'delivery_executive': delivery_executive,
             'error': request.session.pop('error', None),
             'success': request.session.pop('success', None),
         }
         return request.render("keralariders_logistics.portal_my_deliveries", values)
+
+    def _pickup_scan_batch(self):
+        raw = request.session.get('kx_pickup_batch') or []
+        ids = []
+        for item in raw:
+            try:
+                ids.append(int(item))
+            except (TypeError, ValueError):
+                continue
+        return ids
+
+    def _set_pickup_scan_batch(self, ids):
+        request.session['kx_pickup_batch'] = [int(item) for item in ids]
+
+    @http.route(
+        ['/my/delivery/pickup-scan'],
+        type='http', auth="user", website=True, methods=['GET', 'POST'],
+    )
+    def portal_my_pickup_scan(self, **post):
+        """List scanned own-network AWBs, and pick them up only after a count confirm.
+
+        Adding an AWB checks it and shows it. ``action_mark_picked`` runs
+        only from the confirm step, because that is what moves COD and the
+        delivery-charge refund.
+        """
+        executive = request.env['logistics.delivery.executive'].sudo().search(
+            [('user_id', '=', request.env.user.id)], limit=1)
+        if not executive:
+            return request.redirect('/my')
+        Shipment = request.env['logistics.shipment'].sudo()
+        batch_ids = self._pickup_scan_batch()
+        action = (post.get('action') or '').strip()
+        if request.httprequest.method == 'POST' and action == 'clear':
+            self._set_pickup_scan_batch([])
+            return request.redirect('/my/delivery/pickup-scan')
+        if request.httprequest.method == 'POST' and action == 'remove':
+            try:
+                drop_id = int(post.get('shipment_id') or 0)
+            except (TypeError, ValueError):
+                drop_id = 0
+            self._set_pickup_scan_batch([
+                sid for sid in batch_ids if sid != drop_id
+            ])
+            return request.redirect('/my/delivery/pickup-scan')
+        if request.httprequest.method == 'POST' and action == 'add':
+            code = (post.get('awb') or '').strip()
+            shipment = Shipment.search([('name', '=', code)], limit=1) if code else Shipment.browse()
+            if not shipment:
+                request.session['error'] = _("No shipment found for '%s'.") % (code or '')
+            else:
+                reason = shipment._kx_validate_pickup_scan(executive)
+                if reason:
+                    request.session['error'] = reason
+                elif shipment.id in batch_ids:
+                    request.session['success'] = _("%s is already on this sheet.") % shipment.name
+                else:
+                    batch_ids.append(shipment.id)
+                    self._set_pickup_scan_batch(batch_ids)
+                    request.session['success'] = _("%s added. Nothing is picked up yet.") % shipment.name
+            return request.redirect('/my/delivery/pickup-scan')
+        if request.httprequest.method == 'POST' and action == 'confirm':
+            shipments = Shipment.browse(batch_ids).exists()
+            problems = []
+            ready = Shipment.browse()
+            for shipment in shipments:
+                reason = shipment._kx_validate_pickup_scan(executive)
+                if reason:
+                    problems.append(reason)
+                else:
+                    ready |= shipment
+            try:
+                expected = int(post.get('expected_count') or 0)
+            except (TypeError, ValueError):
+                expected = -1
+            if problems:
+                request.session['error'] = " ".join(problems)
+            elif not ready:
+                request.session['error'] = _("Scan at least one AWB before confirming.")
+            elif len(ready) != expected:
+                request.session['error'] = _(
+                    "The sheet has %(count)s shipments, not %(expected)s. Check the list and confirm again."
+                ) % {'count': len(ready), 'expected': expected}
+            else:
+                note = (post.get('remark') or '').strip() or False
+                try:
+                    with request.env.cr.savepoint():
+                        ready.action_mark_picked(
+                            actor_de=executive, note=note,
+                        )
+                except UserError as error:
+                    request.session['error'] = str(error)
+                else:
+                    self._set_pickup_scan_batch([])
+                    request.session['success'] = _(
+                        "Picked up %s shipments."
+                    ) % len(ready)
+            return request.redirect('/my/delivery/pickup-scan')
+        shipments = Shipment.browse(batch_ids).exists()
+        # Keep the sheet in the order they were scanned.
+        ordered = Shipment.browse([sid for sid in batch_ids if sid in shipments.ids])
+        values = {
+            'page_name': 'deliveries',
+            'delivery_executive': executive,
+            'shipments': ordered,
+            'error': request.session.pop('error', None),
+            'success': request.session.pop('success', None),
+        }
+        return request.render("keralariders_logistics.portal_my_pickup_scan", values)
 
     @http.route(['/my/delivery/<int:shipment_id>'], type='http', auth="user", website=True)
     def portal_my_delivery_detail(self, shipment_id=None, **kw):
@@ -2522,6 +2681,21 @@ class LogisticsPortal(CustomerPortal):
         }
         return request.render("keralariders_logistics.portal_my_hub_home", values)
 
+    @http.route(['/my/hub/riders'], type='http', auth="user", website=True)
+    def portal_my_hub_riders(self, **kw):
+        """Own-network riders for this hub: open custody and COD cash held."""
+        hubs = self._get_managed_hubs()
+        if not hubs:
+            return request.redirect('/my')
+        values = {
+            'page_name': 'hub_riders',
+            'hubs': hubs,
+            'rider_rows': hubs._kx_network_rider_rows(),
+            'error': request.session.pop('error', None),
+            'success': request.session.pop('success', None),
+        }
+        return request.render("keralariders_logistics.portal_my_hub_riders", values)
+
     @http.route(['/my/hub/cod', '/my/hub/cod/'], type='http', auth="user", website=True, methods=['GET', 'POST'])
     def portal_my_hub_cod(self, **post):
         """Hub manager: review DE deposits and bank cash to company."""
@@ -2717,10 +2891,20 @@ class LogisticsPortal(CustomerPortal):
         if not hubs:
             return request.redirect('/my')
         Shipment = request.env['logistics.shipment'].sudo()
-        domain = self._hub_pending_pickup_domain(hubs)
+        Executive = request.env['logistics.delivery.executive'].sudo()
+        base_domain = self._hub_pending_pickup_domain(hubs)
+        seller_id = 0
+        try:
+            seller_id = int(kw.get('seller_id') or 0)
+        except (TypeError, ValueError):
+            seller_id = 0
+        domain = list(base_domain)
+        if seller_id:
+            domain.append(('seller_id', '=', seller_id))
         shipment_count = Shipment.search_count(domain)
         pager = portal_pager(
             url="/my/hub/pickups",
+            url_args={'seller_id': seller_id or None},
             total=shipment_count,
             page=page,
             step=self._items_per_page,
@@ -2739,14 +2923,26 @@ class LogisticsPortal(CustomerPortal):
             try:
                 eligible = shipment._get_eligible_pickup_executives()
             except (UserError, ValueError):
-                # Fall back to all active pickup-capable DEs rather than 500 the page
-                eligible = request.env['logistics.delivery.executive'].sudo().search(
+                eligible = Executive.search(
                     [('active', '=', True)]
                 ).filtered(lambda d: shipment._de_eligible_for_operation(d, 'pickup'))
-            # Always include current assignee so re-assign UI can show them
             if shipment.pickup_executive_id and shipment.pickup_executive_id not in eligible:
                 eligible = shipment.pickup_executive_id | eligible
             shipment_executives[shipment.id] = eligible
+        pickup_sellers = Shipment.search(base_domain).mapped('seller_id').sorted(
+            key=lambda seller: (seller.name or '').lower())
+        assigned = Shipment.search(domain + [
+            ('fulfilment_method', '!=', 'indiapost'),
+            ('pickup_executive_id', '!=', False),
+        ])
+        seller_marks = []
+        for seller in assigned.mapped('seller_id').sorted(key=lambda rec: (rec.name or '').lower()):
+            seller_marks.append({
+                'seller': seller,
+                'count': len(assigned.filtered(lambda shipment, seller=seller: shipment.seller_id == seller)),
+            })
+        bulk_executives = Executive.search([('active', '=', True)]).filtered(
+            lambda executive: Shipment._de_eligible_for_operation(executive, 'pickup'))
         values = {
             'page_name': 'hub_pickups',
             'hubs': hubs,
@@ -2755,10 +2951,23 @@ class LogisticsPortal(CustomerPortal):
             'unassigned_count': unassigned_count,
             'pager': pager,
             'default_url': '/my/hub/pickups',
+            'seller_id': seller_id,
+            'pickup_sellers': pickup_sellers,
+            'seller_marks': seller_marks,
+            'bulk_executives': bulk_executives,
             'error': request.session.pop('error', None),
             'success': request.session.pop('success', None),
         }
         return request.render("keralariders_logistics.portal_my_hub_pickups", values)
+
+    def _hub_pickups_redirect(self, seller_id=None):
+        try:
+            seller_id = int(seller_id or 0)
+        except (TypeError, ValueError):
+            seller_id = 0
+        if seller_id:
+            return request.redirect('/my/hub/pickups?seller_id=%s' % seller_id)
+        return request.redirect('/my/hub/pickups')
 
     @http.route(['/my/hub/pickups/assign/<int:shipment_id>'], type='http', auth="user", website=True, methods=['POST'])
     def portal_my_hub_assign_pickup(self, shipment_id=None, **post):
@@ -2796,7 +3005,111 @@ class LogisticsPortal(CustomerPortal):
             request.session['success'] = f"Assigned pickup of {shipment.name} to {de.name}."
         except UserError as e:
             request.session['error'] = str(e)
-        return request.redirect('/my/hub/pickups')
+        return self._hub_pickups_redirect(post.get('seller_id'))
+
+    @http.route(
+        ['/my/hub/pickups/assign_bulk'],
+        type='http', auth="user", website=True, methods=['POST'],
+    )
+    def portal_my_hub_pickups_assign_bulk(self, **post):
+        """Assign one pickup agent to the selected own-network rows, or a seller's queue."""
+        hubs = self._get_managed_hubs()
+        if not hubs:
+            return request.redirect('/my')
+        Shipment = request.env['logistics.shipment'].sudo()
+        try:
+            de_id = int(post.get('delivery_executive_id') or 0)
+        except (TypeError, ValueError):
+            de_id = 0
+        executive = request.env['logistics.delivery.executive'].sudo().browse(de_id)
+        if not executive.exists():
+            request.session['error'] = _("Please select a pickup agent.")
+            return self._hub_pickups_redirect(post.get('seller_id'))
+        scope = post.get('scope') or 'selected'
+        if scope == 'seller':
+            try:
+                seller_id = int(post.get('seller_id') or 0)
+            except (TypeError, ValueError):
+                seller_id = 0
+            if not seller_id:
+                request.session['error'] = _("Filter by a seller before assigning that seller's pickups.")
+                return self._hub_pickups_redirect()
+            shipments = Shipment.search(self._hub_pending_pickup_domain(hubs) + [
+                ('seller_id', '=', seller_id),
+                ('fulfilment_method', '!=', 'indiapost'),
+            ])
+        else:
+            raw_ids = request.httprequest.form.getlist('shipment_ids')
+            ids = []
+            for raw in raw_ids:
+                try:
+                    ids.append(int(raw))
+                except (TypeError, ValueError):
+                    continue
+            shipments = Shipment.browse(ids).exists().filtered(
+                lambda shipment: (
+                    shipment.source_hub_id in hubs
+                    and shipment.fulfilment_method != 'indiapost'
+                    and shipment.state in ('pickup_requested', 'order_added')
+                    and shipment._needs_keralaxpress_pickup()
+                )
+            )
+        if not shipments:
+            request.session['error'] = _("No KeralaXpress pickups were selected.")
+            return self._hub_pickups_redirect(post.get('seller_id'))
+        try:
+            with request.env.cr.savepoint():
+                for shipment in shipments:
+                    shipment.action_assign_pickup_executive(executive)
+        except UserError as error:
+            request.session['error'] = str(error)
+        else:
+            request.session['success'] = _(
+                "Assigned %(count)s pickups to %(name)s."
+            ) % {'count': len(shipments), 'name': executive.name}
+        return self._hub_pickups_redirect(post.get('seller_id'))
+
+    @http.route(
+        ['/my/hub/pickups/mark_picked'],
+        type='http', auth="user", website=True, methods=['POST'],
+    )
+    def portal_my_hub_pickups_mark_picked(self, **post):
+        """Mark one seller's already-assigned own-network pickups, after the count is confirmed."""
+        hubs = self._get_managed_hubs()
+        if not hubs:
+            return request.redirect('/my')
+        try:
+            seller_id = int(post.get('seller_id') or 0)
+            expected = int(post.get('expected_count') or 0)
+        except (TypeError, ValueError):
+            request.session['error'] = _("Choose a seller and confirm the count.")
+            return self._hub_pickups_redirect()
+        remark = (post.get('remark') or '').strip()
+        if not remark:
+            request.session['error'] = _("A remark is required before marking these picked.")
+            return self._hub_pickups_redirect(seller_id)
+        shipments = request.env['logistics.shipment'].sudo().search(
+            self._hub_pending_pickup_domain(hubs) + [
+                ('seller_id', '=', seller_id),
+                ('fulfilment_method', '!=', 'indiapost'),
+                ('pickup_executive_id', '!=', False),
+            ]
+        )
+        if not shipments or len(shipments) != expected:
+            request.session['error'] = _(
+                "This seller has %(count)s assigned pickups, not %(expected)s. Refresh and confirm again."
+            ) % {'count': len(shipments), 'expected': expected}
+            return self._hub_pickups_redirect(seller_id)
+        try:
+            with request.env.cr.savepoint():
+                shipments.action_mark_picked(note=remark)
+        except UserError as error:
+            request.session['error'] = str(error)
+        else:
+            request.session['success'] = _(
+                "Marked %s shipments picked."
+            ) % len(shipments)
+        return self._hub_pickups_redirect(seller_id)
 
     @http.route(
         ['/my/hub/shipments', '/my/hub/shipments/page/<int:page>'],
@@ -2811,8 +3124,18 @@ class LogisticsPortal(CustomerPortal):
         domain = self._hub_all_shipments_domain(hubs)
         sees_all = self._hub_manager_sees_all_shipments(hubs)
 
+        carrier = (kw.get('carrier') or 'own_network').strip()
+        if carrier not in ('own_network', 'indiapost'):
+            carrier = 'own_network'
+        domain = domain + [('fulfilment_method', '=', carrier)]
+
         filter_status = (filter_status or '').strip() or None
         search = (search or '').strip() or None
+        district_id = 0
+        try:
+            district_id = int(kw.get('district_id') or 0)
+        except (TypeError, ValueError):
+            district_id = 0
         if filter_status:
             valid_states = {s[0] for s in Shipment._fields['state'].selection}
             if filter_status in valid_states:
@@ -2821,6 +3144,11 @@ class LogisticsPortal(CustomerPortal):
                 filter_status = None
         if search:
             domain = domain + [('name', 'ilike', search)]
+        district = request.env['logistics.district'].sudo().browse(district_id).exists()
+        if not district:
+            district_id = 0
+        else:
+            domain = domain + [('shipping_to_district_id', '=', district.id)]
 
         shipment_count = Shipment.search_count(domain)
         pager = portal_pager(
@@ -2828,6 +3156,8 @@ class LogisticsPortal(CustomerPortal):
             url_args={
                 'filter_status': filter_status or None,
                 'search': search or None,
+                'carrier': carrier,
+                'district_id': district_id or None,
             },
             total=shipment_count,
             page=page,
@@ -2835,7 +3165,7 @@ class LogisticsPortal(CustomerPortal):
         )
         shipments = Shipment.search(
             domain,
-            order='create_date desc, id desc',
+            order='shipping_to_district_id, name, id',
             limit=self._items_per_page,
             offset=pager['offset'],
         )
@@ -2847,10 +3177,14 @@ class LogisticsPortal(CustomerPortal):
             'page_name': 'hub_shipments',
             'hubs': hubs,
             'shipments': shipments,
+            'district_groups': self._hub_district_groups(shipments),
             'shipment_count': shipment_count,
             'sees_all_shipments': sees_all,
             'filter_status': filter_status,
             'search': search or '',
+            'carrier': carrier,
+            'district_id': district_id,
+            'districts': request.env['logistics.district'].sudo().search([]),
             'status_options': status_options,
             'pager': pager,
             'default_url': '/my/hub/shipments',
@@ -2858,6 +3192,25 @@ class LogisticsPortal(CustomerPortal):
             'success': request.session.pop('success', None),
         }
         return request.render("keralariders_logistics.portal_my_hub_shipments", values)
+
+    def _hub_district_groups(self, shipments):
+        groups = []
+        current = None
+        started = False
+        bucket = request.env['logistics.shipment'].sudo().browse()
+        for shipment in shipments:
+            district = shipment.shipping_to_district_id
+            if not started or district != current:
+                if started:
+                    groups.append({'district': current, 'shipments': bucket})
+                current = district
+                bucket = shipment
+                started = True
+            else:
+                bucket |= shipment
+        if started:
+            groups.append({'district': current, 'shipments': bucket})
+        return groups
 
     @http.route(['/my/cod_settlements', '/my/cod_settlements/page/<int:page>'], type='http', auth="user", website=True)
     def portal_my_cod_settlements(self, page=1, **kw):
@@ -2871,7 +3224,7 @@ class LogisticsPortal(CustomerPortal):
         Transfer = request.env['logistics.account.transfer'].sudo()
         domain = [
             ('related_seller_id', '=', seller.id),
-            ('transfer_type', 'in', ['cod_payment', 'cod_clearance', 'cod_withdrawal', 'other']),
+            ('transfer_type', 'in', list(COD_LEDGER_TRANSFER_TYPES)),
             ('state', 'in', ['draft', 'posted']),
         ]
         
@@ -2891,8 +3244,6 @@ class LogisticsPortal(CustomerPortal):
         
         cod_balance = Transfer.get_seller_cod_pending_balance(seller)
         withdrawable = Transfer.get_seller_cod_withdrawable_balance(seller)
-        cycle_info = Transfer.get_cod_settlement_cycle_info(seller)
-        cycle_blocked = Transfer.seller_has_open_cod_withdrawal_this_cycle(seller)
         draft_withdrawals = Transfer.search([
             ('related_seller_id', '=', seller.id),
             ('transfer_type', '=', 'cod_withdrawal'),
@@ -2917,7 +3268,8 @@ class LogisticsPortal(CustomerPortal):
 
         currency = seller.currency_id or request.env.company.currency_id
         withdrawal_preview = Transfer.get_cod_withdrawal_breakdown(
-            withdrawable, currency=currency)
+            withdrawable, currency=currency, seller=seller)
+        cycle_info, cycle_blocked = Transfer.portal_cod_cycle_display(seller)
 
         has_bank_details = seller.has_cod_bank_details()
         
@@ -3124,4 +3476,86 @@ class LogisticsPortal(CustomerPortal):
         else:
             request.session['error'] = _('No active API key found.')
         return request.redirect('/my/api')
+
+    @http.route(['/my/sale-points'], type='http', auth='user', website=True)
+    def portal_my_sale_points(self, **kw):
+        seller = self._portal_seller()
+        if not seller:
+            return request.redirect('/my')
+        values = self._prepare_portal_layout_values()
+        values.update({
+            'page_name': 'sale_points',
+            'seller': seller,
+            'sale_points': self._portal_sale_points(seller),
+            'error': request.session.pop('error', None),
+            'success': request.session.pop('success', None),
+        })
+        return request.render('keralariders_logistics.portal_my_sale_points', values)
+
+    @http.route(['/my/sale-points/save'], type='http', auth='user', website=True, methods=['POST'])
+    def portal_my_sale_points_save(self, **post):
+        seller = self._portal_seller()
+        if not seller:
+            return request.redirect('/my')
+        name = (post.get('name') or '').strip()
+        zipcode = (post.get('zip') or '').strip()
+        if not name or not zipcode:
+            request.session['error'] = _('A sale point needs a name and a 6-digit pincode.')
+            return request.redirect('/my/sale-points')
+        vals = {
+            'seller_id': seller.id,
+            'name': name,
+            'street': (post.get('street') or '').strip(),
+            'street2': (post.get('street2') or '').strip(),
+            'zip': zipcode,
+            'phone': (post.get('phone') or '').strip(),
+        }
+        Location = request.env['logistics.seller.location'].sudo()
+        try:
+            location_id = int(post.get('location_id') or 0)
+        except (TypeError, ValueError):
+            location_id = 0
+        try:
+            if location_id:
+                location = Location.search([
+                    ('id', '=', location_id),
+                    ('seller_id', '=', seller.id),
+                ], limit=1)
+                if not location:
+                    request.session['error'] = _('That sale point was not found.')
+                    return request.redirect('/my/sale-points')
+                location.write(vals)
+                request.session['success'] = _('Sale point updated.')
+            else:
+                Location.create(vals)
+                request.session['success'] = _('Sale point added.')
+        except (UserError, ValidationError) as exc:
+            request.session['error'] = str(exc.args[0] if exc.args else exc)
+        return request.redirect('/my/sale-points')
+
+    @http.route(['/my/sale-points/delete'], type='http', auth='user', website=True, methods=['POST'])
+    def portal_my_sale_points_delete(self, **post):
+        seller = self._portal_seller()
+        if not seller:
+            return request.redirect('/my')
+        try:
+            location_id = int(post.get('location_id') or 0)
+        except (TypeError, ValueError):
+            location_id = 0
+        location = request.env['logistics.seller.location'].sudo().search([
+            ('id', '=', location_id),
+            ('seller_id', '=', seller.id),
+        ], limit=1)
+        if not location:
+            request.session['error'] = _('That sale point was not found.')
+            return request.redirect('/my/sale-points')
+        try:
+            location.unlink()
+            request.session['success'] = _('Sale point removed.')
+        except Exception:
+            request.env.cr.rollback()
+            request.session['error'] = _(
+                'This sale point is already used on a shipment, so it cannot be removed.'
+            )
+        return request.redirect('/my/sale-points')
 

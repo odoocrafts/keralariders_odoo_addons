@@ -24,11 +24,12 @@
                         <table style="width: 100%; border-collapse: collapse; border: 2px solid black; border-bottom: 0px;">
                             <!-- HEADER -->
                             <tr>
-                                <td class="text-center awb-header-kx" colspan="1" style="border: 2px solid black; padding: 5px 10px; text-align: left; vertical-align: middle;">
-                                    <img t-if="company.logo" t-att-src="image_data_uri(company.logo)" style="max-width: 200px;" alt="KeralaXpress"/>
+                                <td class="text-center awb-header-seller" colspan="1" style="border: 2px solid black; padding: 5px 10px; text-align: left; vertical-align: middle;">
+                                    <img t-if="o.seller_id.image_1920" t-att-src="image_data_uri(o.seller_id.image_1920)" style="max-width: 200px; max-height: 70px;" alt="Seller"/>
+                                    <strong t-else="" t-field="o.shipping_from_name" class="text-uppercase"/>
                                 </td>
-                                <td class="text-center" colspan="1" style="border: 2px solid black; padding: 5px 10px; text-align: left; vertical-align: middle;">
-                                    <img t-if="company.logo" t-att-src="image_data_uri(company.logo)" style="max-width: 200px;" alt="Logo" />
+                                <td class="text-center awb-header-kx" colspan="1" style="border: 2px solid black; padding: 5px 10px; text-align: right; vertical-align: middle;">
+                                    <img t-if="company.logo" t-att-src="image_data_uri(company.logo)" style="max-width: 200px;" alt="KeralaXpress"/>
                                 </td>
                             </tr>
                         </table>
@@ -107,12 +108,6 @@
                                 </td>
                                 <td style="width: 30%; border: 2px solid black; border-top: none; text-align: right; padding: 7px; vertical-align: middle; font-size: 14px; font-weight: bold;">
                                     <span class="kx-awb-money" t-out="o._awb_format_money(o.total_order_value)"/>
-                                </td>
-                            </tr>
-
-                            <tr t-if="o._awb_indiapost_customer_id()">
-                                <td colspan="2" class="awb-customer-id" style="border: 2px solid black; padding: 7px 15px; font-size: 14px; font-weight: 700;">
-                                    CUSTOMER ID: <span t-esc="o._awb_indiapost_customer_id()"/>
                                 </td>
                             </tr>
 

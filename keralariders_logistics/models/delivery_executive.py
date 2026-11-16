@@ -122,6 +122,47 @@ class DeliveryExecutive(models.Model):
             ('estimated_route_ids.assigned_de_id', '=', self.id),
         ]
 
+    def _pickup_tasks_domain(self):
+        """Pickups this rider still has to collect, until a hub has the parcel.
+
+        Custody events are unchanged. Once ``custodian_type`` is the hub,
+        the pickup drops off this list even if ``pickup_executive_id`` is
+        still set. India Post uses the same split.
+        """
+        self.ensure_one()
+        return [
+            ('state', 'in', (
+                'order_added', 'pickup_requested', 'picked',
+                'return_requested', 'return_picked',
+            )),
+            ('custodian_type', '!=', 'hub'),
+            '|',
+            ('pickup_executive_id', '=', self.id),
+            '&',
+            ('active_leg_id.operation_type', '=', 'pickup'),
+            ('active_leg_id.assigned_de_id', '=', self.id),
+        ]
+
+    def _delivery_tasks_domain(self):
+        """Last-mile work and hub-to-hub legs assigned to this rider.
+
+        Parcels still on a pickup (including ``picked`` while the rider is
+        carrying them to the hub) stay on the pickup list.
+        """
+        self.ensure_one()
+        return [
+            ('state', 'not in', (
+                'delivered', 'cancelled', 'returned',
+                'order_added', 'pickup_requested', 'picked', 'return_picked',
+            )),
+            '|', '|',
+            ('custodian_de_id', '=', self.id),
+            ('delivery_executive_id', '=', self.id),
+            '&',
+            ('active_leg_id.operation_type', 'in', ('delivery', 'hub_transfer')),
+            ('active_leg_id.assigned_de_id', '=', self.id),
+        ]
+
     def is_eligible_for_operation(self, operation_type):
         """Role check shared with shipment assignment."""
         self.ensure_one()

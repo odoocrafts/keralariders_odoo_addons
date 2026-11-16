@@ -84,6 +84,15 @@
                     <div class="col-md-4">
                         <div class="card shadow-sm h-100">
                             <div class="card-body">
+                                <h5 class="card-title">Riders</h5>
+                                <p class="text-muted">KeralaXpress custody and COD cash held</p>
+                                <a href="/my/hub/riders" class="btn btn-outline-primary btn-sm">View riders</a>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card shadow-sm h-100">
+                            <div class="card-body">
                                 <h5 class="card-title">Receive scan</h5>
                                 <p class="text-muted">Scan or enter AWB to take hub custody</p>
                                 <a href="/my/hub/receive" class="btn btn-success btn-sm">Receive package</a>
@@ -382,6 +391,74 @@
                 <t t-if="success">
                     <div class="alert alert-success"><t t-esc="success"/></div>
                 </t>
+                <form action="/my/hub/pickups" method="get" class="row g-2 align-items-end mb-3">
+                    <div class="col-md-6">
+                        <label class="form-label small mb-1">Seller</label>
+                        <select name="seller_id" class="form-select form-select-sm">
+                            <option value="">All sellers</option>
+                            <t t-foreach="pickup_sellers" t-as="seller">
+                                <option t-att-value="seller.id" t-att-selected="seller_id == seller.id">
+                                    <t t-esc="seller.name"/>
+                                </option>
+                            </t>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <button type="submit" class="btn btn-primary btn-sm me-1">Filter</button>
+                        <a href="/my/hub/pickups" class="btn btn-outline-secondary btn-sm">Clear</a>
+                    </div>
+                </form>
+                <t t-if="shipments">
+                    <form id="kx_bulk_assign" action="/my/hub/pickups/assign_bulk" method="post" class="card shadow-sm p-3 mb-3">
+                        <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                        <input type="hidden" name="seller_id" t-att-value="seller_id or ''"/>
+                        <div class="row g-2 align-items-end">
+                            <div class="col-md-5">
+                                <label class="form-label small mb-1">Pickup agent</label>
+                                <select name="delivery_executive_id" class="form-select form-select-sm" required="1">
+                                    <option value="">Select agent</option>
+                                    <t t-foreach="bulk_executives" t-as="de">
+                                        <option t-att-value="de.id"><t t-esc="de.name"/></option>
+                                    </t>
+                                </select>
+                            </div>
+                            <div class="col-md-7 d-flex flex-wrap gap-2">
+                                <button type="submit" name="scope" value="selected" class="btn btn-primary btn-sm">Assign selected</button>
+                                <button t-if="seller_id" type="submit" name="scope" value="seller" class="btn btn-outline-primary btn-sm">
+                                    Assign every awaiting pickup for this seller
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                </t>
+                <t t-if="seller_marks">
+                    <div class="card shadow-sm p-3 mb-3">
+                        <h6 class="mb-2">Mark picked, seller by seller</h6>
+                        <p class="small text-muted">Only KeralaXpress pickups that already have an agent. Confirm the count before anything is marked picked.</p>
+                        <t t-foreach="seller_marks" t-as="mark">
+                            <form action="/my/hub/pickups/mark_picked" method="post" class="row g-2 align-items-end border-top pt-2 mt-2">
+                                <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                                <input type="hidden" name="seller_id" t-att-value="mark['seller'].id"/>
+                                <input type="hidden" name="expected_count" t-att-value="mark['count']"/>
+                                <div class="col-md-4">
+                                    <strong><t t-esc="mark['seller'].name"/></strong>
+                                    <div class="small text-muted"><t t-esc="mark['count']"/> assigned</div>
+                                </div>
+                                <div class="col-md-5">
+                                    <label class="form-label small mb-1">Remark</label>
+                                    <input type="text" name="remark" class="form-control form-control-sm" required="1" placeholder="Pickup remark"/>
+                                </div>
+                                <div class="col-md-3">
+                                    <button type="submit" class="btn btn-success btn-sm"
+                                            t-att-data-count="mark['count']"
+                                            onclick="return confirm('Mark ' + this.getAttribute('data-count') + ' shipments picked for this seller?');">
+                                        Mark <t t-esc="mark['count']"/> picked
+                                    </button>
+                                </div>
+                            </form>
+                        </t>
+                    </div>
+                </t>
                 <t t-if="not shipments">
                     <p class="alert alert-info">No shipments awaiting pickup for your hubs.</p>
                 </t>
@@ -390,6 +467,9 @@
                         <table class="table table-hover align-middle">
                             <thead>
                                 <tr>
+                                    <th>
+                                        <input type="checkbox" id="kx_pickup_select_all" title="Select visible rows"/>
+                                    </th>
                                     <th>AWB</th>
                                     <th>From / Seller</th>
                                     <th>Hub</th>
@@ -402,7 +482,15 @@
                                 <t t-foreach="shipments" t-as="shipment">
                                     <tr>
                                         <td>
+                                            <input t-if="shipment.fulfilment_method != 'indiapost'"
+                                                   type="checkbox" name="shipment_ids" class="kx-pickup-select"
+                                                   form="kx_bulk_assign" t-att-value="shipment.id"/>
+                                        </td>
+                                        <td>
                                             <strong><t t-esc="shipment.name"/></strong>
+                                            <t t-if="shipment.fulfilment_method == 'indiapost'">
+                                                <div class="small text-muted">India Post return</div>
+                                            </t>
                                         </td>
                                         <td>
                                             <t t-esc="shipment.shipping_from_name or shipment.seller_id.name or ''"/><br/>
@@ -428,6 +516,7 @@
                                         <td>
                                             <form t-attf-action="/my/hub/pickups/assign/#{shipment.id}" method="post" class="d-flex flex-wrap gap-1">
                                                 <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                                                <input type="hidden" name="seller_id" t-att-value="seller_id or ''"/>
                                                 <select name="delivery_executive_id" class="form-select form-select-sm" required="1" style="min-width:160px;">
                                                     <option value="">Select DE</option>
                                                     <t t-set="eligible_des" t-value="shipment_executives.get(shipment.id)"/>
@@ -449,6 +538,19 @@
                             </tbody>
                         </table>
                     </div>
+                    <script type="text/javascript">
+                        document.addEventListener('DOMContentLoaded', function () {
+                            var master = document.getElementById('kx_pickup_select_all');
+                            if (!master) {
+                                return;
+                            }
+                            master.addEventListener('change', function () {
+                                document.querySelectorAll('.kx-pickup-select').forEach(function (box) {
+                                    box.checked = master.checked;
+                                });
+                            });
+                        });
+                    </script>
                     <t t-call="portal.pager"/>
                 </t>
             </div>
@@ -470,13 +572,24 @@
                         </p>
                     </div>
                 </div>
+                <ul class="nav nav-pills mb-3">
+                    <li class="nav-item">
+                        <a t-attf-class="nav-link #{'active' if carrier != 'indiapost' else ''}"
+                           t-attf-href="/my/hub/shipments?carrier=own_network">KeralaXpress</a>
+                    </li>
+                    <li class="nav-item">
+                        <a t-attf-class="nav-link #{'active' if carrier == 'indiapost' else ''}"
+                           t-attf-href="/my/hub/shipments?carrier=indiapost">India Post</a>
+                    </li>
+                </ul>
                 <form action="/my/hub/shipments" method="get" class="row g-2 align-items-end mb-3">
-                    <div class="col-md-4">
+                    <input type="hidden" name="carrier" t-att-value="carrier"/>
+                    <div class="col-md-3">
                         <label class="form-label small mb-1">Search AWB</label>
                         <input type="text" name="search" class="form-control form-control-sm"
                                placeholder="AWB number" t-att-value="search"/>
                     </div>
-                    <div class="col-md-4">
+                    <div class="col-md-3">
                         <label class="form-label small mb-1">Status</label>
                         <select name="filter_status" class="form-select form-select-sm">
                             <option value="">All statuses</option>
@@ -487,9 +600,20 @@
                             </t>
                         </select>
                     </div>
-                    <div class="col-md-4">
+                    <div class="col-md-3">
+                        <label class="form-label small mb-1">Destination district</label>
+                        <select name="district_id" class="form-select form-select-sm">
+                            <option value="">All districts</option>
+                            <t t-foreach="districts" t-as="district">
+                                <option t-att-value="district.id" t-att-selected="district_id == district.id">
+                                    <t t-esc="district.name"/>
+                                </option>
+                            </t>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
                         <button type="submit" class="btn btn-primary btn-sm me-1">Filter</button>
-                        <a href="/my/hub/shipments" class="btn btn-outline-secondary btn-sm">Clear</a>
+                        <a t-attf-href="/my/hub/shipments?carrier=#{carrier}" class="btn btn-outline-secondary btn-sm">Clear</a>
                     </div>
                 </form>
                 <t t-if="not shipments">
@@ -505,13 +629,24 @@
                                     <th>Seller</th>
                                     <th>Customer / To</th>
                                     <th>From ZIP / Hub</th>
+                                    <th>Dest district</th>
                                     <th>Dest hub</th>
                                     <th>Custodian</th>
                                     <th>Date</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                <t t-foreach="shipments" t-as="shipment">
+                                <t t-foreach="district_groups" t-as="group">
+                                    <tr class="table-light">
+                                        <td colspan="9">
+                                            <strong>
+                                                <t t-if="group['district']" t-esc="group['district'].name"/>
+                                                <t t-else="">No district</t>
+                                            </strong>
+                                            <span class="text-muted">(<t t-esc="len(group['shipments'])"/>)</span>
+                                        </td>
+                                    </tr>
+                                    <t t-foreach="group['shipments']" t-as="shipment">
                                     <tr>
                                         <td>
                                             <a t-attf-href="/track/#{shipment.tracking_token}" target="_blank" rel="noopener">
@@ -529,7 +664,10 @@
                                         <td><t t-esc="shipment.seller_id.name or '—'"/></td>
                                         <td>
                                             <t t-esc="shipment.shipping_to_name or '—'"/><br/>
-                                            <small class="text-muted"><t t-esc="shipment.shipping_to_zip or ''"/></small>
+                                            <small class="text-muted">
+                                                <t t-esc="shipment.shipping_to_mobile or ''"/>
+                                                <t t-if="shipment.shipping_to_zip"> · <t t-esc="shipment.shipping_to_zip"/></t>
+                                            </small>
                                         </td>
                                         <td>
                                             <t t-esc="shipment.shipping_from_zip or '—'"/>
@@ -537,6 +675,7 @@
                                                 <br/><small class="text-muted"><t t-esc="shipment.source_hub_id.name"/></small>
                                             </t>
                                         </td>
+                                        <td><t t-esc="shipment.shipping_to_district_id.name or '—'"/></td>
                                         <td><t t-esc="shipment.destination_hub_id.name or '—'"/></td>
                                         <td>
                                             <small><t t-esc="shipment.custodian_display or '—'"/></small>
@@ -545,11 +684,52 @@
                                             <small t-field="shipment.create_date" t-options='{"widget": "datetime"}'/>
                                         </td>
                                     </tr>
+                                    </t>
                                 </t>
                             </tbody>
                         </table>
                     </div>
                     <t t-call="portal.pager"/>
+                </t>
+            </div>
+        </t>
+    </template>
+
+    <template id="portal_my_hub_riders" name="Hub Riders">
+        <t t-call="portal.portal_layout">
+            <div class="container py-3">
+                <a href="/my/hub" class="btn btn-link ps-0 mb-2"><i class="fa fa-arrow-left"/> Back</a>
+                <h3 class="mb-1">Riders</h3>
+                <p class="text-muted small">KeralaXpress shipments in each rider's custody, and the COD cash still on that rider's cash account.</p>
+                <t t-if="not rider_rows">
+                    <p class="alert alert-info">No KeralaXpress riders for your hubs.</p>
+                </t>
+                <t t-else="">
+                    <t t-foreach="rider_rows" t-as="row">
+                        <div class="card shadow-sm mb-3">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between flex-wrap gap-2">
+                                    <h5 class="mb-0"><t t-esc="row['executive'].name"/></h5>
+                                    <div>COD cash held: <strong><t t-esc="'%.2f' % row['cash_balance']"/></strong></div>
+                                </div>
+                                <p class="small text-muted mb-2"><t t-esc="len(row['shipments'])"/> open shipments in custody</p>
+                                <t t-if="not row['shipments']">
+                                    <p class="mb-0 text-muted">Nothing in custody.</p>
+                                </t>
+                                <ul t-else="" class="mb-0">
+                                    <t t-foreach="row['shipments']" t-as="shipment">
+                                        <li>
+                                            <t t-esc="shipment.name"/>
+                                            — <t t-esc="shipment.shipping_to_name or ''"/>
+                                            <t t-if="shipment.order_payment_type == 'cod'">
+                                                · COD <t t-esc="'%.2f' % (shipment.cod_amount or 0.0)"/>
+                                            </t>
+                                        </li>
+                                    </t>
+                                </ul>
+                            </div>
+                        </div>
+                    </t>
                 </t>
             </div>
         </t>

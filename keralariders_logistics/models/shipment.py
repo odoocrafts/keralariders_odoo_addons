@@ -158,6 +158,8 @@ class Shipment(models.Model):
         seller = self.seller_id
         partner = seller.partner_id if seller else self.env['res.partner']
         candidates = []
+        if (self.shipping_from_phone or '').strip():
+            candidates.append(self.shipping_from_phone)
         if seller:
             candidates.append(seller.phone)
         if partner:
@@ -451,36 +453,71 @@ class Shipment(models.Model):
         return self.env['logistics.awb.print.wizard']._action_open(self)
 
     @api.model
-    def _shipping_from_vals_for_seller(self, seller):
-        """Copy seller origin (pickup) address onto shipment shipping_from_* fields.
+    def _sale_point_from_name(self, seller, name):
+        """The seller's extra pickup address, or an empty record when unnamed.
+
+        A blank name means the seller's own address. An unknown name is an
+        error so a typo cannot silently ship from the wrong place.
+        """
+        label = (name or '').strip()
+        Location = self.env['logistics.seller.location']
+        if not seller or not label:
+            return Location.browse()
+        point = Location.search([
+            ('seller_id', '=', seller.id),
+            ('name', '=ilike', label),
+        ], limit=1)
+        if not point:
+            raise UserError(_("Unknown sale point %s.") % label)
+        return point
+
+    @api.model
+    def _shipping_from_vals_for_seller(self, seller, sale_point=None):
+        """Copy the pickup address onto shipment shipping_from_* fields.
 
         Used by create() / portal bulk upload so required shipping_from_zip is never
         left null when seller_id is set (stored compute alone is not enough on insert).
+        With no sale point, the seller record is copied, as before.
         """
         if not seller:
             return {}
-        from_zip = (seller.zip or '').strip() or (
-            (seller.partner_id.zip or '').strip() if seller.partner_id else ''
-        )
-        street = seller.street or (seller.partner_id.street if seller.partner_id else '') or ''
-        street2 = seller.street2 or (seller.partner_id.street2 if seller.partner_id else '') or ''
+        if sale_point:
+            if sale_point.seller_id != seller:
+                raise UserError(_("That sale point belongs to another seller."))
+            from_zip = (sale_point.zip or '').strip()
+            street = sale_point.street or ''
+            street2 = sale_point.street2 or ''
+            district = sale_point.district_id
+            state = sale_point.state_id
+            country = sale_point.country_id or seller.country_id
+            phone = (sale_point.phone or '').strip()
+        else:
+            from_zip = (seller.zip or '').strip() or (
+                (seller.partner_id.zip or '').strip() if seller.partner_id else ''
+            )
+            street = seller.street or (seller.partner_id.street if seller.partner_id else '') or ''
+            street2 = seller.street2 or (seller.partner_id.street2 if seller.partner_id else '') or ''
+            district = seller.district_id
+            state = seller.state_id or (seller.partner_id.state_id if seller.partner_id else False)
+            country = seller.country_id or (seller.partner_id.country_id if seller.partner_id else False)
+            phone = ''
         address = '\n'.join([street, street2]) if (street or street2) else ''
-        district = seller.district_id
-        state = seller.state_id or (seller.partner_id.state_id if seller.partner_id else False)
-        country = seller.country_id or (seller.partner_id.country_id if seller.partner_id else False)
         if from_zip and not district:
             pincode_info = self.env['logistics.district'].get_district_from_pincode(from_zip)
             if pincode_info and pincode_info.get('district_id'):
                 district = pincode_info['district_id']
                 state = state or district.state_id
-        return {
+        vals = {
+            'sale_point_id': sale_point.id if sale_point else False,
             'shipping_from_name': seller.name or (seller.partner_id.name if seller.partner_id else '') or '',
             'shipping_from_address': address,
             'shipping_from_zip': from_zip or False,
             'shipping_from_district_id': district.id if district else False,
             'shipping_from_state_id': state.id if state else False,
             'shipping_from_country_id': country.id if country else False,
+            'shipping_from_phone': phone or False,
         }
+        return vals
 
     @api.model_create_multi
     def create(self, vals_list):
@@ -496,7 +533,18 @@ class Shipment(models.Model):
             if vals.get('state') == 'cancel':
                 vals['state'] = 'cancelled'
             # Ensure origin pincode/address are present before INSERT (required column).
-            if vals.get('seller_id') and not vals.get('shipping_from_zip'):
+            # A named sale point replaces the seller address. No sale point keeps
+            # the previous behaviour: fill from the seller only when the zip is empty.
+            if vals.get('sale_point_id'):
+                point = self.env['logistics.seller.location'].browse(vals['sale_point_id']).exists()
+                seller = Seller.browse(vals['seller_id']) if vals.get('seller_id') else point.seller_id
+                if not point or not seller or point.seller_id != seller:
+                    raise UserError(_("That sale point belongs to another seller."))
+                from_vals = self._shipping_from_vals_for_seller(seller, point)
+                if not from_vals.get('shipping_from_zip'):
+                    raise UserError(_("That sale point needs a 6-digit pincode."))
+                vals.update(from_vals)
+            elif vals.get('seller_id') and not vals.get('shipping_from_zip'):
                 seller = Seller.browse(vals['seller_id'])
                 from_vals = self._shipping_from_vals_for_seller(seller)
                 if not from_vals.get('shipping_from_zip'):
@@ -506,6 +554,17 @@ class Shipment(models.Model):
                 for key, value in from_vals.items():
                     vals.setdefault(key, value)
         shipments = super(Shipment, self).create(vals_list)
+        # The stored seller compute runs on insert and would put the seller
+        # address back. Write the sale-point snapshot afterwards, and do not
+        # depend on the location fields, so a later edit of that address does
+        # not rewrite shipments already booked.
+        for vals, shipment in zip(vals_list, shipments):
+            if not vals.get('sale_point_id'):
+                continue
+            point = shipment.sale_point_id
+            if not point or point.seller_id != shipment.seller_id:
+                continue
+            shipment.write(self._shipping_from_vals_for_seller(shipment.seller_id, point))
         priced_by_hand = self.browse()
         for vals, shipment in zip(vals_list, shipments):
             if any(name in vals for name in DELIVERY_CHARGE_PRICE_FIELDS):
@@ -1574,10 +1633,12 @@ class Shipment(models.Model):
         return True
 
     def action_request_return(self):
-        """Seller-initiated free return: reverse route customer → hubs → seller.
+        """Seller-initiated return: reverse route customer → hubs → seller.
 
-        No wallet debit at any step. Rebuilds estimated route with swapped hubs
-        so existing hub receive/dispatch/self-assign custody actions apply.
+        Starting the return does not move money. A hub-network COD credited
+        on pickup is reversed only when the return is delivered back to the
+        seller. Rebuilds estimated route with swapped hubs so existing hub
+        receive/dispatch/self-assign custody actions apply.
 
         Also allowed from ``delivery_failed`` when the package is already in hub
         custody (after ≥1 failed delivery attempt) — skips customer pickup.
@@ -1603,7 +1664,8 @@ class Shipment(models.Model):
                     % shipment.name
                 )
 
-            # Unlock and rebuild reverse planned route (no wallet charge)
+            # Unlock and rebuild the reverse route. Starting the return
+            # does not move money.
             shipment.write({
                 'is_return_journey': True,
                 'route_locked': False,
@@ -1706,7 +1768,37 @@ class Shipment(models.Model):
                 vals['active_leg_id'] = pickup_leg.id
             shipment._write_with_state(vals)
             shipment._lock_route()
+            if not return_ok:
+                shipment._kx_settle_own_network_cod_on_pickup()
         return True
+
+    def _kx_validate_pickup_scan(self, executive):
+        """Whether this AWB may sit on a pickup scan sheet. Does not pick it up.
+
+        ``action_mark_picked`` is what credits COD and refunds the delivery
+        charge, so a scan must only be checked here. India Post articles,
+        including returns, are refused.
+        """
+        self.ensure_one()
+        if not executive:
+            return _("Sign in as a pickup agent to scan.")
+        if self.fulfilment_method == 'indiapost':
+            return _(
+                "%s is an India Post shipment and cannot be picked up on this sheet."
+            ) % (self.name or '')
+        awaiting = self.state in ('order_added', 'pickup_requested') or (
+            self.is_return_journey and self.state == 'return_requested'
+        )
+        if not awaiting:
+            return _(
+                "%(awb)s is not awaiting pickup (status: %(state)s)."
+            ) % {'awb': self.name or '', 'state': self.state or ''}
+        if self.pickup_executive_id != executive:
+            assigned = self.pickup_executive_id.name if self.pickup_executive_id else _("nobody")
+            return _(
+                "%(awb)s is assigned to %(who)s, not you."
+            ) % {'awb': self.name or '', 'who': assigned}
+        return False
 
     def _is_north_south_cross_zone(self):
         """True when seller and customer districts are opposite Kerala zones (north↔south)."""
@@ -1845,6 +1937,21 @@ class Shipment(models.Model):
                     _("Shipment %s cannot be received at hub in state '%s'.")
                     % (shipment.name, shipment.state)
                 )
+            # Own-network: only the next hub on the route may take the scan.
+            # A parcel for Kozhikode scanned at Malappuram must warn and
+            # must not mark pickup, cancel, or touch a wallet. India Post
+            # keeps the wider allowed-hub check below.
+            if shipment.fulfilment_method != 'indiapost':
+                expected = shipment.get_preferred_portal_drop_hub()
+                if expected and target_hub != expected:
+                    raise UserError(_(
+                        "%(awb)s is for %(expected)s, not %(scanned)s. "
+                        "Nothing was changed."
+                    ) % {
+                        'awb': shipment.name,
+                        'expected': expected.name,
+                        'scanned': target_hub.name,
+                    })
             allowed = shipment.get_portal_drop_hub_ids()
             if shipment.current_hub_id:
                 allowed |= shipment.current_hub_id
@@ -2355,9 +2462,10 @@ class Shipment(models.Model):
     def action_cancel_order_added(self):
         """Cancel a draft (Order Added) shipment before Request Pickup.
 
-        Wallet is not normally debited yet. If a debit somehow exists, credit
-        it once with ``IP-CANCEL:{id}`` so funds are not stuck. A reserved
-        ARN is voided (not returned to the pool). Does not call India Post.
+        Wallet is not normally debited yet. If a shipping debit exists, credit
+        that amount once with ``IP-CANCEL:{id}``. The quoted charge is never
+        credited on its own. A reserved ARN is voided (not returned to the
+        pool). Does not call India Post.
         Idempotent on retry. Own-network drafts use the same path.
         """
         for record in self:
@@ -2430,12 +2538,21 @@ class Shipment(models.Model):
             shipment._write_with_state({
                 'state': 'cancelled',
             })
+            # A hub-network COD credited at pickup has to come back when the
+            # shipment is actually cancelled. India Post and prepaid no-op
+            # inside the reverse. Delivery-failed is a retry and does not
+            # reach this method.
+            if shipment.fulfilment_method != 'indiapost':
+                shipment._kx_reverse_own_network_cod_on_return()
         return True
 
     def action_mark_delivered(self, actor_de=None, scanned_code=None, note=None, delivery_remarks=None):
         """DE marks delivered (outbound → customer) or returned (return → seller).
 
-        Only allowed from out_for_delivery. Return completion is free — no wallet debit.
+        Only allowed from out_for_delivery. A hub-network COD that was
+        credited on pickup is reversed when the return is delivered back to
+        the seller, and the delivery charge refunded at pickup is taken from
+        the wallet again. Starting the return does not move money.
         """
         for shipment in self:
             if shipment.state != 'out_for_delivery':
@@ -2476,6 +2593,8 @@ class Shipment(models.Model):
             if delivery_remarks is not None:
                 vals['delivery_remarks'] = delivery_remarks
             shipment._write_with_state(vals)
+            if is_return:
+                shipment._kx_reverse_own_network_cod_on_return()
         return True
 
     def action_mark_delivery_failed(self, actor_de=None, scanned_code=None,
@@ -2728,9 +2847,10 @@ class Shipment(models.Model):
         return True
 
     def action_hub_return_to_seller(self, note=None):
-        """Hub: after ≥1 failure, start free return to seller (package already at hub).
+        """Hub: after ≥1 failure, start the return to the seller (package already at hub).
 
-        Rebuilds reverse route, skips customer pickup, keeps hub custody.
+        Starting the return does not move money. Rebuilds reverse route,
+        skips customer pickup, keeps hub custody.
         """
         for shipment in self:
             shipment._assert_hub_failed_returnable()
@@ -2861,6 +2981,10 @@ class Shipment(models.Model):
     company_id = fields.Many2one('res.company', string='Company', required=True, default=lambda self: self.env.company)
 
     seller_id = fields.Many2one('logistics.seller', string='Seller', required=True)
+    sale_point_id = fields.Many2one(
+        'logistics.seller.location', string='Sale point', ondelete='restrict',
+        help='Extra pickup address used for this shipment. Empty means the seller address.',
+    )
     order_id = fields.Many2one('logistics.order', string='Order', ondelete='cascade')
     delivery_executive_id = fields.Many2one(
         'logistics.delivery.executive',
@@ -2888,6 +3012,7 @@ class Shipment(models.Model):
 
     # Shipping From Address
     shipping_from_name = fields.Char(string='Shipping From Name', compute='_compute_shippping_from', store=True, readonly=False)
+    shipping_from_phone = fields.Char(string='Shipping From Phone')
     shipping_from_address = fields.Text(string='Shipping From Address', compute='_compute_shippping_from', store=True, readonly=False)
     shipping_from_zip = fields.Char(string='Shipping From Pincode', compute='_compute_shippping_from', store=True, readonly=False, required=True)
     @api.onchange('shipping_from_zip')
@@ -2978,6 +3103,28 @@ class Shipment(models.Model):
                 record.delivery_charges_subtotal = self.env['logistics.delivery.charges'].sudo().calculate_delivery_charge(
                     record.total_weight, same_district, package_id=package_id)
             record.delivery_charges_total = record.delivery_charges_subtotal * (1 + record.tax_percentage) if record.tax_percentage else record.delivery_charges_subtotal
+
+    @api.model
+    def _kx_recompute_open_network_charges(self):
+        """Reprice open hub-network shipments after the rate card changes.
+
+        Only drafts and pickups that were not priced by hand. India Post
+        quotes and anything already moving stay on the price they were booked at.
+        """
+        if 'fulfilment_method' not in self._fields:
+            return True
+        shipments = self.search([
+            ('fulfilment_method', '=', 'own_network'),
+            ('state', 'in', ('order_added', 'pickup_requested')),
+            ('delivery_charge_override_signature', '=', False),
+        ])
+        if shipments:
+            shipments.modified(['total_weight'])
+            shipments.flush_recordset([
+                'delivery_charges_subtotal', 'delivery_charges_total',
+            ])
+        return True
+
     delivery_charges_total = fields.Monetary(string='Delivery Charges (Incl. Tax)', currency_field='currency_id', compute='_compute_delivery_charges', store=True)
     tax_percentage = fields.Float(string='Tax Percentage', default=0)
     total_weight = fields.Float(string='Total Weight (Kg)', digits=(16, 3), default=0.0)
@@ -3443,6 +3590,109 @@ class Shipment(models.Model):
             self.with_context(allow_delivery_charge_write=True).write({
                 'wallet_transaction_id': transaction.id,
             })
+
+    def _kx_is_hub_network_cod(self):
+        """Own-network shipment whose COD is advanced on pickup."""
+        self.ensure_one()
+        return (
+            self.fulfilment_method == 'own_network'
+            and self.order_payment_type == 'cod'
+            and (self.cod_amount or 0.0) > 0.0
+        )
+
+    def _kx_delivery_refund_reference(self):
+        self.ensure_one()
+        return 'KX-DLV-REFUND:%s' % self.id
+
+    def _kx_delivery_restore_reference(self):
+        self.ensure_one()
+        return 'KX-DLV-RESTORE:%s' % self.id
+
+    def _kx_wallet_line(self, reference):
+        self.ensure_one()
+        return self.env['logistics.wallet.transaction'].sudo().search([
+            ('shipment_id', '=', self.id),
+            ('reference', '=', reference),
+        ], limit=1)
+
+    def _kx_settle_own_network_cod_on_pickup(self):
+        """Credit pending COD and refund the delivery charge already taken.
+
+        Outbound hub-network COD only. A return pickup, a prepaid parcel,
+        and a second scan do not post again. India Post is left to its
+        delivery credit.
+        """
+        Transfer = self.env['logistics.account.transfer']
+        for shipment in self:
+            if not shipment._kx_is_hub_network_cod():
+                continue
+            Transfer.action_create_own_network_cod_pickup(shipment)
+            shipment._kx_refund_delivery_charge_on_cod_pickup()
+
+    def _kx_refund_delivery_charge_on_cod_pickup(self):
+        """Credit the wallet for the shipping debit already linked, once.
+
+        Nothing is refunded when pickup was never charged.
+        """
+        self.ensure_one()
+        reference = self._kx_delivery_refund_reference()
+        if self._kx_wallet_line(reference):
+            return
+        debit = self.wallet_transaction_id
+        if not debit or not debit.wallet_id or (debit.amount or 0.0) >= 0.0:
+            return
+        amount = self._round_charge(abs(debit.amount))
+        if amount <= 0.0:
+            return
+        self.env['logistics.wallet.transaction'].sudo().create({
+            'wallet_id': debit.wallet_id.id,
+            'amount': amount,
+            'transaction_date': fields.Date.context_today(self),
+            'shipment_id': self.id,
+            'order_id': self.order_id.id if self.order_id else False,
+            'reference': reference,
+            'description': _(
+                'Delivery charge returned on pickup of COD %s'
+            ) % (self.name or ''),
+        })
+
+    def _kx_reverse_own_network_cod_on_return(self):
+        """Debit the pickup COD and charge the refunded delivery fee back.
+
+        Only when this hub-network COD received the pickup advance. The
+        wallet debit is posted even when the balance is short. Repeating
+        the return does not move money again.
+        """
+        Transfer = self.env['logistics.account.transfer']
+        for shipment in self:
+            if not shipment._kx_is_hub_network_cod():
+                continue
+            Transfer.action_create_own_network_cod_return(shipment)
+            shipment._kx_restore_delivery_charge_on_cod_return()
+
+    def _kx_restore_delivery_charge_on_cod_return(self):
+        """Debit the wallet for the delivery charge refunded at pickup, once."""
+        self.ensure_one()
+        reference = self._kx_delivery_restore_reference()
+        if self._kx_wallet_line(reference):
+            return
+        refund = self._kx_wallet_line(self._kx_delivery_refund_reference())
+        if not refund or not refund.wallet_id or (refund.amount or 0.0) <= 0.0:
+            return
+        amount = self._round_charge(refund.amount)
+        if amount <= 0.0:
+            return
+        self.env['logistics.wallet.transaction'].sudo().create({
+            'wallet_id': refund.wallet_id.id,
+            'amount': -amount,
+            'transaction_date': fields.Date.context_today(self),
+            'shipment_id': self.id,
+            'order_id': self.order_id.id if self.order_id else False,
+            'reference': reference,
+            'description': _(
+                'Delivery charge restored on return of COD %s'
+            ) % (self.name or ''),
+        })
 
     def delete_wallet_transaction(self):
         # The money-out mirror of approving a recharge: this hands the seller

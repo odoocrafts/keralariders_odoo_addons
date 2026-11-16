@@ -31,11 +31,17 @@
                         <img t-if="company.logo" t-att-src="image_data_uri(company.logo)" style="max-width: 34mm; max-height: 8mm;" alt="KeralaXpress"/>
                         <span t-else="" class="kx-label-kx-name" style="font-size: 11px; font-weight: 900; letter-spacing: 0.4px;">KERALAXPRESS</span>
                     </td>
-                    <td style="width: 50%; border-bottom: 2px solid #000; padding: 1mm 1.5mm; text-align: right; vertical-align: middle;">
+                    <td class="kx-label-partner-logo" style="width: 50%; border-bottom: 2px solid #000; padding: 1mm 1.5mm; text-align: right; vertical-align: middle;">
                         <img t-if="is_ip" t-att-src="o._awb_indiapost_logo_data_uri()"
                              class="awb-indiapost-logo"
                              style="max-width: 34mm; max-height: 8mm;"
                              alt="India Post"/>
+                        <t t-elif="o.seller_id.image_1920">
+                            <img t-att-src="image_data_uri(o.seller_id.image_1920)"
+                                 style="max-width: 34mm; max-height: 8mm;"
+                                 alt="Seller"/>
+                        </t>
+                        <strong t-else="" t-field="o.shipping_from_name" style="font-size: 8px;"/>
                     </td>
                 </tr>
             </table>
@@ -60,7 +66,7 @@
                                 AWB <span t-field="o.name"/>
                             </t>
                         </div>
-                        <div t-if="o._awb_indiapost_customer_id()" class="awb-customer-id" style="font-size: 7px; font-weight: 700; margin-top: 0.3mm; letter-spacing: 0.2px;">
+                        <div t-if="is_ip and o._awb_indiapost_customer_id()" class="awb-customer-id" style="font-size: 7px; font-weight: 700; margin-top: 0.3mm; letter-spacing: 0.2px;">
                             CUSTOMER ID: <t t-esc="o._awb_indiapost_customer_id()"/>
                         </div>
                     </td>

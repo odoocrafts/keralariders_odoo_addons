@@ -5,60 +5,58 @@
         <field name="is_default">True</field>
     </record>
 
+    <!-- Clear first so the new weights cannot overlap the previous card. -->
+    <function model="logistics.delivery.charges" name="_kx_clear_default_package_slabs"/>
+
+    <!-- KeralaXpress same-day card. One rate either side of a district border. -->
     <record id="delivery_charge_1" model="logistics.delivery.charges">
         <field name="package_id" ref="default_delivery_package"/>
         <field name="minimum_weight">0.000</field>
-        <field name="maximum_weight">0.250</field>
-        <field name="same_district_amount">25</field>
-        <field name="different_district_amount">32</field>
+        <field name="maximum_weight">1.000</field>
+        <field name="same_district_amount">50</field>
+        <field name="different_district_amount">50</field>
     </record>
 
     <record id="delivery_charge_2" model="logistics.delivery.charges">
         <field name="package_id" ref="default_delivery_package"/>
-        <field name="minimum_weight">0.250</field>
-        <field name="maximum_weight">0.500</field>
-        <field name="same_district_amount">37</field>
-        <field name="different_district_amount">42</field>
+        <field name="minimum_weight">1.000</field>
+        <field name="maximum_weight">1.500</field>
+        <field name="same_district_amount">70</field>
+        <field name="different_district_amount">70</field>
     </record>
 
     <record id="delivery_charge_3" model="logistics.delivery.charges">
         <field name="package_id" ref="default_delivery_package"/>
-        <field name="minimum_weight">0.500</field>
-        <field name="maximum_weight">1.000</field>
-        <field name="same_district_amount">47</field>
-        <field name="different_district_amount">52</field>
+        <field name="minimum_weight">1.500</field>
+        <field name="maximum_weight">2.000</field>
+        <field name="same_district_amount">100</field>
+        <field name="different_district_amount">100</field>
     </record>
 
     <record id="delivery_charge_4" model="logistics.delivery.charges">
         <field name="package_id" ref="default_delivery_package"/>
-        <field name="minimum_weight">1.000</field>
-        <field name="maximum_weight">1.500</field>
-        <field name="same_district_amount">58</field>
-        <field name="different_district_amount">68</field>
+        <field name="minimum_weight">2.000</field>
+        <field name="maximum_weight">3.000</field>
+        <field name="same_district_amount">125</field>
+        <field name="different_district_amount">125</field>
     </record>
 
     <record id="delivery_charge_5" model="logistics.delivery.charges">
         <field name="package_id" ref="default_delivery_package"/>
-        <field name="minimum_weight">1.500</field>
-        <field name="maximum_weight">2.000</field>
-        <field name="same_district_amount">70</field>
-        <field name="different_district_amount">90</field>
+        <field name="minimum_weight">3.000</field>
+        <field name="maximum_weight">4.000</field>
+        <field name="same_district_amount">150</field>
+        <field name="different_district_amount">150</field>
     </record>
 
     <record id="delivery_charge_6" model="logistics.delivery.charges">
         <field name="package_id" ref="default_delivery_package"/>
-        <field name="minimum_weight">2.000</field>
-        <field name="maximum_weight">3.000</field>
-        <field name="same_district_amount">90</field>
-        <field name="different_district_amount">110</field>
+        <field name="minimum_weight">4.000</field>
+        <field name="maximum_weight">5.000</field>
+        <field name="same_district_amount">170</field>
+        <field name="different_district_amount">170</field>
     </record>
 
-    <record id="delivery_charge_7" model="logistics.delivery.charges">
-        <field name="package_id" ref="default_delivery_package"/>
-        <field name="minimum_weight">3.000</field>
-        <field name="maximum_weight">4.000</field>
-        <field name="same_district_amount">125</field>
-        <field name="different_district_amount">140</field>
-    </record>
+    <function model="logistics.shipment" name="_kx_recompute_open_network_charges"/>
 
 </odoo>

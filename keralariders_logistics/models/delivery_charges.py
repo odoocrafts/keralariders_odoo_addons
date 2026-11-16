@@ -124,8 +124,8 @@ class DeliveryCharges(models.Model):
         weight,
         same_district=False,
         gst_percent=18.0,
-        additional_charge=25.0,
-        additional_slab=0.5,
+        additional_charge=20.0,
+        additional_slab=1.0,
         package_id=None
     ):
         """
@@ -174,3 +174,16 @@ class DeliveryCharges(models.Model):
         amount = base_amount + (additional_units * additional_charge)
 
         return round(amount, 2)
+
+    @api.model
+    def _kx_clear_default_package_slabs(self):
+        """Drop the default card before the poster slabs are loaded.
+
+        Updating the old overlapping weights in place would fail the
+        overlap constraint halfway through the XML. Seller-specific
+        packages are left alone.
+        """
+        package = self.env['logistics.delivery.package'].search(
+            [('is_default', '=', True)], limit=1)
+        if package and package.charge_ids:
+            package.charge_ids.unlink()

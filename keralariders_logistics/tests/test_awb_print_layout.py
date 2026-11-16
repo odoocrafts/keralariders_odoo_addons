@@ -128,6 +128,7 @@ class TestAwbPrintLayout(IndiapostHermeticMixin, TransactionCase):
         self.assertNotIn('awb-header-indiapost', html)
         self.assertNotIn('TrackConsignment.aspx', html)
         self.assertNotIn('India Post', html)
+        self.assertNotIn('CUSTOMER ID', html)
         self.assertNotIn('Mob:', html)
         self.assertNotIn('Phone:', html)
         assert_awb_barcodes_are_data_uris(self, html)
@@ -302,8 +303,12 @@ class TestAwbPrintLayout(IndiapostHermeticMixin, TransactionCase):
         self.assertNotIn('bwipjs-api.metafloor.com', source)
         self.assertNotIn('api.qrserver.com', source)
         self.assertNotIn('/report/barcode', source)
-        self.assertNotIn('seller_id.image_1920', source)
-        self.assertNotIn('o.seller_id.image', source)
+        hub_source, ip_source = source.split(
+            'id="report_shipment_document_indiapost"', 1)
+        self.assertIn('seller_id.image_1920', hub_source)
+        self.assertNotIn('CUSTOMER ID', hub_source)
+        self.assertNotIn('seller_id.image_1920', ip_source)
+        self.assertIn('CUSTOMER ID', ip_source)
         self.assertEqual(source.count('alt="KeralaXpress"'), 2)
         self.assertIn('image_data_uri(company.logo)', source)
         self.assertIn('o._awb_indiapost_logo_data_uri()', source)
@@ -323,33 +328,43 @@ class TestAwbPrintLayout(IndiapostHermeticMixin, TransactionCase):
         stored_company = self.env.company.logo
         self.assertTrue(stored_company)
 
-        for seller in (self.ip_seller, self.hub_seller):
-            seller.sudo().write({'image_1920': seller_logo})
-            stored_seller = seller.image_1920
-            self.assertTrue(stored_seller)
-            self.assertNotEqual(stored_seller, stored_company)
-            shipment = self._new_shipment(seller)
-            if seller.fulfilment_method == 'indiapost':
-                shipment.sudo().write({
-                    'indiapost_article_number': ARTICLE,
-                    'indiapost_booking_state': 'booked',
-                })
-            html = self._awb_html(shipment)
-            header = self._header_kx_cell(html)
-            self.assertIn('alt="KeralaXpress"', header)
-            self.assertTrue(
-                self._binary_in_html(header, stored_company),
-                'KeralaXpress header is missing the company logo',
-            )
-            self.assertFalse(
-                self._binary_in_html(html, stored_seller),
-                'Seller brand logo leaked onto the AWB',
-            )
-            self.assertNotIn('seller_id.image_1920', html)
-            if seller.fulfilment_method == 'indiapost':
-                header_ip = self._header_ip_cell(html)
-                self.assertIn('alt="India Post"', header_ip)
-                self.assertIn('awb-indiapost-logo', header_ip)
+        self.ip_seller.sudo().write({'image_1920': seller_logo})
+        stored_seller = self.ip_seller.image_1920
+        self.assertTrue(stored_seller)
+        self.assertNotEqual(stored_seller, stored_company)
+        shipment = self._new_shipment(self.ip_seller)
+        shipment.sudo().write({
+            'indiapost_article_number': ARTICLE,
+            'indiapost_booking_state': 'booked',
+        })
+        html = self._awb_html(shipment)
+        header = self._header_kx_cell(html)
+        self.assertIn('alt="KeralaXpress"', header)
+        self.assertTrue(
+            self._binary_in_html(header, stored_company),
+            'KeralaXpress header is missing the company logo',
+        )
+        self.assertFalse(
+            self._binary_in_html(html, stored_seller),
+            'Seller brand logo leaked onto the India Post AWB',
+        )
+        header_ip = self._header_ip_cell(html)
+        self.assertIn('alt="India Post"', header_ip)
+        self.assertIn('awb-indiapost-logo', header_ip)
+
+        self.hub_seller.sudo().write({'image_1920': seller_logo})
+        hub_logo = self.hub_seller.image_1920
+        hub = self._new_shipment(self.hub_seller)
+        hub_html = self._awb_html(hub)
+        hub_header = self._header_kx_cell(hub_html)
+        self.assertIn('alt="KeralaXpress"', hub_header)
+        self.assertTrue(self._binary_in_html(hub_header, stored_company))
+        self.assertTrue(
+            self._binary_in_html(hub_html, hub_logo),
+            'Hub-network AWB is missing the seller logo',
+        )
+        self.assertIn('awb-header-seller', hub_html)
+        self.assertNotIn('CUSTOMER ID', hub_html)
 
     def test_a4_cod_uses_rupee_entity(self):
         shipment = self._new_shipment(

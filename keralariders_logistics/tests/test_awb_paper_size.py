@@ -261,18 +261,28 @@ class TestAwbPaperSize(IndiapostHermeticMixin, TransactionCase):
         ip = self._new_shipment(self.ip_seller)
         hub = self._new_shipment(self.hub_seller)
         line = 'CUSTOMER ID: %s' % customer_id
-        for shipment in (ip, hub):
-            thermal = self._label_html(shipment)
-            self.assertIn(line, thermal)
-            self.assertIn('awb-customer-id', thermal)
-            a4 = self.env['ir.actions.report']._render_qweb_html(
-                'keralariders_logistics.report_shipment_document',
-                shipment.ids,
-            )[0]
-            if isinstance(a4, bytes):
-                a4 = a4.decode('utf-8')
-            self.assertIn(line, a4)
-            self.assertIn('awb-customer-id', a4)
+        ip_thermal = self._label_html(ip)
+        self.assertIn('CUSTOMER ID:', ip_thermal)
+        self.assertIn(customer_id, ip_thermal)
+        self.assertIn('awb-customer-id', ip_thermal)
+        hub_thermal = self._label_html(hub)
+        self.assertNotIn('CUSTOMER ID', hub_thermal)
+        ip_a4_plain = self.env['ir.actions.report']._render_qweb_html(
+            'keralariders_logistics.report_shipment_document',
+            ip.ids,
+        )[0]
+        if isinstance(ip_a4_plain, bytes):
+            ip_a4_plain = ip_a4_plain.decode('utf-8')
+        self.assertIn('CUSTOMER ID:', ip_a4_plain)
+        self.assertIn(customer_id, ip_a4_plain)
+        self.assertIn('awb-customer-id', ip_a4_plain)
+        hub_a4 = self.env['ir.actions.report']._render_qweb_html(
+            'keralariders_logistics.report_shipment_document',
+            hub.ids,
+        )[0]
+        if isinstance(hub_a4, bytes):
+            hub_a4 = hub_a4.decode('utf-8')
+        self.assertNotIn('CUSTOMER ID', hub_a4)
         ip.sudo().write({
             'indiapost_article_number': ARTICLE,
             'indiapost_booking_state': 'booked',
@@ -283,11 +293,8 @@ class TestAwbPaperSize(IndiapostHermeticMixin, TransactionCase):
         )[0]
         if isinstance(ip_a4, bytes):
             ip_a4 = ip_a4.decode('utf-8')
-        self.assertLess(
-            ip_a4.find(ARTICLE),
-            ip_a4.find(line),
-        )
-        self.assertLess(ip_a4.find(line), ip_a4.find('Ship To:'))
+        self.assertLess(ip_a4.find(ARTICLE), ip_a4.find('CUSTOMER ID:'))
+        self.assertLess(ip_a4.find('CUSTOMER ID:'), ip_a4.find('Ship To:'))
 
     def test_indiapost_100x150_without_arn_prints_awb_in_top_cell(self):
         shipment = self._new_shipment(self.ip_seller)
@@ -373,8 +380,8 @@ class TestAwbPaperSize(IndiapostHermeticMixin, TransactionCase):
         self.assertIn('t-if="not is_ip"', source)
         self.assertNotIn('bwipjs-api.metafloor.com', source)
         self.assertNotIn('/report/barcode', source)
-        self.assertNotIn('seller_id.image_1920', source)
-        self.assertNotIn('o.seller_id.image', source)
+        self.assertIn('t-elif="o.seller_id.image_1920"', source)
+        self.assertIn('is_ip and o._awb_indiapost_customer_id()', source)
         self.assertIn('alt="KeralaXpress"', source)
         self.assertIn('image_data_uri(company.logo)', source)
         self.assertIn('_awb_indiapost_logo_data_uri()', source)

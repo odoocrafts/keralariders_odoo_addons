@@ -9,12 +9,23 @@ from odoo.tools.misc import format_date
 
 _logger = logging.getLogger(__name__)
 
-# Transfers that settle COD to the seller (reduce portal pending when posted).
-_COD_SETTLEMENT_TYPES = ('cod_clearance', 'cod_withdrawal', 'other')
+# Posted transfers that increase the seller's pending COD.
+_COD_CREDIT_TYPES = ('cod_payment', 'cod_pickup')
+# Posted transfers that reduce it. A hub-network return is included so a COD
+# credited on pickup is taken back when the parcel comes home. Pending may
+# go negative after that; the amount available to withdraw stays at zero.
+_COD_SETTLEMENT_TYPES = (
+    'cod_clearance', 'cod_withdrawal', 'other', 'cod_return',
+)
 
-# Company-wide COD withdrawal charge, stored as a percent: 2.0 means 2%.
+# India Post COD withdrawal charge, stored as a percent: 2.0 means 2%.
 COD_SETTLEMENT_CHARGE_PARAM = 'keralariders_logistics.cod_settlement_charge_percent'
 DEFAULT_COD_SETTLEMENT_CHARGE_PERCENT = 2.0
+# KeralaXpress hub-network COD withdrawal charge. 1.0 means 1%.
+HUB_COD_SETTLEMENT_CHARGE_PARAM = (
+    'keralariders_logistics.hub_cod_settlement_charge_percent'
+)
+DEFAULT_HUB_COD_SETTLEMENT_CHARGE_PERCENT = 1.0
 
 _MONTH_ABBR = (
     '', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
@@ -184,7 +195,10 @@ class BankCashAccountTransfer(models.Model):
                 vals.get('transfer_type') == 'cod_withdrawal'
                 and 'cod_charge_percent' not in vals
             ):
-                vals['cod_charge_percent'] = self._cod_settlement_charge_percent()
+                seller = self.env['logistics.seller'].browse(
+                    vals.get('related_seller_id'))
+                vals['cod_charge_percent'] = self._cod_settlement_charge_percent(
+                    seller if seller.exists() else None)
         recs = super().create(vals_list)
         for rec in recs:
             if rec.transfer_type == 'cod_clearance' and rec.cod_clearance_payment_transfer_ids:
@@ -207,6 +221,8 @@ class BankCashAccountTransfer(models.Model):
     transfer_type = fields.Selection(
         selection=[
             ('cod_payment', 'COD Payment'),
+            ('cod_pickup', 'Hub COD Pickup Advance'),
+            ('cod_return', 'Hub COD Return Reversal'),
             ('hub_deposit', 'Hub Deposit (DE → Hub)'),
             ('hub_banking', 'Hub Banking (Hub → Company)'),
             ('cod_clearance', 'COD Clearance (Company → Seller)'),
@@ -253,6 +269,8 @@ class BankCashAccountTransfer(models.Model):
             'hub_deposit': 'Hub Deposit (DE → Hub)',
             'hub_banking': 'Hub Banking (Hub → Company)',
             'cod_payment': 'COD Payment',
+            'cod_pickup': 'Hub COD Pickup Advance',
+            'cod_return': 'Hub COD Return Reversal',
         }
         if self.transfer_type in defaults:
             self.reference = defaults[self.transfer_type]
@@ -601,12 +619,121 @@ class BankCashAccountTransfer(models.Model):
         return transfer
 
     @api.model
+    def _kx_cod_transfer_for_shipment(self, shipment, transfer_type):
+        """Posted-or-draft transfer of this type on the shipment, if any."""
+        if not shipment:
+            return self.browse()
+        return self.sudo().search([
+            ('transfer_type', '=', transfer_type),
+            ('shipment_id', '=', shipment.id),
+            ('state', '!=', 'cancelled'),
+        ], limit=1)
+
+    @api.model
+    def action_create_own_network_cod_pickup(self, shipment):
+        """Credit the seller's pending COD for a hub-network pickup.
+
+        The full COD is advanced when the parcel is picked up. The transfer
+        is not linked on the shipment's COD payments, so the cash or UPI
+        still to collect from the customer stays the full amount. A second
+        pickup does not post again.
+        """
+        if not shipment:
+            return self.browse()
+        shipment = shipment.sudo()
+        existing = self._kx_cod_transfer_for_shipment(shipment, 'cod_pickup')
+        if existing:
+            return existing
+        if shipment.fulfilment_method != 'own_network':
+            return self.browse()
+        if shipment.order_payment_type != 'cod' or (shipment.cod_amount or 0.0) <= 0:
+            return self.browse()
+        seller = shipment.seller_id
+        if not seller:
+            raise UserError(_(
+                "Shipment %s has no seller, so its COD cannot be credited."
+            ) % shipment.name)
+        company = self.env['logistics.account'].sudo().get_company_cod_account()
+        if not company:
+            raise UserError(_(
+                "No Company COD account configured. "
+                "Set it under Settings → Logistics, or create an account of "
+                "type Company."
+            ))
+        seller_account = seller.seller_account_id
+        if not seller_account:
+            raise UserError(_(
+                "Seller %s has no COD account, so the pickup advance "
+                "cannot be credited."
+            ) % seller.name)
+        return self.sudo().create({
+            'transfer_type': 'cod_pickup',
+            'state': 'posted',
+            'from_account_id': company.id,
+            'to_account_id': seller_account.id,
+            'amount': shipment.cod_amount,
+            'transfer_date': fields.Date.context_today(self),
+            'reference': _('Hub COD advance — %s') % shipment.name,
+            'description': _(
+                'COD credited on pickup of %s. Customer collection is still due.'
+            ) % shipment.name,
+            'related_seller_id': seller.id,
+            'shipment_id': shipment.id,
+        })
+
+    @api.model
+    def action_create_own_network_cod_return(self, shipment):
+        """Take back a hub-network COD advance when the return reaches the seller.
+
+        Does nothing when pickup never credited the seller. Repeating the
+        return does not debit twice. The pending balance may go negative
+        when the COD was already withdrawn.
+        """
+        if not shipment:
+            return self.browse()
+        shipment = shipment.sudo()
+        existing = self._kx_cod_transfer_for_shipment(shipment, 'cod_return')
+        if existing:
+            return existing
+        pickup = self._kx_cod_transfer_for_shipment(shipment, 'cod_pickup')
+        if not pickup:
+            return self.browse()
+        seller = pickup.related_seller_id or shipment.seller_id
+        if not seller:
+            raise UserError(_(
+                "Shipment %s has no seller, so its COD advance cannot be reversed."
+            ) % shipment.name)
+        from_account = pickup.to_account_id or seller.seller_account_id
+        to_account = (
+            pickup.from_account_id
+            or self.env['logistics.account'].sudo().get_company_cod_account()
+        )
+        if not from_account or not to_account:
+            raise UserError(_(
+                "Shipment %s COD advance has no accounts to reverse."
+            ) % shipment.name)
+        return self.sudo().create({
+            'transfer_type': 'cod_return',
+            'state': 'posted',
+            'from_account_id': from_account.id,
+            'to_account_id': to_account.id,
+            'amount': pickup.amount,
+            'transfer_date': fields.Date.context_today(self),
+            'reference': _('Hub COD return — %s') % shipment.name,
+            'description': _(
+                'COD reversed because %s was returned to the seller.'
+            ) % shipment.name,
+            'related_seller_id': seller.id,
+            'shipment_id': shipment.id,
+        })
+
+    @api.model
     def _seller_cod_balance_parts(self, seller):
         """Return (gross_payments, posted_settlements, draft_withdrawals) for a seller."""
         Transfer = self.sudo()
         payments = Transfer.search([
             ('related_seller_id', '=', seller.id),
-            ('transfer_type', '=', 'cod_payment'),
+            ('transfer_type', 'in', list(_COD_CREDIT_TYPES)),
             ('state', '=', 'posted'),
         ])
         settlements = Transfer.search([
@@ -627,15 +754,32 @@ class BankCashAccountTransfer(models.Model):
 
     @api.model
     def get_seller_cod_pending_balance(self, seller):
-        """Pending COD still owed to the seller's bank (payments − posted settlements)."""
+        """COD still owed to the seller (credits − posted settlements).
+
+        Negative when a hub-network return reverses a COD that was already
+        withdrawn. The debt stays on the ledger until later COD covers it.
+        """
         payments, settlements, _draft = self._seller_cod_balance_parts(seller)
-        return max(0.0, payments - settlements)
+        return self._round_cod_amount(seller, payments - settlements)
 
     @api.model
     def get_seller_cod_withdrawable_balance(self, seller):
-        """Amount available for a new withdrawal request (pending − draft withdrawals)."""
+        """Amount available for a new withdrawal request (pending − draft withdrawals).
+
+        Floored at zero, including when the pending balance itself is negative.
+        """
         payments, settlements, draft = self._seller_cod_balance_parts(seller)
-        return max(0.0, payments - settlements - draft)
+        return max(0.0, self._round_cod_amount(
+            seller, payments - settlements - draft))
+
+    @api.model
+    def _round_cod_amount(self, seller, amount):
+        currency = self.env.company.currency_id
+        if seller and seller.currency_id:
+            currency = seller.currency_id
+        if currency:
+            return currency.round(amount)
+        return amount
 
     # ------------------------------------------------------------------
     # COD withdrawal settlement cycle
@@ -750,6 +894,20 @@ class BankCashAccountTransfer(models.Model):
         }
 
     @api.model
+    def portal_cod_cycle_display(self, seller):
+        """Cycle summary for the seller portal.
+
+        Hub-network sellers have no settlement window. India Post sellers
+        keep the cycle dates and the one-open-request block.
+        """
+        if seller and seller.fulfilment_method == 'own_network':
+            return False, False
+        return (
+            self.get_cod_settlement_cycle_info(seller),
+            self.seller_has_open_cod_withdrawal_this_cycle(seller),
+        )
+
+    @api.model
     def _find_open_cod_withdrawal_for_settlement(self, seller, settlement_date):
         """Draft or approved-unpaid withdrawal for this seller + settlement date."""
         return self.sudo().search([
@@ -806,8 +964,12 @@ class BankCashAccountTransfer(models.Model):
             ))
         request_date = self._cod_withdrawal_request_date(seller)
         settlement_date = self._cod_settlement_date_for_request_date(request_date)
-        open_same_cycle = self._find_open_cod_withdrawal_for_settlement(
-            seller, settlement_date)
+        # The settlement window applies to India Post sellers. A hub-network
+        # seller withdraws without a cycle cap; the request itself is unchanged.
+        open_same_cycle = False
+        if seller.fulfilment_method != 'own_network':
+            open_same_cycle = self._find_open_cod_withdrawal_for_settlement(
+                seller, settlement_date)
         if open_same_cycle:
             settle_label = format_date(
                 self.env, settlement_date, date_format='d MMMM y')
@@ -819,7 +981,7 @@ class BankCashAccountTransfer(models.Model):
                 date=settle_label,
                 ref=open_same_cycle.name or '',
             ))
-        breakdown = self.get_cod_withdrawal_breakdown(amount)
+        breakdown = self.get_cod_withdrawal_breakdown(amount, seller=seller)
         if breakdown['net'] <= 0:
             raise UserError(_(
                 "Withdrawal amount is too small: after the settlement charge "
@@ -924,8 +1086,9 @@ class BankCashAccountTransfer(models.Model):
         copy=False,
         tracking=True,
         help='Percent of the requested amount kept as the COD settlement '
-             'charge (2.0 means 2%). Taken from Settings when the request is '
-             'created and not changed afterwards.',
+             'charge (2.0 means 2%). India Post uses the India Post rate; '
+             'a hub-network seller uses the hub-network rate. Taken from '
+             'Settings when the request is created and not changed afterwards.',
     )
     cod_charge_amount = fields.Monetary(
         string='Settlement Charge',
@@ -965,23 +1128,48 @@ class BankCashAccountTransfer(models.Model):
                 rec.cod_charge_percent)
 
     @api.model
-    def _cod_settlement_charge_percent(self):
-        """Current company-wide charge percent from Settings (2.0 means 2%)."""
-        raw = self.env['ir.config_parameter'].sudo().get_param(
-            COD_SETTLEMENT_CHARGE_PARAM)
+    def _cod_percent_from_param(self, key, default):
+        """Read a percent setting. A missing or invalid value uses ``default``."""
+        raw = self.env['ir.config_parameter'].sudo().get_param(key)
         if raw in (None, False, ''):
-            return DEFAULT_COD_SETTLEMENT_CHARGE_PERCENT
+            return default
         try:
             percent = float(raw)
         except (TypeError, ValueError):
             percent = -1.0
         if not 0.0 <= percent < 100.0:
             _logger.warning(
-                'Invalid COD settlement charge %r; using %s%%.',
-                raw, DEFAULT_COD_SETTLEMENT_CHARGE_PERCENT,
+                'Invalid COD settlement charge %r for %s; using %s%%.',
+                raw, key, default,
             )
-            return DEFAULT_COD_SETTLEMENT_CHARGE_PERCENT
+            return default
         return percent
+
+    @api.model
+    def _hub_cod_settlement_charge_percent(self):
+        """Hub-network withdrawal charge from Settings (1.0 means 1%)."""
+        return self._cod_percent_from_param(
+            HUB_COD_SETTLEMENT_CHARGE_PARAM,
+            DEFAULT_HUB_COD_SETTLEMENT_CHARGE_PERCENT,
+        )
+
+    @api.model
+    def _cod_settlement_charge_percent(self, seller=None):
+        """Charge percent for a new COD withdrawal of this seller.
+
+        A KeralaXpress hub-network seller uses the hub-network rate (default
+        1%). India Post, and a call with no seller, uses the India Post rate
+        (default 2%). The rate is frozen on the request afterwards.
+        """
+        if (
+            seller and seller.exists()
+            and seller._ip_fulfilment_method() == 'own_network'
+        ):
+            return self._hub_cod_settlement_charge_percent()
+        return self._cod_percent_from_param(
+            COD_SETTLEMENT_CHARGE_PARAM,
+            DEFAULT_COD_SETTLEMENT_CHARGE_PERCENT,
+        )
 
     @api.model
     def _format_cod_charge_percent(self, percent):
@@ -1004,10 +1192,11 @@ class BankCashAccountTransfer(models.Model):
         }
 
     @api.model
-    def get_cod_withdrawal_breakdown(self, gross, percent=None, currency=None):
-        """Gross / charge / net for a withdrawal of ``gross`` at the current rate."""
+    def get_cod_withdrawal_breakdown(self, gross, percent=None, currency=None,
+                                     seller=None):
+        """Gross / charge / net for a withdrawal of ``gross`` at this seller's rate."""
         if percent is None:
-            percent = self._cod_settlement_charge_percent()
+            percent = self._cod_settlement_charge_percent(seller)
         return self._cod_charge_breakdown(gross, percent, currency)
 
     def _cod_breakdown_display(self):

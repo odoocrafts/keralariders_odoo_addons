@@ -249,3 +249,44 @@ class Hub(models.Model):
         hubs = self.search([])
         hubs.action_assign_district_pincodes()
         return True
+
+    def _kx_network_rider_rows(self):
+        """Own-network riders for these hubs, with open custody and cash held.
+
+        A rider is listed when their pickup or delivery pincodes meet the
+        hub, or when they are holding an open hub-network parcel for it.
+        India Post shipments are left out.
+        """
+        hubs = self.exists()
+        Shipment = self.env['logistics.shipment'].sudo()
+        Executive = self.env['logistics.delivery.executive'].sudo()
+        executives = Executive.browse()
+        pins = hubs.mapped('pincode_ids')
+        if pins:
+            executives = Executive.search([
+                ('active', '=', True),
+                '|',
+                ('assigned_pickup_pincodes', 'in', pins.ids),
+                ('assigned_delivery_pincodes', 'in', pins.ids),
+            ])
+        held = Shipment.search([
+            ('fulfilment_method', '=', 'own_network'),
+            ('state', 'not in', ('delivered', 'cancelled', 'returned')),
+            ('custodian_type', '=', 'de'),
+            ('custodian_de_id', '!=', False),
+            '|', '|',
+            ('source_hub_id', 'in', hubs.ids),
+            ('destination_hub_id', 'in', hubs.ids),
+            ('current_hub_id', 'in', hubs.ids),
+        ])
+        executives |= held.mapped('custodian_de_id')
+        rows = []
+        for executive in executives.sorted(key=lambda rec: (rec.name or '').lower()):
+            mine = held.filtered(lambda shipment, executive=executive: shipment.custodian_de_id == executive)
+            account = executive.default_cash_account_id
+            rows.append({
+                'executive': executive,
+                'shipments': mine,
+                'cash_balance': account.balance if account else 0.0,
+            })
+        return rows
