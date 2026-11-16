@@ -3,6 +3,7 @@
 import json
 import re
 
+from odoo.exceptions import AccessError
 from odoo.tests import HttpCase, TransactionCase, tagged
 
 from odoo.addons.keralariders_logistics.tests.common import IndiapostHermeticMixin
@@ -54,6 +55,36 @@ class TestSellerApiCredentials(TransactionCase):
         self.assertEqual(second.state, 'active')
         self.assertFalse(Credential.authenticate(first.api_key, first_secret))
         self.assertTrue(Credential.authenticate(second.api_key, second_secret))
+
+    def test_admin_issues_key_from_seller_profile(self):
+        action = self.seller.action_generate_api_credentials()
+        wizard = self.env['logistics.seller.api.key.wizard'].browse(action['res_id'])
+        self.assertEqual(action['target'], 'new')
+        self.assertTrue(wizard.api_key.startswith('kx_'))
+        self.assertTrue(wizard.api_secret.startswith('kxs_'))
+        self.assertFalse(wizard.replaced_active_key)
+        self.assertTrue(self.env['logistics.seller.api.credential'].authenticate(
+            wizard.api_key, wizard.api_secret))
+        self.assertNotEqual(wizard.credential_id.secret_hash, wizard.api_secret)
+
+        again = self.seller.action_generate_api_credentials()
+        second = self.env['logistics.seller.api.key.wizard'].browse(again['res_id'])
+        self.assertTrue(second.replaced_active_key)
+        self.assertEqual(wizard.credential_id.state, 'revoked')
+        self.assertNotEqual(wizard.api_key, second.api_key)
+        self.assertFalse(self.env['logistics.seller.api.credential'].authenticate(
+            wizard.api_key, wizard.api_secret))
+        self.assertTrue(self.env['logistics.seller.api.credential'].authenticate(
+            second.api_key, second.api_secret))
+
+    def test_user_without_api_access_cannot_issue_a_key(self):
+        user = self.env['res.users'].create({
+            'name': 'No API Access',
+            'login': 'no.api.access@example.com',
+            'group_ids': [(6, 0, [self.env.ref('base.group_user').id])],
+        })
+        with self.assertRaises(AccessError):
+            self.seller.with_user(user).action_generate_api_credentials()
 
     def test_disable_rejects_the_key(self):
         Credential = self.env['logistics.seller.api.credential']
@@ -482,3 +513,45 @@ class TestSellerApiHttp(IndiapostHermeticMixin, HttpCase):
         again = self.url_open('/my/api')
         self.assertNotIn('Copy your API secret now', again.text)
         self.assertNotIn('kxs_', again.text)
+
+    def test_sale_point_is_optional_on_create(self):
+        listed = self._get('/api/v1/seller/sale-points')
+        self.assertEqual(listed.status_code, 200, listed.text)
+        points = self._json(listed)['data']['sale_points']
+        self.assertEqual(points[0]['name'], '')
+        self.assertTrue(points[0]['default'])
+        self.assertEqual(points[0]['pincode'], '682001')
+
+        plain = self._post(
+            '/api/v1/seller/shipments',
+            _shipment_body(book=False),
+            idempotency='sale-point-default',
+        )
+        self.assertEqual(plain.status_code, 201, plain.text)
+        self.assertEqual(self._json(plain)['data']['origin_pincode'], '682001')
+        self.assertEqual(self._json(plain)['data']['sale_point'], '')
+
+        unknown = self._post(
+            '/api/v1/seller/shipments',
+            _shipment_body(book=False, sale_point='Missing shop'),
+            idempotency='sale-point-missing',
+        )
+        self.assertEqual(unknown.status_code, 400, unknown.text)
+        self.assertIn('Unknown sale point', self._json(unknown)['error']['message'])
+
+        self.env['logistics.seller.location'].create({
+            'seller_id': self.seller.id,
+            'name': 'Shop Two',
+            'street': 'Second Street',
+            'zip': '695001',
+            'phone': '9800000002',
+        })
+        chosen = self._post(
+            '/api/v1/seller/shipments',
+            _shipment_body(book=False, sale_point='Shop Two'),
+            idempotency='sale-point-chosen',
+        )
+        self.assertEqual(chosen.status_code, 201, chosen.text)
+        data = self._json(chosen)['data']
+        self.assertEqual(data['origin_pincode'], '695001')
+        self.assertEqual(data['sale_point'], 'Shop Two')

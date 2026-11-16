@@ -92,6 +92,9 @@ _ALIASES = {
     'state': 'state',
     'service': 'service',
     'india post service': 'service',
+    'sale point': 'sale_point',
+    'salepoint': 'sale_point',
+    'sale_point': 'sale_point',
 }
 
 _REQUIRED = (
@@ -200,6 +203,9 @@ def _parse_block(index, block):
     service = _service(values.get('service'))
     if service:
         post['indiapost_article_type'] = service
+    sale_point = (values.get('sale_point') or '').strip()
+    if sale_point:
+        post['sale_point'] = sale_point
 
     reasons = []
     if missing:

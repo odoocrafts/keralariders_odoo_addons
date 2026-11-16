@@ -62,6 +62,13 @@
                     <t t-set="text" t-value="'Estimate shipping costs (' + delivery_package_name + ' Rates)'"/>
                 </t>
                 <t t-call="keralariders_logistics.logistics_portal_card">
+                    <t t-set="title">Sale points</t>
+                    <t t-set="url" t-value="'/my/sale-points'"/>
+                    <t t-set="count_text" t-value="' '"/>
+                    <t t-set="icon" t-value="'/keralariders_logistics/static/src/img/shipment.svg'"/>
+                    <t t-set="text">Extra pickup addresses. The seller address stays the default.</t>
+                </t>
+                <t t-call="keralariders_logistics.logistics_portal_card">
                     <t t-set="title">Seller API</t>
                     <t t-set="url" t-value="'/my/api'"/>
                     <t t-set="count_text" t-value="' '"/>
@@ -109,6 +116,9 @@
             </li>
             <li t-if="page_name == 'api'" class="breadcrumb-item">
                 Seller API
+            </li>
+            <li t-if="page_name == 'sale_points'" class="breadcrumb-item">
+                Sale points
             </li>
         </xpath>
     </template>
@@ -1210,7 +1220,113 @@
     <!-- Shared shipment fields. Used by the standalone shipment form and by
          the order "Add Order" / "Add Shipment" forms so there is one surface
          for customer, package and India Post pickup. -->
+    <template id="portal_sale_point_select" name="Sale point select">
+        <div t-if="sale_points" class="mb-4">
+            <label class="form-label fw-bold">Sale point</label>
+            <select name="sale_point" class="form-select">
+                <option value="">Default address</option>
+                <t t-foreach="sale_points" t-as="point">
+                    <option t-att-value="point.name">
+                        <t t-esc="point.name"/> — <t t-esc="point.zip"/>
+                    </option>
+                </t>
+            </select>
+            <p class="text-muted small mb-0 mt-2">
+                Leave this on the default address unless this booking should
+                be picked up from another sale point.
+            </p>
+        </div>
+    </template>
+
+    <template id="portal_my_sale_points" name="Sale points">
+        <t t-call="portal.portal_layout">
+            <t t-if="error">
+                <div class="alert alert-danger" role="alert"><t t-esc="error"/></div>
+            </t>
+            <t t-if="success">
+                <div class="alert alert-success" role="alert"><t t-esc="success"/></div>
+            </t>
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-white py-3">
+                    <h4 class="mb-0">Sale points</h4>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted">
+                        Your seller address stays the default pickup address.
+                        Add a sale point only when some bookings should leave
+                        from somewhere else.
+                    </p>
+                    <p t-if="seller">
+                        Default: <t t-esc="seller.street or ''"/>
+                        <t t-if="seller.zip">, <t t-esc="seller.zip"/></t>
+                    </p>
+                    <table class="table" t-if="sale_points">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Address</th>
+                                <th>Pincode</th>
+                                <th>Phone</th>
+                                <th/>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <t t-foreach="sale_points" t-as="point">
+                                <tr>
+                                    <td><t t-esc="point.name"/></td>
+                                    <td>
+                                        <t t-esc="point.street or ''"/>
+                                        <t t-if="point.street2"><br/><t t-esc="point.street2"/></t>
+                                    </td>
+                                    <td><t t-esc="point.zip"/></td>
+                                    <td><t t-esc="point.phone or ''"/></td>
+                                    <td class="text-end">
+                                        <form action="/my/sale-points/delete" method="post">
+                                            <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                                            <input type="hidden" name="location_id" t-att-value="point.id"/>
+                                            <button type="submit" class="btn btn-outline-danger btn-sm">Remove</button>
+                                        </form>
+                                    </td>
+                                </tr>
+                            </t>
+                        </tbody>
+                    </table>
+                    <p t-else="" class="text-muted">No extra sale points yet.</p>
+                    <form action="/my/sale-points/save" method="post" class="border-top pt-3">
+                        <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                        <h5>Add a sale point</h5>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Name</label>
+                                <input type="text" name="name" class="form-control" required="1"/>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Pincode</label>
+                                <input type="text" name="zip" class="form-control" required="1" pattern="\d{6}"/>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Address</label>
+                                <input type="text" name="street" class="form-control"/>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Address 2</label>
+                                <input type="text" name="street2" class="form-control"/>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Phone</label>
+                                <input type="text" name="phone" class="form-control"/>
+                                <p class="text-muted small mb-0">Leave blank to keep the seller phone.</p>
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Save sale point</button>
+                    </form>
+                </div>
+            </div>
+        </t>
+    </template>
+
     <template id="portal_shipment_form_fields" name="Portal Shipment Form Fields">
+                        <t t-call="keralariders_logistics.portal_sale_point_select"/>
                         <div class="row">
                             <div class="col-md-6 mb-4">
                                 <h5 class="text-muted border-bottom pb-2">Shipping To (Destination)</h5>

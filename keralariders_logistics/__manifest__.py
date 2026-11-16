@@ -1,6 +1,6 @@
 {
     'name': 'Kerala Riders Logistics',
-    'version': '1.6.71',
+    'version': '1.6.72',
     'category': 'Operations/Logistics',
     'summary': 'Last-mile delivery management platform for Kerala Riders',
     'description': """
@@ -56,6 +56,7 @@ Features:
         "wizard/create_hub_manager_wizard_views.xml",
         "wizard/create_staff_user_wizard_views.xml",
         "wizard/awb_print_wizard_views.xml",
+        "wizard/seller_api_key_wizard_views.xml",
         "views/hub_views.xml",
         'views/res_config_settings_views.xml',
         'views/tracking_template.xml',

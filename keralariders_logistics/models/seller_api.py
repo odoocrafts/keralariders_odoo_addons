@@ -331,25 +331,46 @@ class Seller(models.Model):
         'logistics.seller.api.log', 'seller_id', string='API Logs',
     )
 
+    def _kx_can_issue_api_credentials(self):
+        user = self.env.user
+        return (
+            user.has_group('keralariders_logistics.group_logistics_admin')
+            or user.has_group('keralariders_logistics.group_staff_api')
+        )
+
     def action_generate_api_credentials(self):
-        """Admin helper: mint a new key. The secret is not shown in the backend."""
+        """Mint a key from the seller profile and show the secret once.
+
+        The plaintext secret is not stored on the credential. It lives only
+        on the dialog opened by this action. Any active key for the seller
+        is revoked, the same as a portal regenerate.
+        """
         self.ensure_one()
-        if not (
-            self.env.user.has_group('keralariders_logistics.group_logistics_admin')
-            or self.env.user.has_group('keralariders_logistics.group_staff_api')
-        ):
-            raise AccessError(_("Only logistics staff with API Keys access can generate keys here."))
-        credential, _secret = self.env['logistics.seller.api.credential'].generate_for_seller(self)
+        if not self._kx_can_issue_api_credentials():
+            raise AccessError(_(
+                "Only a Logistics Administrator or API Keys staff can create "
+                "an integration key from the seller profile."
+            ))
+        replaced = bool(self.env['logistics.seller.api.credential'].sudo().search_count([
+            ('seller_id', '=', self.id),
+            ('state', '=', 'active'),
+        ]))
+        credential, secret = self.env['logistics.seller.api.credential'].generate_for_seller(self)
+        credential.sudo().write({
+            'note': _('Generated from the seller profile by %s') % (self.env.user.name or ''),
+        })
+        wizard = self.env['logistics.seller.api.key.wizard'].create({
+            'seller_id': self.id,
+            'credential_id': credential.id,
+            'api_key': credential.api_key,
+            'api_secret': secret,
+            'replaced_active_key': replaced,
+        })
         return {
-            'type': 'ir.actions.client',
-            'tag': 'display_notification',
-            'params': {
-                'title': _('API key created'),
-                'message': _(
-                    'Key %s was created. The secret is only shown in the '
-                    'seller portal — ask the seller to generate the key there.'
-                ) % credential.api_key,
-                'type': 'warning',
-                'sticky': True,
-            },
+            'type': 'ir.actions.act_window',
+            'name': _('API key for %s') % (self.display_name or ''),
+            'res_model': 'logistics.seller.api.key.wizard',
+            'res_id': wizard.id,
+            'view_mode': 'form',
+            'target': 'new',
         }

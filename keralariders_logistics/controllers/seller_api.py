@@ -58,6 +58,7 @@ _SHIPMENT_ALIASES = {
     'article_type': 'indiapost_article_type',
     'indiapost_pickup_slot': 'indiapost_pickup_slot',
     'indiapost_pickup_date': 'indiapost_pickup_date',
+    'sale_point': 'sale_point',
 }
 
 
@@ -262,6 +263,7 @@ class SellerApiController(http.Controller):
             'customer_address': shipment.shipping_to_address or '',
             'destination_pincode': shipment.shipping_to_zip or '',
             'origin_pincode': shipment.shipping_from_zip or '',
+            'sale_point': shipment.sale_point_id.name or '',
             'weight_kg': shipment.total_weight or 0.0,
             'item_description': shipment.item_description or '',
             'payment_type': shipment.order_payment_type,
@@ -511,6 +513,44 @@ class SellerApiController(http.Controller):
             }, extra_headers=self._rate_headers())
         return self._dispatch(API_PREFIX + '/pincodes/<pincode>', handler)
 
+    def _sale_point_payload(self, seller):
+        street = ', '.join(
+            part.strip() for part in ((seller.street or ''), (seller.street2 or '')) if part.strip()
+        )
+        points = [{
+            'name': '',
+            'label': 'Default',
+            'pincode': (seller.zip or '').strip(),
+            'address': street,
+            'phone': (seller.phone or '').strip(),
+            'default': True,
+        }]
+        for location in seller.location_ids.sorted(key=lambda item: (item.name or '', item.id)):
+            address = ', '.join(
+                part.strip() for part in ((location.street or ''), (location.street2 or '')) if part.strip()
+            )
+            points.append({
+                'name': location.name,
+                'label': location.name,
+                'pincode': (location.zip or '').strip(),
+                'address': address,
+                'phone': (location.phone or '').strip(),
+                'default': False,
+            })
+        return points
+
+    @http.route(
+        API_PREFIX + '/sale-points', type='http', auth='public', methods=['GET'],
+        csrf=False, save_session=False,
+    )
+    def seller_api_sale_points(self, **kw):
+        def handler(credential, seller):
+            return self._ok(
+                {'sale_points': self._sale_point_payload(seller)},
+                extra_headers=self._rate_headers(),
+            )
+        return self._dispatch(API_PREFIX + '/sale-points', handler)
+
     @http.route(
         API_PREFIX + '/shipments', type='http', auth='public',
         methods=['GET', 'POST'], csrf=False, save_session=False,
@@ -627,6 +667,88 @@ class SellerApiController(http.Controller):
                 extra_headers=self._rate_headers(),
             )
         return self._dispatch(API_PREFIX + '/shipments/<awb>', handler)
+
+    @http.route(
+        API_PREFIX + '/shipments/labels', type='http', auth='public',
+        methods=['POST'], csrf=False, save_session=False,
+    )
+    def seller_api_shipment_labels(self, **kw):
+        def handler(credential, seller):
+            payload = self._read_json()
+            raw_awbs = payload.get('awbs') or []
+            if isinstance(raw_awbs, str):
+                raw_awbs = [part.strip() for part in raw_awbs.split(',') if part.strip()]
+            if not isinstance(raw_awbs, list) or not raw_awbs:
+                return self._err('validation_error', 'Choose at least one airway bill.')
+            ordered_ids = []
+            seen = set()
+            missing = []
+            for raw in raw_awbs[:50]:
+                name = str(raw or '').strip()
+                if not name or name in seen:
+                    continue
+                seen.add(name)
+                shipment = self._find_seller_shipment(seller, name)
+                if not shipment:
+                    missing.append(name)
+                    continue
+                ordered_ids.append(shipment.id)
+            if missing:
+                return self._err(
+                    'not_found',
+                    'Shipment not found: %s.' % ', '.join(missing),
+                    status=404,
+                )
+            if not ordered_ids:
+                return self._err('validation_error', 'Choose at least one airway bill.')
+            shipments = request.env['logistics.shipment'].sudo().browse(ordered_ids)
+            if shipments.portal_awb_print_state() != 'ready':
+                return self._err(
+                    'not_ready',
+                    'One of the shipping labels is not ready to print yet.',
+                    status=409,
+                    extra_headers=self._rate_headers(),
+                )
+            paper = payload.get('paper') or '100x150'
+            xmlid = request.env['logistics.shipment']._awb_report_xmlid_for_paper(paper)
+            pdf, _report_type = request.env['ir.actions.report'].sudo()._render_qweb_pdf(
+                xmlid, res_ids=shipments.ids,
+            )
+            return request.make_response(pdf, headers=[
+                ('Content-Type', 'application/pdf'),
+                ('Content-Disposition', 'inline; filename="KeralaXpress-labels.pdf"'),
+                ('Cache-Control', 'no-store'),
+            ])
+        return self._dispatch(API_PREFIX + '/shipments/labels', handler)
+
+    @http.route(
+        API_PREFIX + '/shipments/<string:awb>/label', type='http', auth='public',
+        methods=['GET'], csrf=False, save_session=False,
+    )
+    def seller_api_shipment_label(self, awb, **kw):
+        def handler(credential, seller):
+            shipment = self._find_seller_shipment(seller, awb)
+            if not shipment:
+                return self._err('not_found', 'Shipment not found.', status=404)
+            if shipment.portal_awb_print_state() != 'ready':
+                return self._err(
+                    'not_ready',
+                    'The shipping label is not ready to print yet.',
+                    status=409,
+                    extra_headers=self._rate_headers(),
+                )
+            paper = request.httprequest.args.get('paper') or '100x150'
+            xmlid = request.env['logistics.shipment']._awb_report_xmlid_for_paper(paper)
+            pdf, _report_type = request.env['ir.actions.report'].sudo()._render_qweb_pdf(
+                xmlid, res_ids=shipment.ids,
+            )
+            filename = 'KeralaXpress-%s.pdf' % shipment.name
+            return request.make_response(pdf, headers=[
+                ('Content-Type', 'application/pdf'),
+                ('Content-Disposition', 'inline; filename="%s"' % filename),
+                ('Cache-Control', 'no-store'),
+            ])
+        return self._dispatch(API_PREFIX + '/shipments/<awb>/label', handler)
 
     @http.route(
         API_PREFIX + '/shipments/<string:awb>/track', type='http', auth='public',

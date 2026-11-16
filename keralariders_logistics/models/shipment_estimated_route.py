@@ -39,10 +39,11 @@ class ShipmentInherit(models.Model):
 
         Return journeys reverse the path: pickup at consignee → hubs → delivery to seller.
 
-        India Post outbound parcels may leave Kerala: the destination pincode
-        then has no district hub. Do not invent one — keep the seller-side
-        origin hub and skip the dest-hub requirement. Own-network still needs
-        both hubs.
+        India Post does not need a Kerala hub at either end. The destination
+        may be outside Kerala, and the seller pickup may be too: Mahe
+        (673310) is a Puducherry enclave with no row in logistics.pincode.
+        Do not invent a hub, and do not block the order. Own-network still
+        needs both hubs.
         """
         Hub = self.env['logistics.hub']
         for rec in self:
@@ -72,15 +73,16 @@ class ShipmentInherit(models.Model):
                 delivery_to_label = 'Delivery at Consignee Address'
 
             is_ip = rec.fulfilment_method == 'indiapost'
-            # Outbound IP: national dest may have no Kerala hub.
-            # Return IP: consignee pickup may be outside the hub network.
+            # India Post collects outbound and may deliver anywhere it
+            # serves, including a seller whose pickup PIN is not in the
+            # Kerala hub table. Own-network still requires both hubs.
             source_hub = Hub.get_hub_from_pincode(
                 pickup_zip,
-                raise_if_missing=not (is_ip and rec.is_return_journey),
+                raise_if_missing=not is_ip,
             )
             final_hub = Hub.get_hub_from_pincode(
                 delivery_zip,
-                raise_if_missing=not (is_ip and not rec.is_return_journey),
+                raise_if_missing=not is_ip,
             )
             DE = self.env['logistics.delivery.executive']
 
@@ -122,7 +124,10 @@ class ShipmentInherit(models.Model):
                 continue
 
             if not source_hub:
-                # India Post return from a non-hub PIN: seller-side hub only.
+                # India Post with no origin hub: a return collected outside
+                # Kerala, or an outbound pickup India Post does itself
+                # (Mahe / 673310). Keep the destination hub and do not draw
+                # a KeralaXpress pickup leg.
                 lines = [
                     (0, 0, {
                         'sequence': 1,

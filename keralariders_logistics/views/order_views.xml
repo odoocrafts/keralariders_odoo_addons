@@ -32,7 +32,7 @@
                             groups="keralariders_logistics.group_logistics_admin,keralariders_logistics.group_logistics_hub_manager"/>
                     <button name="action_cancel_order" string="Cancel" type="object" class="btn-secondary" invisible="state in ('cancelled', 'draft')"
                             groups="keralariders_logistics.group_logistics_admin,keralariders_logistics.group_logistics_hub_manager"
-                        confirm="This will mark all Shipments under this order as cancelled. Are you sure you want to cancel this order?"/>
+                        confirm="This will mark all Shipments under this order as cancelled and return any shipping charge that was actually taken. Are you sure you want to cancel this order?"/>
                     <!-- India Post batch actions. Booking submits every
                          unbooked India Post shipment on this order in one
                          /process-articles call. -->
@@ -53,7 +53,7 @@
                             invisible="indiapost_booked_count == 0"
                             groups="keralariders_logistics.group_logistics_admin,keralariders_logistics.group_logistics_hub_manager"/>
 
-                    <field name="state" widget="statusbar" statusbar_visible="draft,pickup_requested,picked,delivered"/>
+                    <field name="state" widget="statusbar" options="{'clickable': '0'}" statusbar_visible="draft,pickup_requested,picked,delivered"/>
                 </header>
                 <sheet>
                     <div class="oe_title">

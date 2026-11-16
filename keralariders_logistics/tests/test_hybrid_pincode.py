@@ -257,6 +257,42 @@ class TestHybridPincodeLookup(IndiapostHermeticMixin, TransactionCase):
             self.env['logistics.hub'].get_hub_from_pincode(CHENNAI_PIN)
         self.assertIn('Cannot find any Hub assigned to pincode', str(err.exception))
 
+    def test_ip_seller_outside_hub_network_can_create_order(self):
+        """Mahe 673310 is Puducherry, not a Kerala hub PIN.
+
+        India Post collects from the seller, so a missing origin hub must
+        not reject the order.
+        """
+        pin = '673310'
+        self.assertFalse(self.Pincode.search([('name', '=', pin)]))
+        seller = self.env['logistics.seller'].create({
+            'name': 'Mahe IP Seller',
+            'zip': pin,
+        })
+        seller.write({'fulfilment_method': 'indiapost'})
+        shipment = self.env['logistics.shipment'].create(
+            self._shipment_vals(seller, KERALA_PIN),
+        )
+        self.assertEqual(shipment.fulfilment_method, 'indiapost')
+        self.assertEqual(shipment.shipping_from_zip, pin)
+        self.assertFalse(shipment.source_hub_id)
+        self.assertFalse(shipment.pickup_executive_id)
+
+    def test_own_network_seller_outside_hub_network_still_requires_origin_hub(self):
+        """Hub-network sellers still cannot book from a PIN with no hub."""
+        pin = '673310'
+        seller = self.env['logistics.seller'].create({
+            'name': 'Mahe Hub Seller',
+            'zip': pin,
+        })
+        seller.write({'fulfilment_method': 'own_network'})
+        with self.assertRaises(UserError) as err:
+            self.env['logistics.shipment'].create(
+                self._shipment_vals(seller, KERALA_PIN),
+            )
+        self.assertIn(pin, str(err.exception))
+        self.assertIn('Cannot find any Hub assigned to pincode', str(err.exception))
+
     def test_own_network_seller_still_requires_dest_hub(self):
         """Own-network create still raises when the destination has no hub."""
         # A Kerala-table PIN whose district has no hub (not a national IP pin).

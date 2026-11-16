@@ -46,8 +46,10 @@
                         </group>
                     </group>
                     <div class="alert alert-info mb-0" role="alert">
-                        The secret is hashed and is never shown here. Sellers generate
-                        and copy the secret from the portal at /my/api.
+                        The secret is hashed and is never shown here. Create a key
+                        from the seller profile, or the seller can generate one
+                        at /my/api. Copy the secret from that dialog; it is
+                        not stored.
                     </div>
                 </sheet>
             </form>

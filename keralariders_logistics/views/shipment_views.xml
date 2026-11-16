@@ -327,15 +327,15 @@
                             confirm="Same-district local delivery — skip hub inventory and go Out for Delivery?"/>
                     <button name="action_indiapost_cancel_pre_scan" type="object"
                             string="Cancel before India Post Scan"
-                            invisible="not indiapost_pre_scan_cancel_ok"
+                            invisible="not indiapost_cancel_refund_due"
                             groups="keralariders_logistics.group_logistics_admin,keralariders_logistics.group_logistics_executive"
                             class="btn-warning"
-                            confirm="Cancel this India Post booking before scan? The seller wallet will be credited the shipping charge and the ARN returned to the pool."/>
+                            confirm="Cancel this India Post booking before scan? The seller wallet will be credited the shipping charge that was actually taken, and the ARN will be voided."/>
                     <button name="action_cancel_shipment" type="object" string="Cancel Shipment"
-                            invisible="state in ('delivered', 'cancelled', 'returned') or indiapost_pre_scan_cancel_ok"
+                            invisible="state in ('delivered', 'cancelled', 'returned') or indiapost_cancel_refund_due"
                             groups="keralariders_logistics.group_logistics_admin"
                             class="btn-secondary"
-                            confirm="Cancel this shipment?"/>
+                            confirm="Cancel this shipment? The wallet is refunded only when a shipping charge was actually taken."/>
                     <field name="state" widget="statusbar" options="{'clickable': 0}"
                            statusbar_visible="order_added,pickup_requested,picked,in_transit,at_source_hub,at_destination_hub,out_for_delivery,delivery_failed,delivered,return_requested,return_picked,returned"/>
                 </header>
@@ -387,6 +387,7 @@
                             <field name="currency_id" invisible="1"/>
                             <field name="is_indiapost" invisible="1"/>
                             <field name="indiapost_pre_scan_cancel_ok" invisible="1"/>
+                            <field name="indiapost_cancel_refund_due" invisible="1"/>
                             <field name="total_weight"/>
                             <label for="length_cm" string="Dimensions (cm)"/>
                             <div class="o_row">
@@ -496,7 +497,9 @@
 
                     <group>
                         <group string="Shipping From (Seller)">
+                            <field name="sale_point_id" string="Sale point"/>
                             <field name="shipping_from_name" string="Name"/>
+                            <field name="shipping_from_phone" string="Phone"/>
                             <field name="shipping_from_address" string="Address"/>
                             <field name="shipping_from_zip" string="Pincode" force_save="1"/>
                             <field name="shipping_from_district_id" string="District"/>

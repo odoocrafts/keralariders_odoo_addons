@@ -36,16 +36,24 @@ class CODPaymentWizard(models.TransientModel):
     date = fields.Date(string="Date", required=True, default=fields.Date.context_today)
     reference = fields.Text(string="Reference")
     def action_create_transfer(self):
-        transfer = self.env['logistics.account.transfer'].create({
+        # Cash or UPI still lands on the executive's account so the hub
+        # deposit can collect it. A hub-network pickup already credited the
+        # seller, so this collection must not credit them a second time.
+        Transfer = self.env['logistics.account.transfer']
+        pickup_advance = Transfer._kx_cod_transfer_for_shipment(
+            self.shipment_id, 'cod_pickup')
+        vals = {
             'from_account_id': self.from_account_id.id,
             'to_account_id': self.to_account_id.id,
             'transfer_date': self.date,
             'amount': self.amount,
             'reference': self.reference,
-            'related_seller_id': self.seller_id.id,
             'shipment_id': self.shipment_id.id,
             'transfer_type': 'cod_payment',
-        })
+        }
+        if not pickup_advance:
+            vals['related_seller_id'] = self.seller_id.id
+        transfer = Transfer.create(vals)
         self.shipment_id.cod_payment_transfer_ids = [(4, transfer.id)]
 
     currency_id = fields.Many2one('res.currency', string='Currency', default=lambda self: self.env.company.currency_id.id)

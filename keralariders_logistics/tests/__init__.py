@@ -6,6 +6,7 @@ from . import test_indiapost_delivery_charge
 from . import test_indiapost_settings
 from . import test_indiapost_tariff
 from . import test_wallet_recharge_integrity
+from . import test_sale_point
 from . import test_portal_manual_order
 from . import test_portal_bulk_upload
 from . import test_portal_whatsapp_order
@@ -27,6 +28,7 @@ from . import test_seller_draft_counts
 from . import test_cod_indiapost_settlement
 from . import test_cod_withdrawal_settlement_cycle
 from . import test_cod_settlement_charge
+from . import test_hub_network_cod
 from . import test_indiapost_scan_adjustment
 from . import test_indiapost_scan_import
 from . import test_indiapost_pre_scan_cancel

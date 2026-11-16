@@ -3,7 +3,7 @@ import re
 
 from markupsafe import Markup
 from odoo import models, fields, api, _
-from odoo.exceptions import AccessError, UserError
+from odoo.exceptions import AccessError, UserError, ValidationError
 from odoo.tools import html_escape
 
 _logger = logging.getLogger(__name__)
@@ -28,9 +28,12 @@ COD_BANK_FIELDS = COD_BANK_REQUIRED_FIELDS + (
     'bank_name',
     'bank_branch',
 )
-# Portal /my/cod ledger: payments plus the settlement types that reduce pending.
+# Portal /my/cod ledger: credits (customer collection and the hub-network
+# pickup advance) plus the settlement types that reduce pending, including
+# the reversal when a hub-network COD comes back to the seller.
 COD_LEDGER_TRANSFER_TYPES = (
-    'cod_payment', 'cod_clearance', 'cod_withdrawal', 'other',
+    'cod_payment', 'cod_pickup', 'cod_clearance', 'cod_withdrawal',
+    'cod_return', 'other',
 )
 
 
@@ -56,6 +59,9 @@ class Seller(models.Model):
     zip = fields.Char(string='Pincode', related='partner_id.zip', store=True, readonly=False)
     tax_id = fields.Char(string='GSTIN', related='partner_id.vat', store=True, readonly=False)
     district_id = fields.Many2one('logistics.district', string='District')
+    location_ids = fields.One2many(
+        'logistics.seller.location', 'seller_id', string='Sale points',
+    )
 
     @api.onchange('zip')
     def _onchange_zip(self):
@@ -411,10 +417,12 @@ class Seller(models.Model):
             'context': {'default_seller_id': self.id},
         }
 
-    # Same figure as portal /my/cod: posted COD payments minus posted
-    # clearance / withdrawal / other. India Post credits never hit the
-    # seller COD account itself (they land on the company account with
-    # related_seller_id), so this is not seller_account_id.balance.
+    # Same figure as portal /my/cod: posted COD payments and hub-network
+    # pickup advances, minus posted clearance / withdrawal / return / other.
+    # Negative after a return when that COD was already withdrawn.
+    # India Post credits never hit the seller COD account itself (they land
+    # on the company account with related_seller_id), so this is not
+    # seller_account_id.balance.
     cod_pending_balance = fields.Monetary(
         string='Pending COD Balance',
         compute='_compute_cod_pending_balance',
@@ -522,3 +530,75 @@ class Seller(models.Model):
                 'active_ids': self.user_id.ids
             }
         }
+
+
+class SellerLocation(models.Model):
+    """An extra pickup address. The seller record itself stays the default."""
+
+    _name = 'logistics.seller.location'
+    _description = 'Seller sale point'
+    _order = 'name, id'
+
+    seller_id = fields.Many2one(
+        'logistics.seller', string='Seller', required=True, ondelete='cascade', index=True,
+    )
+    name = fields.Char(string='Name', required=True)
+    street = fields.Char(string='Address')
+    street2 = fields.Char(string='Address 2')
+    zip = fields.Char(string='Pincode', required=True)
+    phone = fields.Char(string='Phone')
+    district_id = fields.Many2one('logistics.district', string='District')
+    state_id = fields.Many2one('res.country.state', string='State')
+    country_id = fields.Many2one('res.country', string='Country')
+
+    _sql_constraints = [
+        (
+            'seller_location_name_uniq',
+            'unique(seller_id, name)',
+            'This seller already has a sale point with that name.',
+        ),
+    ]
+
+    @api.constrains('zip')
+    def _check_zip(self):
+        for location in self:
+            pin = (location.zip or '').strip()
+            if not re.fullmatch(r'\d{6}', pin):
+                raise ValidationError(_('Sale point pincode must be 6 digits.'))
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        for vals in vals_list:
+            if vals.get('name'):
+                vals['name'] = vals['name'].strip()
+            if vals.get('zip'):
+                vals['zip'] = vals['zip'].strip()
+        locations = super().create(vals_list)
+        locations._fill_area_from_pincode()
+        return locations
+
+    def write(self, vals):
+        if vals.get('name'):
+            vals['name'] = vals['name'].strip()
+        if vals.get('zip'):
+            vals['zip'] = vals['zip'].strip()
+        result = super().write(vals)
+        if 'zip' in vals:
+            self._fill_area_from_pincode()
+        return result
+
+    def _fill_area_from_pincode(self):
+        District = self.env['logistics.district']
+        company_country = self.env.company.country_id
+        for location in self:
+            info = District.get_district_from_pincode((location.zip or '').strip()) or {}
+            district = info.get('district_id')
+            values = {}
+            if district:
+                values['district_id'] = district.id
+                if district.state_id:
+                    values['state_id'] = district.state_id.id
+            if not location.country_id and company_country:
+                values['country_id'] = company_country.id
+            if values:
+                super(SellerLocation, location).write(values)

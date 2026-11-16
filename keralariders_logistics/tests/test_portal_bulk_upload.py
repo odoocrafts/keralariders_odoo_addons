@@ -87,10 +87,9 @@ class TestPortalBulkUpload(IndiapostHermeticMixin, HttpCase):
         self.assertTrue(match, 'no %s in the rendered page' % name)
         return match.group(1)
 
-    def _csv_file(self):
-        return ('bulk.csv', io.BytesIO(
-            (CSV_HEADERS + '\n' + CSV_ROWS).encode('utf-8')
-        ), 'text/csv')
+    def _csv_file(self, content=None):
+        payload = content if content is not None else (CSV_HEADERS + '\n' + CSV_ROWS)
+        return ('bulk.csv', io.BytesIO(payload.encode('utf-8')), 'text/csv')
 
     def _orders_of(self, seller):
         return self.env['logistics.order'].search([('seller_id', '=', seller.id)])
@@ -109,7 +108,7 @@ class TestPortalBulkUpload(IndiapostHermeticMixin, HttpCase):
         wallet.invalidate_recordset(['balance'])
         return wallet
 
-    def _upload(self, form_html, **post):
+    def _upload(self, form_html, csv_content=None, **post):
         data = {
             'csrf_token': self._csrf(form_html),
             'pickup_date': fields.Date.context_today(self.env.user).isoformat(),
@@ -120,7 +119,7 @@ class TestPortalBulkUpload(IndiapostHermeticMixin, HttpCase):
         return self.url_open(
             '/my/orders/bulk_upload',
             data=data,
-            files={'csv_file': self._csv_file()},
+            files={'csv_file': self._csv_file(csv_content)},
         )
 
     def _confirm_pickup(self, order, detail_html=None):
@@ -229,6 +228,48 @@ class TestPortalBulkUpload(IndiapostHermeticMixin, HttpCase):
             'hub bulk must ignore the posted India Post product',
         )
         self.assertFalse(captured, 'hub bulk must not call the India Post client')
+
+    def test_csv_without_sale_point_keeps_the_seller_address(self):
+        self.authenticate(self.hub_login, self.hub_login)
+        self.env['logistics.seller.location'].create({
+            'seller_id': self.hub_seller.id,
+            'name': 'Shop Two',
+            'street': 'Second Street',
+            'zip': '695001',
+        })
+        form = self.url_open('/my/orders/new')
+        self._upload(form.text)
+        self.env.invalidate_all()
+        shipments = self._orders_of(self.hub_seller).shipment_ids
+        self.assertEqual(set(shipments.mapped('shipping_from_zip')), {'682001'})
+        self.assertFalse(shipments.mapped('sale_point_id'))
+
+    def test_csv_sale_point_column_changes_only_named_rows(self):
+        self.authenticate(self.hub_login, self.hub_login)
+        self.env['logistics.seller.location'].create({
+            'seller_id': self.hub_seller.id,
+            'name': 'Shop Two',
+            'street': 'Second Street',
+            'zip': '695001',
+            'phone': '9800000002',
+        })
+        csv_content = (
+            CSV_HEADERS + ',Sale point\n'
+            'John Doe,9876543210,"123 Main St, Apt 4B",695001,1.5,Electronics,prepaid,0,30,20,15,\n'
+            'Jane Smith,9988776655,456 Market Road,695001,2.0,Clothing,prepaid,0,25,18,10,Shop Two\n'
+            'Bad Row,9988776656,1 Lane,695001,1.0,Box,prepaid,0,25,18,10,Missing shop\n'
+        )
+        form = self.url_open('/my/orders/new')
+        self._upload(form.text, csv_content=csv_content)
+        self.env.invalidate_all()
+        shipments = self._orders_of(self.hub_seller).shipment_ids
+        by_name = {shipment.shipping_to_name: shipment for shipment in shipments}
+        self.assertEqual(set(by_name), {'John Doe', 'Jane Smith'})
+        self.assertFalse(by_name['John Doe'].sale_point_id)
+        self.assertEqual(by_name['John Doe'].shipping_from_zip, '682001')
+        self.assertEqual(by_name['Jane Smith'].sale_point_id.name, 'Shop Two')
+        self.assertEqual(by_name['Jane Smith'].shipping_from_zip, '695001')
+        self.assertEqual(by_name['Jane Smith'].shipping_from_phone, '9800000002')
 
     def test_cannot_inject_fulfilment_method_on_bulk_upload(self):
         self.authenticate(self.hub_login, self.hub_login)

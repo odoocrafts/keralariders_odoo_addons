@@ -21,9 +21,13 @@
                                  help="Team inbox for seller recharge requests. If empty, logistics administrators are emailed instead.">
                             <field name="ops_notification_email" placeholder="ops@example.com"/>
                         </setting>
-                        <setting id="cod_settlement_charge" string="COD settlement charge (%)"
-                                 help="Kept from each seller COD withdrawal. Enter 2 for 2%. The pending balance drops by the full requested amount; the rest is paid to the seller's bank. Existing requests keep their rate.">
+                        <setting id="cod_settlement_charge" string="India Post COD settlement charge (%)"
+                                 help="Kept from each India Post seller COD withdrawal. Enter 2 for 2%. Hub-network sellers use the rate below. The pending balance drops by the full requested amount; the rest is paid to the seller's bank. Existing requests keep their rate.">
                             <field name="cod_settlement_charge_percent"/>
+                        </setting>
+                        <setting id="hub_cod_settlement_charge" string="Hub-network COD settlement charge (%)"
+                                 help="Kept from each KeralaXpress hub-network seller COD withdrawal. Enter 1 for 1%. Existing requests keep their rate.">
+                            <field name="hub_cod_settlement_charge_percent"/>
                         </setting>
                     </block>
 

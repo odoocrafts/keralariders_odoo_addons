@@ -75,6 +75,7 @@ class TestWhatsappOrderPaste(TransactionCase):
         self.assertEqual(post['item_description'], 'Sample item')
         self.assertNotIn('shipping_to_state_name', post)
         self.assertNotIn('indiapost_article_type', post)
+        self.assertNotIn('sale_point', post)
 
     def test_old_labeled_message_still_parses(self):
         blocks = parse_whatsapp_orders(_LABELED_MESSAGE)
@@ -92,6 +93,13 @@ class TestWhatsappOrderPaste(TransactionCase):
         self.assertEqual(post['order_payment_type'], 'prepaid')
         self.assertEqual(post['total_order_value'], '0')
         self.assertEqual(post['item_description'], 'Sample item')
+        self.assertNotIn('sale_point', post)
+
+    def test_labeled_sale_point_is_optional(self):
+        text = _LABELED_MESSAGE + "\nSale point: Shop Two"
+        post = _ok_posts(text)[0]
+        self.assertEqual(post['sale_point'], 'Shop Two')
+        self.assertEqual(post['shipping_to_name'], 'Customer Name')
 
     def test_label_case_and_separator_still_parse(self):
         text = (

@@ -662,6 +662,14 @@ class IndiapostTracking(models.AbstractModel):
         # shipment backwards.
         if _STATE_PROGRESS.get(target, 0) < _STATE_PROGRESS.get(shipment.state, 0):
             return None
+        # "Pickup Request Raised" on an unpaid Order Added draft used to flip
+        # the shipment (and its order) to Pickup Requested. That showed the
+        # pre-scan Cancel button, which then credited the quote even though
+        # Request Pickup had never debited the wallet.
+        if (target == 'pickup_requested'
+                and shipment.state == 'order_added'
+                and not shipment.wallet_transaction_id):
+            return None
         return target
 
     @api.model

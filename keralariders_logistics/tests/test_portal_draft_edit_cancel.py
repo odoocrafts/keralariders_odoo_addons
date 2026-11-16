@@ -135,6 +135,18 @@ class TestDraftCancelModel(IndiapostHermeticMixin, TransactionCase):
         with self.assertRaises(UserError):
             shipment.action_cancel_order_added()
 
+    def test_order_cancel_button_refused_on_draft(self):
+        shipment = self._draft_shipment(self.seller)
+        order = shipment.order_id
+        self.assertEqual(order.state, 'draft')
+        balance = self.wallet.balance
+        with self.assertRaises(UserError):
+            order.action_cancel_order()
+        self.assertEqual(order.state, 'draft')
+        self.assertEqual(shipment.state, 'order_added')
+        self.wallet.invalidate_recordset(['balance'])
+        self.assertAlmostEqual(self.wallet.balance, balance, places=2)
+
 
 @tagged('post_install', '-at_install')
 class TestPortalDraftEditCancel(IndiapostHermeticMixin, HttpCase):

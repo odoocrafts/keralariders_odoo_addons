@@ -177,6 +177,52 @@ class TestIndiapostPreScanCancel(IndiapostHermeticMixin, TransactionCase):
         finally:
             others.write({'active': True})
 
+    def test_second_cancel_after_rebook_credits_the_new_debit(self):
+        """Book again takes the refund back. The next cancel must return it."""
+        shipment = self._new_ip_shipment()
+        debit = abs(shipment.wallet_transaction_id.amount)
+        shipment.action_indiapost_cancel_pre_scan()
+        shipment._ip_rebook_take_debit()
+        self.wallet.invalidate_recordset(['balance'])
+        balance_charged_again = self.wallet.balance
+
+        shipment._ip_detach_void_arns()
+        serial, article = self._next_article()
+        barcode = self.Barcode.create({
+            'range_id': self.tt_range.id,
+            'serial': serial,
+            'barcode': article,
+            'shipment_id': shipment.id,
+            'state': 'booked',
+        })
+        shipment.sudo().with_context(allow_shipment_state_write=True).write({
+            'state': 'pickup_requested',
+            'indiapost_article_number': article,
+            'indiapost_barcode_id': barcode.id,
+            'indiapost_booking_state': 'booked',
+        })
+        self.env['logistics.shipment.event'].create({
+            'shipment_id': shipment.id,
+            'event_type': 'indiapost_booked',
+            'note': 'India Post article %s booked (batch test).' % article,
+        })
+
+        shipment.action_indiapost_cancel_pre_scan()
+
+        credits = self._cancel_lines(shipment)
+        self.assertEqual(len(credits), 2)
+        self.assertAlmostEqual(sum(credits.mapped('amount')), debit * 2, places=2)
+        self.wallet.invalidate_recordset(['balance'])
+        self.assertAlmostEqual(
+            self.wallet.balance, balance_charged_again + debit, places=2)
+        self.assertAlmostEqual(shipment._ip_cancel_debit_amount(), 0.0, places=2)
+        # The latest refund is the one Book again has to charge back.
+        # An older IP-CANCEL line must not make the rebook look already paid.
+        self.assertTrue(shipment._ip_rebook_needs_debit())
+        _again, created = shipment._ip_credit_cancel_wallet()
+        self.assertFalse(created)
+        self.assertEqual(len(self._cancel_lines(shipment)), 2)
+
     def test_retry_is_idempotent(self):
         shipment = self._new_ip_shipment()
         barcode = shipment.indiapost_barcode_id
@@ -291,3 +337,80 @@ class TestIndiapostPreScanCancel(IndiapostHermeticMixin, TransactionCase):
             ('shipment_id', '=', shipment.id),
             ('reference', '=like', 'IP-CANCEL:%'),
         ]))
+
+    def test_pre_scan_cancel_without_debit_does_not_credit_the_quote(self):
+        """A booked draft that was never charged must not mint a refund."""
+        shipment = self._new_ip_shipment()
+        debit = shipment.wallet_transaction_id
+        shipment.with_context(allow_delivery_charge_write=True).write({
+            'wallet_transaction_id': False,
+        })
+        debit.unlink()
+        self.wallet.invalidate_recordset(['balance'])
+        balance = self.wallet.balance
+        self.assertGreater(shipment.delivery_charges_total, 0)
+        self.assertTrue(shipment.indiapost_pre_scan_cancel_ok)
+        self.assertFalse(shipment.indiapost_cancel_refund_due)
+        self.assertFalse(shipment.portal_indiapost_cancel_allowed())
+
+        shipment.action_indiapost_cancel_pre_scan()
+
+        self.assertEqual(shipment.state, 'cancelled')
+        self.assertFalse(self._cancel_lines(shipment))
+        self.wallet.invalidate_recordset(['balance'])
+        self.assertAlmostEqual(self.wallet.balance, balance, places=2)
+
+    def test_pickup_scan_leaves_unpaid_draft_alone(self):
+        """India Post 'Pickup Request Raised' must not unlock refund-cancel."""
+        order = self.env['logistics.order'].create({
+            'seller_id': self.seller.id,
+        })
+        shipment = self.env['logistics.shipment'].create({
+            'order_id': order.id,
+            'seller_id': self.seller.id,
+            'shipping_to_name': 'Unpaid Draft',
+            'shipping_to_address': '12 Test Road',
+            'shipping_to_zip': '695001',
+            'shipping_to_mobile': '9876543210',
+            'item_description': 'Unpaid article',
+            'total_weight': 1.0,
+            'length_cm': 30,
+            'breadth_cm': 20,
+            'height_cm': 15,
+        })
+        shipment.sudo().with_context(allow_shipment_state_write=True).write({
+            'indiapost_article_number': 'CX057016630IN',
+            'state': 'order_added',
+        })
+        self.assertEqual(order.state, 'draft')
+        self.env['logistics.indiapost.tracking']._ip_apply_tracking(shipment, {
+            'tracking_details': [{
+                'date': '2026-10-27T00:00:00Z',
+                'time': '15:05:38',
+                'office': 'Kochi',
+                'officeid': '1',
+                'event': 'Pickup Request Raised',
+            }],
+        })
+        shipment.invalidate_recordset()
+        order.invalidate_recordset()
+        self.assertEqual(shipment.state, 'order_added')
+        self.assertEqual(order.state, 'draft')
+        self.assertFalse(shipment.portal_indiapost_cancel_allowed())
+        with self.assertRaises(UserError):
+            order.action_cancel_order()
+
+        self._store_quote(shipment)
+        shipment.action_add_wallet_transaction()
+        self.env['logistics.indiapost.tracking']._ip_apply_tracking(shipment, {
+            'tracking_details': [{
+                'date': '2026-10-27T00:00:00Z',
+                'time': '15:06:00',
+                'office': 'Kochi',
+                'officeid': '1',
+                'event': 'Pickup Assigned',
+            }],
+        })
+        shipment.invalidate_recordset()
+        self.assertEqual(shipment.state, 'pickup_requested')
+        self.assertTrue(shipment.portal_indiapost_cancel_allowed())

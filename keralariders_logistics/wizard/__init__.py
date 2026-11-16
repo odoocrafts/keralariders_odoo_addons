@@ -4,3 +4,4 @@ from . import create_hub_manager_wizard
 from . import create_staff_user_wizard
 from . import awb_print_wizard
 from . import indiapost_scan_import_wizard
+from . import seller_api_key_wizard

@@ -720,9 +720,17 @@ class Shipment(models.Model):
         string='Pre-scan Cancel Allowed',
         compute='_compute_indiapost_pre_scan_cancel_ok',
     )
+    indiapost_cancel_refund_due = fields.Boolean(
+        string='Pre-scan Cancel Would Refund',
+        compute='_compute_indiapost_pre_scan_cancel_ok',
+        help='True only when a shipping debit is still unreimbursed. '
+             'The refund button stays hidden otherwise, so a draft that '
+             'was never charged cannot mint a wallet credit.',
+    )
 
     @api.depends(
         'state', 'fulfilment_method', 'is_return_journey',
+        'wallet_transaction_id',
         'indiapost_scan_seen', 'indiapost_scan_adjusted',
         'indiapost_scan_wallet_txn_id', 'event_ids', 'event_ids.event_type',
         'event_ids.indiapost_event_key', 'event_ids.indiapost_event_code',
@@ -730,7 +738,13 @@ class Shipment(models.Model):
     )
     def _compute_indiapost_pre_scan_cancel_ok(self):
         for record in self:
-            record.indiapost_pre_scan_cancel_ok = record._ip_can_cancel_pre_scan()
+            allowed = record._ip_can_cancel_pre_scan()
+            record.indiapost_pre_scan_cancel_ok = allowed
+            record.indiapost_cancel_refund_due = bool(
+                allowed and float_compare(
+                    record._ip_cancel_debit_amount(), 0.0,
+                    precision_digits=2) > 0
+            )
 
     def _ip_scan_adj_reference(self):
         self.ensure_one()
@@ -1453,12 +1467,13 @@ class Shipment(models.Model):
     # ------------------------------------------------------------------
     # COD on delivery
     #
-    # An own-network parcel is paid in cash to the delivery executive, so its
-    # COD credit is raised by the DE's own settlement (customer → DE → hub →
-    # company) and the seller is cleared from the company account at the end of
-    # it. India Post collects on our behalf and remits to the company directly,
-    # so there is no cash custody to record: the delivery scan itself is the
-    # collection, and the seller has to be credited the moment it lands.
+    # A hub-network COD parcel credits the seller when it is picked up
+    # (see logistics.shipment._kx_settle_own_network_cod_on_pickup). The later
+    # cash or UPI collection records the executive's custody and must not
+    # credit the seller again. India Post collects on our behalf and remits
+    # to the company directly, so there is no cash custody to record: the
+    # delivery scan itself is the collection, and the seller has to be
+    # credited the moment it lands.
     # ------------------------------------------------------------------
     indiapost_cod_credited = fields.Boolean(
         string='India Post COD Credited', default=False, copy=False,
@@ -1879,6 +1894,8 @@ class Shipment(models.Model):
         seller = self.seller_id
         partner = seller.partner_id if seller else self.env['res.partner']
         candidates = []
+        if (self.shipping_from_phone or '').strip():
+            candidates.append(self.shipping_from_phone)
         if seller:
             candidates.append(seller.phone)
         if partner:
@@ -2552,16 +2569,35 @@ class Shipment(models.Model):
         return self.env['logistics.wallet.transaction'].sudo().search([
             ('shipment_id', '=', self.id),
             ('reference', '=', self._ip_cancel_reference()),
-        ], limit=1)
+        ], order='id desc', limit=1)
 
     def _ip_cancel_debit_amount(self):
-        """Absolute amount credited back — the original Request Pickup debit."""
+        """Shipping amount still owed back to the wallet.
+
+        Only real debits count, minus any ``IP-CANCEL`` credit already
+        posted. The quoted charge is never used: a draft or a booking that
+        was never deducted must not mint a credit.
+        """
         self.ensure_one()
-        if self.wallet_transaction_id:
-            return abs(self.wallet_transaction_id.amount or 0.0)
-        if self.indiapost_orig_charge:
-            return abs(self.indiapost_orig_charge or 0.0)
-        return abs(self.delivery_charges_total or 0.0)
+        lines = self.env['logistics.wallet.transaction'].sudo().search([
+            ('shipment_id', '=', self.id),
+        ])
+        scan_ref = self._ip_scan_adj_reference()
+        cancel_ref = self._ip_cancel_reference()
+        charged = 0.0
+        refunded = 0.0
+        for line in lines:
+            ref = line.reference or ''
+            amount = line.amount or 0.0
+            if ref == scan_ref:
+                continue
+            if ref == cancel_ref:
+                if amount > 0:
+                    refunded += amount
+                continue
+            if amount < 0:
+                charged += abs(amount)
+        return self._round_charge(max(charged - refunded, 0.0))
 
     def _ip_has_carrier_pickup_scan(self):
         """True when India Post (or network) has already scanned/picked the ARN.
@@ -2594,9 +2630,9 @@ class Shipment(models.Model):
         return False
 
     def portal_indiapost_cancel_allowed(self):
-        """Seller portal / backend button visibility for pre-scan cancel."""
+        """Seller portal refund-cancel. Hidden unless a debit would be returned."""
         self.ensure_one()
-        return self._ip_can_cancel_pre_scan()
+        return self.indiapost_cancel_refund_due
 
     def _ip_can_cancel_pre_scan(self):
         self.ensure_one()
@@ -2656,14 +2692,17 @@ class Shipment(models.Model):
         ))
 
     def _ip_credit_cancel_wallet(self):
-        """Credit the original pickup debit once (``IP-CANCEL:{id}``)."""
+        """Credit shipping still outstanding (``IP-CANCEL:{id}``).
+
+        An older cancel credit does not cover a debit posted after it.
+        Book again charges the refund back, and a later pre-scan cancel
+        has to return that new debit. A retry with nothing left
+        outstanding posts nothing.
+        """
         self.ensure_one()
-        existing = self._ip_existing_cancel_wallet_line()
-        if existing:
-            return existing, False
         amount = self._round_charge(self._ip_cancel_debit_amount())
         if float_compare(amount, 0.0, precision_digits=2) <= 0:
-            return self.env['logistics.wallet.transaction'], False
+            return self._ip_existing_cancel_wallet_line(), False
         wallet = (self.seller_id.wallet_ids[:1]
                   or (self.wallet_transaction_id.wallet_id
                       if self.wallet_transaction_id else False))
@@ -2789,14 +2828,14 @@ class Shipment(models.Model):
             record._write_with_state({'state': 'cancelled'})
             if newly_credited and credit_amount:
                 record._ip_queue_cancel_mail(credit_amount)
-            record.message_post(body=_(
-                'India Post booking cancelled before scan. Shipping charge '
-                '%(amount)s returned to the seller wallet '
-                '(ref %(ref)s).'
-            ) % {
-                'amount': record._ip_format_money(credit_amount),
-                'ref': record._ip_cancel_reference(),
-            })
+                record.message_post(body=_(
+                    'India Post booking cancelled before scan. Shipping charge '
+                    '%(amount)s returned to the seller wallet '
+                    '(ref %(ref)s).'
+                ) % {
+                    'amount': record._ip_format_money(credit_amount),
+                    'ref': record._ip_cancel_reference(),
+                })
         return True
 
     # ------------------------------------------------------------------

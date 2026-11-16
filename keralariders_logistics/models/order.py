@@ -167,7 +167,20 @@ class Order(models.Model):
 
     def action_cancel_order(self):
         for order in self:
+            # The button is hidden on drafts. Refuse the RPC anyway: a
+            # statusbar click can make Cancel look available while the saved
+            # order is still draft, and cancelling then must not refund a
+            # charge that was never taken.
+            if order.state == 'draft':
+                raise UserError(_(
+                    "Draft orders cannot be cancelled from this button. "
+                    "Cancel the shipment while it is still Order Added. "
+                    "The wallet is refunded only when a shipping charge "
+                    "was actually taken."
+                ))
             for shipment in order.shipment_ids:
+                if not shipment.wallet_transaction_id:
+                    continue
                 shipment.delete_wallet_transaction()
             order.shipment_ids.with_context(allow_shipment_state_write=True).write({
                 'state': 'cancelled'
