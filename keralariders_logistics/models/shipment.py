@@ -1775,8 +1775,8 @@ class Shipment(models.Model):
     def _kx_validate_pickup_scan(self, executive):
         """Whether this AWB may sit on a pickup scan sheet. Does not pick it up.
 
-        ``action_mark_picked`` is what credits COD and refunds the delivery
-        charge, so a scan must only be checked here. India Post articles,
+        ``action_mark_picked`` is what credits COD, so a scan must only be
+        checked here. India Post articles,
         including returns, are refused.
         """
         self.ensure_one()
@@ -2551,8 +2551,8 @@ class Shipment(models.Model):
 
         Only allowed from out_for_delivery. A hub-network COD that was
         credited on pickup is reversed when the return is delivered back to
-        the seller, and the delivery charge refunded at pickup is taken from
-        the wallet again. Starting the return does not move money.
+        the seller. The delivery charge taken at booking stays. Starting
+        the return does not move money.
         """
         for shipment in self:
             if shipment.state != 'out_for_delivery':
@@ -3616,52 +3616,34 @@ class Shipment(models.Model):
         ], limit=1)
 
     def _kx_settle_own_network_cod_on_pickup(self):
-        """Credit pending COD and refund the delivery charge already taken.
+        """Credit pending COD. The delivery charge taken at booking stays.
 
         Outbound hub-network COD only. A return pickup, a prepaid parcel,
         and a second scan do not post again. India Post is left to its
-        delivery credit.
+        delivery credit. Pickup must not credit the shipping fee back:
+        that fee is KeralaXpress's charge for carrying the parcel.
         """
         Transfer = self.env['logistics.account.transfer']
         for shipment in self:
             if not shipment._kx_is_hub_network_cod():
                 continue
             Transfer.action_create_own_network_cod_pickup(shipment)
-            shipment._kx_refund_delivery_charge_on_cod_pickup()
 
     def _kx_refund_delivery_charge_on_cod_pickup(self):
-        """Credit the wallet for the shipping debit already linked, once.
+        """Do not return the delivery charge when a parcel is picked up.
 
-        Nothing is refunded when pickup was never charged.
+        Older pickups posted ``KX-DLV-REFUND`` lines. Those stay on the
+        ledger so a later return can still put that money back. New
+        pickups leave the booking debit where it is.
         """
-        self.ensure_one()
-        reference = self._kx_delivery_refund_reference()
-        if self._kx_wallet_line(reference):
-            return
-        debit = self.wallet_transaction_id
-        if not debit or not debit.wallet_id or (debit.amount or 0.0) >= 0.0:
-            return
-        amount = self._round_charge(abs(debit.amount))
-        if amount <= 0.0:
-            return
-        self.env['logistics.wallet.transaction'].sudo().create({
-            'wallet_id': debit.wallet_id.id,
-            'amount': amount,
-            'transaction_date': fields.Date.context_today(self),
-            'shipment_id': self.id,
-            'order_id': self.order_id.id if self.order_id else False,
-            'reference': reference,
-            'description': _(
-                'Delivery charge returned on pickup of COD %s'
-            ) % (self.name or ''),
-        })
+        return
 
     def _kx_reverse_own_network_cod_on_return(self):
-        """Debit the pickup COD and charge the refunded delivery fee back.
+        """Debit the pickup COD. The booking delivery charge is left as it is.
 
-        Only when this hub-network COD received the pickup advance. The
-        wallet debit is posted even when the balance is short. Repeating
-        the return does not move money again.
+        A delivery charge that an older pickup had refunded is taken back,
+        because that refund should not have been given. Repeating the
+        return does not move money again.
         """
         Transfer = self.env['logistics.account.transfer']
         for shipment in self:

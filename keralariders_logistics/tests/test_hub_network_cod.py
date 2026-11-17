@@ -3,9 +3,9 @@
 India Post keeps the Settings withdrawal rate (default 2%) and is credited
 only when the article is delivered. A KeralaXpress hub-network seller is
 charged the hub-network rate (default 1%). Their COD is credited when the
-parcel is picked up, and the delivery charge already taken from the wallet
-is refunded. Both are reversed when the return is delivered back to the
-seller. The later cash or UPI collection still records the executive's
+parcel is picked up. The delivery charge taken at booking stays.
+COD is reversed when the return is delivered back to the seller.
+The later cash or UPI collection still records the executive's
 custody, and does not credit the seller a second time.
 """
 
@@ -65,9 +65,7 @@ class TestHubNetworkCod(IndiapostHermeticMixin, TransactionCase):
             'bank_ifsc': 'SBIN0004321',
             'bank_name': 'SBI',
         })
-        cls.hub_wallet = cls.env['logistics.wallet'].create({
-            'seller_id': cls.hub_seller.id,
-        })
+        cls.hub_wallet = cls.hub_seller.wallet_ids[:1]
         cls.env['logistics.wallet.transaction'].create({
             'wallet_id': cls.hub_wallet.id,
             'amount': 500.0,
@@ -252,7 +250,7 @@ class TestHubNetworkCod(IndiapostHermeticMixin, TransactionCase):
     # ------------------------------------------------------------------
     # Pickup
     # ------------------------------------------------------------------
-    def test_pickup_credits_cod_and_refunds_the_delivery_charge_once(self):
+    def test_pickup_credits_cod_and_keeps_the_delivery_charge(self):
         shipment = self._shipment(self.hub_seller, cod=500.0)
         self._charge_wallet(shipment, 48.0)
         self.assertAlmostEqual(self.hub_wallet.balance, 452.0, places=2)
@@ -269,18 +267,39 @@ class TestHubNetworkCod(IndiapostHermeticMixin, TransactionCase):
         self.assertAlmostEqual(
             self.Transfer.get_seller_cod_pending_balance(self.hub_seller),
             500.0, places=2)
-        refund = self._wallet_line(shipment, 'KX-DLV-REFUND:%s' % shipment.id)
-        self.assertEqual(len(refund), 1)
-        self.assertAlmostEqual(refund.amount, 48.0, places=2)
-        self.assertAlmostEqual(self.hub_wallet.balance, 500.0, places=2)
+        self.assertFalse(self._wallet_line(
+            shipment, 'KX-DLV-REFUND:%s' % shipment.id))
+        self.assertAlmostEqual(self.hub_wallet.balance, 452.0, places=2)
 
         shipment._kx_settle_own_network_cod_on_pickup()
         self.assertEqual(len(self._transfers(shipment, 'cod_pickup')), 1)
-        self.assertEqual(len(self._wallet_line(
-            shipment, 'KX-DLV-REFUND:%s' % shipment.id)), 1)
-        self.assertAlmostEqual(self.hub_wallet.balance, 500.0, places=2)
+        self.assertFalse(self._wallet_line(
+            shipment, 'KX-DLV-REFUND:%s' % shipment.id))
+        self.assertAlmostEqual(self.hub_wallet.balance, 452.0, places=2)
         with self.assertRaises(UserError):
             shipment.action_mark_picked()
+
+    def test_an_old_pickup_refund_is_taken_back_when_the_parcel_returns(self):
+        shipment = self._shipment(self.hub_seller, cod=500.0)
+        self._charge_wallet(shipment, 48.0)
+        self.env['logistics.wallet.transaction'].create({
+            'wallet_id': self.hub_wallet.id,
+            'amount': 48.0,
+            'shipment_id': shipment.id,
+            'reference': 'KX-DLV-REFUND:%s' % shipment.id,
+            'description': 'Delivery charge returned on pickup of COD',
+        })
+        self.assertAlmostEqual(self.hub_wallet.balance, 500.0, places=2)
+        shipment.with_context(allow_shipment_state_write=True).write({
+            'state': 'out_for_delivery',
+            'is_return_journey': True,
+        })
+        shipment.action_mark_delivered()
+        restore = self._wallet_line(
+            shipment, 'KX-DLV-RESTORE:%s' % shipment.id)
+        self.assertEqual(len(restore), 1)
+        self.assertAlmostEqual(restore.amount, -48.0, places=2)
+        self.assertAlmostEqual(self.hub_wallet.balance, 452.0, places=2)
 
     def test_pickup_refunds_nothing_when_the_wallet_was_not_charged(self):
         shipment = self._shipment(self.hub_seller, cod=200.0)
@@ -369,11 +388,11 @@ class TestHubNetworkCod(IndiapostHermeticMixin, TransactionCase):
     # ------------------------------------------------------------------
     # Return delivered back to the seller
     # ------------------------------------------------------------------
-    def test_return_delivered_reverses_cod_and_the_delivery_charge_once(self):
+    def test_return_delivered_reverses_cod_and_keeps_the_delivery_charge(self):
         shipment = self._shipment(self.hub_seller, cod=500.0)
         self._charge_wallet(shipment, 48.0)
         shipment.action_mark_picked()
-        self.assertAlmostEqual(self.hub_wallet.balance, 500.0, places=2)
+        self.assertAlmostEqual(self.hub_wallet.balance, 452.0, places=2)
 
         shipment.with_context(allow_shipment_state_write=True).write({
             'state': 'out_for_delivery',
@@ -392,7 +411,7 @@ class TestHubNetworkCod(IndiapostHermeticMixin, TransactionCase):
         self.assertAlmostEqual(
             self.Transfer.get_seller_cod_pending_balance(self.hub_seller),
             500.0, places=2)
-        self.assertAlmostEqual(self.hub_wallet.balance, 500.0, places=2)
+        self.assertAlmostEqual(self.hub_wallet.balance, 452.0, places=2)
 
         shipment.with_context(allow_shipment_state_write=True).write({
             'state': 'out_for_delivery',
@@ -406,23 +425,21 @@ class TestHubNetworkCod(IndiapostHermeticMixin, TransactionCase):
         self.assertAlmostEqual(
             self.Transfer.get_seller_cod_pending_balance(self.hub_seller),
             0.0, places=2)
-        restore = self._wallet_line(
-            shipment, 'KX-DLV-RESTORE:%s' % shipment.id)
-        self.assertEqual(len(restore), 1)
-        self.assertAlmostEqual(restore.amount, -48.0, places=2)
+        self.assertFalse(self._wallet_line(
+            shipment, 'KX-DLV-RESTORE:%s' % shipment.id))
         self.assertAlmostEqual(self.hub_wallet.balance, 452.0, places=2)
 
         shipment._kx_reverse_own_network_cod_on_return()
         self.assertEqual(len(self._transfers(shipment, 'cod_return')), 1)
-        self.assertEqual(len(self._wallet_line(
-            shipment, 'KX-DLV-RESTORE:%s' % shipment.id)), 1)
+        self.assertFalse(self._wallet_line(
+            shipment, 'KX-DLV-RESTORE:%s' % shipment.id))
         self.assertAlmostEqual(self.hub_wallet.balance, 452.0, places=2)
 
     def test_return_after_withdrawal_leaves_a_negative_pending_balance(self):
         shipment = self._shipment(self.hub_seller, cod=500.0)
         self._charge_wallet(shipment, 40.0)
         shipment.action_mark_picked()
-        self.assertAlmostEqual(self.hub_wallet.balance, 500.0, places=2)
+        self.assertAlmostEqual(self.hub_wallet.balance, 460.0, places=2)
 
         with patch.object(
             type(self.Transfer), '_cod_withdrawal_request_date',
@@ -439,13 +456,6 @@ class TestHubNetworkCod(IndiapostHermeticMixin, TransactionCase):
             self.Transfer.get_seller_cod_withdrawable_balance(self.hub_seller),
             0.0, places=2)
 
-        self.env['logistics.wallet.transaction'].create({
-            'wallet_id': self.hub_wallet.id,
-            'amount': -self.hub_wallet.balance,
-            'reference': 'Spent the refund',
-        })
-        self.assertAlmostEqual(self.hub_wallet.balance, 0.0, places=2)
-
         shipment.with_context(allow_shipment_state_write=True).write({
             'state': 'out_for_delivery',
             'is_return_journey': True,
@@ -458,7 +468,7 @@ class TestHubNetworkCod(IndiapostHermeticMixin, TransactionCase):
         self.assertAlmostEqual(
             self.Transfer.get_seller_cod_withdrawable_balance(self.hub_seller),
             0.0, places=2)
-        self.assertAlmostEqual(self.hub_wallet.balance, -40.0, places=2)
+        self.assertAlmostEqual(self.hub_wallet.balance, 460.0, places=2)
         self.hub_seller.invalidate_recordset(['cod_pending_balance'])
         self.assertAlmostEqual(self.hub_seller.cod_pending_balance, -500.0, places=2)
 

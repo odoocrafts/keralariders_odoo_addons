@@ -212,11 +212,12 @@ class TestKxNetworkOps(IndiapostHermeticMixin, TransactionCase):
         self.assertEqual(len(self._transfers(shipment, 'cod_return')), 1)
         self.assertAlmostEqual(
             Transfer.get_seller_cod_pending_balance(self.seller), 0.0, places=2)
-        restore = self.env['logistics.wallet.transaction'].search([
+        self.assertFalse(self.env['logistics.wallet.transaction'].search([
             ('shipment_id', '=', shipment.id),
-            ('reference', '=', 'KX-DLV-RESTORE:%s' % shipment.id),
-        ])
-        self.assertEqual(len(restore), 1)
+            ('reference', '=', 'KX-DLV-REFUND:%s' % shipment.id),
+        ]))
+        self.assertAlmostEqual(self.wallet.balance, 452.0, places=2)
+        self.assertTrue(shipment.wallet_transaction_id)
 
     def test_delivery_failed_does_not_reverse_cod(self):
         shipment = self._shipment(cod_amount=320.0, total_order_value=320.0)
