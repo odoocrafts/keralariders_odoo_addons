@@ -449,7 +449,10 @@
                         </div>
                     </td>
                     <td class="kx-label-scan" style="width: 66%; height: 30mm; border-top: 2px solid #000; border-bottom: 2px solid #000; padding: 1.2mm 1.5mm; text-align: center; vertical-align: middle;">
-                        <img t-att-src="o._awb_label_top_barcode_img_src()"
+                        <img t-if="not is_ip" t-att-src="o._awb_kx_barcode_img_src()"
+                             class="kx-label-kx-barcode"
+                             alt="AWB Barcode"/>
+                        <img t-else="" t-att-src="o._awb_label_top_barcode_img_src()"
                              class="awb-indiapost-barcode"
                              alt="Shipping Barcode"/>
                         <div class="awb-indiapost-article">
@@ -459,6 +462,9 @@
                         <div t-if="is_ip and o._awb_indiapost_customer_id()" class="awb-customer-id">
                             CUSTOMER ID: <t t-esc="o._awb_indiapost_customer_id()"/>
                         </div>
+                        <img t-if="not is_ip" t-att-src="o._awb_label_qr_img_src()"
+                             class="kx-label-qr"
+                             alt="Tracking QR"/>
                     </td>
                 </tr>
                 <tr>
@@ -514,7 +520,7 @@
                 <tr t-if="not is_ip">
                     <td colspan="2" class="kx-label-awb-barcode" style="height: 16mm; border-top: 2px solid #000; padding: 1mm 2mm; text-align: center; vertical-align: middle; overflow: hidden;">
                         <img t-att-src="o._awb_kx_barcode_img_src()"
-                             style="width: 100%; max-width: 80mm; height: 10mm; max-height: 10mm; margin: 0 auto; display: block;"
+                             class="kx-label-kx-barcode"
                              alt="AWB Barcode"/>
                         <div style="font-size: 9px; font-weight: 900; letter-spacing: 1px; margin-top: 0.3mm;">
                             AWB <span t-field="o.name"/>
@@ -648,18 +654,24 @@
                     margin-top: 0.4mm;
                 }
                 .kx-label-100x150-portrait .kx-label-qr {
-                    width: 12mm !important;
-                    height: 12mm !important;
-                    max-width: 12mm !important;
-                    max-height: 12mm !important;
+                    display: block;
+                    width: 14mm !important;
+                    height: 14mm !important;
+                    max-width: 14mm !important;
+                    max-height: 14mm !important;
+                    margin: 0.8mm auto 0 auto;
                 }
                 .kx-label-100x150-portrait .awb-indiapost-barcode {
                     height: 12mm !important;
                     max-height: 12mm !important;
                 }
-                .kx-label-100x150-portrait .kx-label-awb-barcode img {
-                    height: 10mm !important;
-                    max-height: 10mm !important;
+                .kx-label-100x150-portrait .kx-label-kx-barcode {
+                    display: block;
+                    width: 100%;
+                    max-width: 100% !important;
+                    height: auto !important;
+                    max-height: 12mm !important;
+                    margin: 0 auto;
                 }
                 .kx-label-100x150-portrait .kx-label-from-addr,
                 .kx-label-100x150-portrait .kx-label-shipto-addr {

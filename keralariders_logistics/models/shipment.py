@@ -329,7 +329,10 @@ class Shipment(models.Model):
         self.ensure_one()
         if self.fulfilment_method == 'indiapost':
             return ''
-        return self._awb_barcode_png_data_uri('Code128', self.name or '')
+        # Wide and short so a full-width label slot does not stretch the bars.
+        return self._awb_barcode_png_data_uri(
+            'Code128', self.name or '', width=900, height=140,
+        )
 
     def _awb_kx_qr_img_src(self):
         self.ensure_one()
