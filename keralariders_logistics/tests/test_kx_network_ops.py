@@ -233,6 +233,42 @@ class TestKxNetworkOps(IndiapostHermeticMixin, TransactionCase):
             self.env['logistics.account.transfer'].get_seller_cod_pending_balance(self.seller),
             320.0, places=2)
 
+    def test_hub_receive_from_the_seller_credits_cod_once(self):
+        shipment = self._shipment(cod_amount=199.0, total_order_value=199.0)
+        self._charge_wallet(shipment, 50.0)
+        hub = shipment.source_hub_id or shipment.get_preferred_portal_drop_hub()
+        self.assertTrue(hub)
+        shipment.action_hub_receive(hub=hub)
+        self.assertEqual(shipment.custodian_type, 'hub')
+        self.assertTrue(shipment.picked_on)
+        self.assertEqual(len(self._transfers(shipment, 'cod_pickup')), 1)
+        self.assertAlmostEqual(
+            self.env['logistics.account.transfer'].get_seller_cod_pending_balance(self.seller),
+            199.0, places=2)
+        self.assertAlmostEqual(self.wallet.balance, 450.0, places=2)
+        self.assertFalse(self.env['logistics.wallet.transaction'].search([
+            ('shipment_id', '=', shipment.id),
+            ('reference', '=', 'KX-DLV-REFUND:%s' % shipment.id),
+        ]))
+        shipment.action_hub_receive(hub=hub)
+        self.assertEqual(len(self._transfers(shipment, 'cod_pickup')), 1)
+
+    def test_destination_hub_can_receive_before_the_source_hub(self):
+        mal = self.env.ref('keralariders_logistics.hub_malappuram')
+        shipment = self._shipment(
+            cod_amount=999.0,
+            total_order_value=999.0,
+            shipping_to_zip=self._pin('malappuram'),
+        )
+        shipment.write({'shipping_from_zip': self._pin('ernakulam')})
+        shipment.action_mark_picked()
+        self.assertEqual(shipment.destination_hub_id, mal)
+        self.assertNotEqual(shipment.get_preferred_portal_drop_hub(), mal)
+        shipment.action_hub_receive(hub=mal)
+        self.assertEqual(shipment.current_hub_id, mal)
+        self.assertEqual(shipment.state, 'at_destination_hub')
+        self.assertEqual(len(self._transfers(shipment, 'cod_pickup')), 1)
+
     def test_wrong_hub_scan_of_a_kozhikode_parcel_writes_no_wallet_line(self):
         koz = self.env.ref('keralariders_logistics.hub_kozhikode')
         mal = self.env.ref('keralariders_logistics.hub_malappuram')
@@ -252,12 +288,14 @@ class TestKxNetworkOps(IndiapostHermeticMixin, TransactionCase):
         Transfer = self.env['logistics.account.transfer']
         wallet_count = Wallet.search_count([('shipment_id', '=', shipment.id)])
         transfer_count = Transfer.search_count([('shipment_id', '=', shipment.id)])
-        state = shipment.state
-        with self.assertRaises(UserError):
-            shipment.action_hub_receive(hub=mal)
+        shipment.action_hub_receive(hub=mal)
         self.assertEqual(Wallet.search_count([('shipment_id', '=', shipment.id)]), wallet_count)
         self.assertEqual(Transfer.search_count([('shipment_id', '=', shipment.id)]), transfer_count)
-        self.assertEqual(shipment.state, state)
+        self.assertEqual(shipment.current_hub_id, mal)
+        off_route = self.env.ref('keralariders_logistics.hub_ernakulam')
+        self.assertNotIn(off_route, shipment.get_portal_drop_hub_ids())
+        with self.assertRaises(UserError):
+            shipment.action_hub_receive(hub=off_route)
         self.assertEqual(shipment.current_hub_id, mal)
 
     def test_india_post_can_still_be_received_off_the_next_hub(self):

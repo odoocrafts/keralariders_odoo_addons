@@ -1937,21 +1937,11 @@ class Shipment(models.Model):
                     _("Shipment %s cannot be received at hub in state '%s'.")
                     % (shipment.name, shipment.state)
                 )
-            # Own-network: only the next hub on the route may take the scan.
-            # A parcel for Kozhikode scanned at Malappuram must warn and
-            # must not mark pickup, cancel, or touch a wallet. India Post
-            # keeps the wider allowed-hub check below.
-            if shipment.fulfilment_method != 'indiapost':
-                expected = shipment.get_preferred_portal_drop_hub()
-                if expected and target_hub != expected:
-                    raise UserError(_(
-                        "%(awb)s is for %(expected)s, not %(scanned)s. "
-                        "Nothing was changed."
-                    ) % {
-                        'awb': shipment.name,
-                        'expected': expected.name,
-                        'scanned': target_hub.name,
-                    })
+            # Any hub on the route may take the scan. A parcel whose next
+            # stop is Ernakulam can still be received at Malappuram when
+            # that is where the package actually is. A hub that is not on
+            # the route is still refused below.
+            prior_state = shipment.state
             allowed = shipment.get_portal_drop_hub_ids()
             if shipment.current_hub_id:
                 allowed |= shipment.current_hub_id
@@ -2042,15 +2032,19 @@ class Shipment(models.Model):
                 scanned_code=scanned_code or shipment.name,
                 note=note,
             )
-            shipment._write_with_state({
+            receive_vals = {
                 'state': new_state,
                 'custodian_type': 'hub',
                 'custodian_de_id': False,
                 'current_hub_id': target_hub.id,
                 'delivery_executive_id': False,  # clear assigned DE until redispatch
-            })
+            }
+            if prior_state in ('order_added', 'pickup_requested') and not shipment.picked_on:
+                receive_vals['picked_on'] = fields.Datetime.now()
+            shipment._write_with_state(receive_vals)
             shipment._sync_active_leg()
             shipment._lock_route()
+            shipment._kx_credit_cod_on_hub_receive(prior_state)
         return True
 
     def action_hub_dispatch(self, delivery_executive, hub=None, scanned_code=None, note=None,
@@ -3614,6 +3608,22 @@ class Shipment(models.Model):
             ('shipment_id', '=', self.id),
             ('reference', '=', reference),
         ], limit=1)
+
+    def _kx_credit_cod_on_hub_receive(self, prior_state):
+        """Credit COD when the hub takes an outbound parcel that pickup missed.
+
+        A rider pickup already credits KeralaXpress COD. The hub manager can
+        also take the parcel straight from the seller, or receive it at a
+        hub that is not the next stop. That receive is still the pickup for
+        the seller's COD, and it must not credit a second time. Returns and
+        India Post are left alone.
+        """
+        self.ensure_one()
+        if self.is_return_journey:
+            return
+        if prior_state not in ('order_added', 'pickup_requested', 'picked', 'in_transit'):
+            return
+        self._kx_settle_own_network_cod_on_pickup()
 
     def _kx_settle_own_network_cod_on_pickup(self):
         """Credit pending COD. The delivery charge taken at booking stays.
