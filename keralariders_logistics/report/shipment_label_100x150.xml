@@ -670,13 +670,13 @@
                     width: 100%;
                     max-width: 100% !important;
                     height: auto !important;
-                    max-height: none !important;
+                    max-height: 12mm !important;
                     margin: 0 auto;
                 }
                 .kx-label-100x150-portrait .kx-label-awb-barcode img.kx-label-kx-barcode {
                     display: block;
-                    width: auto;
-                    max-width: 100% !important;
+                    width: 72mm !important;
+                    max-width: 72mm !important;
                     height: 11mm !important;
                     max-height: 11mm !important;
                     margin: 0 auto;
