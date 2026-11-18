@@ -665,20 +665,12 @@
                     height: 12mm !important;
                     max-height: 12mm !important;
                 }
-                .kx-label-100x150-portrait .kx-label-scan img.kx-label-kx-barcode {
+                .kx-label-100x150-portrait img.kx-label-kx-barcode {
                     display: block;
                     width: 100%;
                     max-width: 100% !important;
                     height: auto !important;
-                    max-height: 12mm !important;
-                    margin: 0 auto;
-                }
-                .kx-label-100x150-portrait .kx-label-awb-barcode img.kx-label-kx-barcode {
-                    display: block;
-                    width: 72mm !important;
-                    max-width: 72mm !important;
-                    height: 11mm !important;
-                    max-height: 11mm !important;
+                    max-height: 14mm !important;
                     margin: 0 auto;
                 }
                 .kx-label-100x150-portrait .kx-label-from-addr,

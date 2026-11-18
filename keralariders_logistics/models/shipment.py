@@ -329,10 +329,40 @@ class Shipment(models.Model):
         self.ensure_one()
         if self.fulfilment_method == 'indiapost':
             return ''
-        # Wide and short so a full-width label slot does not stretch the bars.
-        return self._awb_barcode_png_data_uri(
-            'Code128', self.name or '', width=900, height=140,
-        )
+        # The shared renderer returns a nearly square PNG. Stretching that
+        # across the label makes the bars thick, so draw a wide Code128 here.
+        png = self._awb_wide_code128_png(self.name or '')
+        if not png:
+            return self._awb_barcode_png_data_uri('Code128', self.name or '')
+        return 'data:image/png;base64,%s' % base64.b64encode(png).decode()
+
+    def _awb_wide_code128_png(self, value):
+        """Code128 PNG about 7.5 times as wide as it is tall."""
+        value = (value or '').strip()
+        if not value:
+            return b''
+        try:
+            from io import BytesIO
+            import barcode
+            from barcode.writer import ImageWriter
+            modules = 11 * (len(value) + 3) + 13
+            module_width = 0.25
+            quiet = 1.5
+            symbol_width = modules * module_width + quiet * 2
+            buf = BytesIO()
+            barcode.get('code128', value, writer=ImageWriter()).write(buf, {
+                'module_width': module_width,
+                'module_height': symbol_width / 7.5,
+                'quiet_zone': quiet,
+                'write_text': False,
+                'format': 'PNG',
+                'dpi': 300,
+            })
+            return buf.getvalue()
+        except Exception:
+            _logger.warning(
+                'Wide Code128 failed for %r', value, exc_info=True)
+            return b''
 
     def _awb_kx_qr_img_src(self):
         self.ensure_one()
