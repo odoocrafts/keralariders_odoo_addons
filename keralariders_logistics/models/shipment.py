@@ -1328,7 +1328,9 @@ class Shipment(models.Model):
         if operation_type == 'pickup':
             return bool(de.is_pickup)
         if operation_type == 'hub_transfer':
-            return bool(de.is_driver)
+            # A hub often has no separate driver. Its delivery riders carry
+            # the parcel to the next hub.
+            return bool(de.is_driver or de.is_delivery)
         if operation_type == 'delivery':
             return bool(de.is_delivery)
         return False

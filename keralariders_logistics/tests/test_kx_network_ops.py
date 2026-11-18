@@ -79,6 +79,26 @@ class TestKxNetworkOps(IndiapostHermeticMixin, TransactionCase):
         })
         return shipment
 
+    def test_a_delivery_rider_can_take_a_hub_transfer(self):
+        Shipment = self.env['logistics.shipment']
+        delivery = self.env['logistics.delivery.executive'].create({
+            'name': 'Delivery Rider',
+            'mobile': '9000005555',
+            'is_pickup': True,
+            'is_delivery': True,
+            'is_driver': False,
+        })
+        pickup_only = self.env['logistics.delivery.executive'].create({
+            'name': 'Pickup Only Rider',
+            'mobile': '9000006666',
+            'is_pickup': True,
+            'is_delivery': False,
+            'is_driver': False,
+        })
+        self.assertTrue(Shipment._de_eligible_for_operation(delivery, 'hub_transfer'))
+        self.assertTrue(Shipment._de_eligible_for_operation(self.executive, 'hub_transfer'))
+        self.assertFalse(Shipment._de_eligible_for_operation(pickup_only, 'hub_transfer'))
+
     def test_a_pickup_scan_does_not_move_money(self):
         shipment = self._shipment()
         self.assertFalse(shipment._kx_validate_pickup_scan(self.executive))
