@@ -352,7 +352,7 @@ class Shipment(models.Model):
             buf = BytesIO()
             barcode.get('code128', value, writer=ImageWriter()).write(buf, {
                 'module_width': module_width,
-                'module_height': symbol_width / 7.5,
+                'module_height': symbol_width / 18,
                 'quiet_zone': quiet,
                 'write_text': False,
                 'format': 'PNG',
