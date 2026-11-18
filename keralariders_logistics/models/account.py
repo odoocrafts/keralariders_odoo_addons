@@ -682,11 +682,12 @@ class BankCashAccountTransfer(models.Model):
         })
 
     @api.model
-    def action_create_own_network_cod_return(self, shipment):
-        """Take back a hub-network COD advance when the return reaches the seller.
+    def action_create_own_network_cod_return(self, shipment, reason=None):
+        """Take back a hub-network COD advance.
 
+        Used when the parcel is cancelled or comes back to the seller.
         Does nothing when pickup never credited the seller. Repeating the
-        return does not debit twice. The pending balance may go negative
+        reversal does not debit twice. The pending balance may go negative
         when the COD was already withdrawn.
         """
         if not shipment:
@@ -720,7 +721,7 @@ class BankCashAccountTransfer(models.Model):
             'amount': pickup.amount,
             'transfer_date': fields.Date.context_today(self),
             'reference': _('Hub COD return — %s') % shipment.name,
-            'description': _(
+            'description': reason or _(
                 'COD reversed because %s was returned to the seller.'
             ) % shipment.name,
             'related_seller_id': seller.id,

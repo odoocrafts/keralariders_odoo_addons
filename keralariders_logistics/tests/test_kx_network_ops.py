@@ -216,22 +216,50 @@ class TestKxNetworkOps(IndiapostHermeticMixin, TransactionCase):
             ('shipment_id', '=', shipment.id),
             ('reference', '=', 'KX-DLV-REFUND:%s' % shipment.id),
         ]))
-        self.assertAlmostEqual(self.wallet.balance, 452.0, places=2)
+        refund = self.env['logistics.wallet.transaction'].search([
+            ('shipment_id', '=', shipment.id),
+            ('reference', '=', 'KX-CANCEL-CHARGE:%s' % shipment.id),
+        ])
+        self.assertEqual(len(refund), 1)
+        self.assertAlmostEqual(refund.amount, 48.0, places=2)
+        self.assertAlmostEqual(self.wallet.balance, 500.0, places=2)
         self.assertTrue(shipment.wallet_transaction_id)
+        shipment.action_cancel_shipment()
+        self.assertEqual(len(self._transfers(shipment, 'cod_return')), 1)
+        self.assertEqual(self.env['logistics.wallet.transaction'].search_count([
+            ('shipment_id', '=', shipment.id),
+            ('reference', '=', 'KX-CANCEL-CHARGE:%s' % shipment.id),
+        ]), 1)
 
-    def test_delivery_failed_does_not_reverse_cod(self):
+    def test_customer_cancel_on_delivery_failure_reverses_cod_and_shipping(self):
         shipment = self._shipment(cod_amount=320.0, total_order_value=320.0)
         self._charge_wallet(shipment, 48.0)
         shipment.action_mark_picked()
         shipment.with_context(allow_shipment_state_write=True).write({
             'state': 'out_for_delivery',
         })
-        shipment.action_mark_delivery_failed(delivery_remarks='Customer not home')
+        shipment.action_mark_delivery_failed(
+            delivery_remarks='Customer cancelled the order. No cash.')
         self.assertEqual(shipment.state, 'delivery_failed')
+        self.assertEqual(len(self._transfers(shipment, 'cod_return')), 1)
+        self.assertAlmostEqual(
+            self.env['logistics.account.transfer'].get_seller_cod_pending_balance(self.seller),
+            0.0, places=2)
+        self.assertAlmostEqual(self.wallet.balance, 500.0, places=2)
+        shipment._kx_reverse_customer_cancel()
+        self.assertEqual(len(self._transfers(shipment, 'cod_return')), 1)
+        self.assertAlmostEqual(self.wallet.balance, 500.0, places=2)
+
+        shipment.with_context(allow_shipment_state_write=True).write({
+            'state': 'out_for_delivery',
+        })
+        shipment.action_mark_delivered()
+        self.assertEqual(shipment.state, 'delivered')
         self.assertFalse(self._transfers(shipment, 'cod_return'))
         self.assertAlmostEqual(
             self.env['logistics.account.transfer'].get_seller_cod_pending_balance(self.seller),
             320.0, places=2)
+        self.assertAlmostEqual(self.wallet.balance, 452.0, places=2)
 
     def test_hub_receive_from_the_seller_credits_cod_once(self):
         shipment = self._shipment(cod_amount=199.0, total_order_value=199.0)

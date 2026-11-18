@@ -2505,9 +2505,9 @@ class Shipment(models.Model):
 
         Draft (Order Added) cancels void any reserved ARN and credit an
         unexpected wallet debit. India Post shipments awaiting the pickup
-        scan use the pre-scan path (wallet credit + ARN void). Own-network
-        and post-scan India Post cancels keep the historic behaviour (no
-        automatic refund).
+        scan use the pre-scan path (wallet credit + ARN void). A KeralaXpress
+        cancel returns the delivery charge still held and takes back a COD
+        advance. Post-scan India Post cancels do not.
         """
         for shipment in self:
             if shipment.state in ('delivered', 'returned'):
@@ -2537,7 +2537,7 @@ class Shipment(models.Model):
             # inside the reverse. Delivery-failed is a retry and does not
             # reach this method.
             if shipment.fulfilment_method != 'indiapost':
-                shipment._kx_reverse_own_network_cod_on_return()
+                shipment._kx_reverse_customer_cancel()
         return True
 
     def action_mark_delivered(self, actor_de=None, scanned_code=None, note=None, delivery_remarks=None):
@@ -2589,6 +2589,8 @@ class Shipment(models.Model):
             shipment._write_with_state(vals)
             if is_return:
                 shipment._kx_reverse_own_network_cod_on_return()
+            elif (shipment.delivery_fail_count or 0) >= 1:
+                shipment._kx_reinstate_after_retry_delivery()
         return True
 
     def action_mark_delivery_failed(self, actor_de=None, scanned_code=None,
@@ -2650,6 +2652,8 @@ class Shipment(models.Model):
                 'active_leg_id': delivery_leg.id if delivery_leg else False,
             })
             shipment._notify_delivery_failed()
+            if shipment.fulfilment_method != 'indiapost':
+                shipment._kx_reverse_customer_cancel()
         return True
 
     def _get_logistics_admin_users(self):
@@ -3647,6 +3651,109 @@ class Shipment(models.Model):
         pickups leave the booking debit where it is.
         """
         return
+
+    def _kx_shipment_wallet_lines(self):
+        self.ensure_one()
+        return self.env['logistics.wallet.transaction'].sudo().search([
+            ('shipment_id', '=', self.id),
+        ])
+
+    def _kx_outstanding_delivery_charge(self):
+        """Delivery charge still taken from the recharge wallet."""
+        self.ensure_one()
+        held = -sum(self._kx_shipment_wallet_lines().mapped('amount'))
+        return self._round_charge(max(held, 0.0))
+
+    def _kx_refund_outstanding_delivery_charge(self):
+        """Credit the recharge wallet for the delivery charge still held.
+
+        A second call finds nothing left to return. A later successful
+        delivery debits it again.
+        """
+        self.ensure_one()
+        amount = self._kx_outstanding_delivery_charge()
+        if amount <= 0.0:
+            return
+        wallet = (
+            self.seller_id.wallet_ids[:1]
+            or (self.wallet_transaction_id.wallet_id
+                if self.wallet_transaction_id else False)
+        )
+        if not wallet:
+            return
+        self.env['logistics.wallet.transaction'].sudo().create({
+            'wallet_id': wallet.id,
+            'amount': amount,
+            'transaction_date': fields.Date.context_today(self),
+            'shipment_id': self.id,
+            'order_id': self.order_id.id if self.order_id else False,
+            'reference': 'KX-CANCEL-CHARGE:%s' % self.id,
+            'description': _(
+                'Delivery charge returned on cancel of %s'
+            ) % (self.name or ''),
+        })
+        self.env['logistics.wallet'].browse(wallet.id).invalidate_recordset()
+
+    def _kx_recharge_refunded_delivery_charge(self):
+        """Take the cancel refund back when a failed delivery is then delivered."""
+        self.ensure_one()
+        lines = self._kx_shipment_wallet_lines()
+        refunded = 0.0
+        recharged = 0.0
+        for line in lines:
+            ref = line.reference or ''
+            if ref.startswith('KX-CANCEL-CHARGE:'):
+                refunded += line.amount or 0.0
+            elif ref.startswith('KX-CANCEL-RECHARGE:'):
+                recharged += line.amount or 0.0
+        amount = self._round_charge(refunded + recharged)
+        if amount <= 0.0:
+            return
+        wallet = lines[:1].wallet_id or self.seller_id.wallet_ids[:1]
+        if not wallet:
+            return
+        self.env['logistics.wallet.transaction'].sudo().create({
+            'wallet_id': wallet.id,
+            'amount': -amount,
+            'transaction_date': fields.Date.context_today(self),
+            'shipment_id': self.id,
+            'order_id': self.order_id.id if self.order_id else False,
+            'reference': 'KX-CANCEL-RECHARGE:%s' % self.id,
+            'description': _(
+                'Delivery charge taken again on delivery of %s'
+            ) % (self.name or ''),
+        })
+        self.env['logistics.wallet'].browse(wallet.id).invalidate_recordset()
+
+    def _kx_reverse_customer_cancel(self):
+        """Debit the COD advance and return the delivery charge.
+
+        Customer-did-not-accept and Cancel Shipment both use this. India
+        Post is not handled here. A repeat does not move the money twice.
+        """
+        self.ensure_one()
+        if self.fulfilment_method == 'indiapost':
+            return
+        if self._kx_is_hub_network_cod():
+            self.env['logistics.account.transfer'].action_create_own_network_cod_return(
+                self,
+                reason=_('COD reversed because %s was cancelled.') % (self.name or ''),
+            )
+        self._kx_refund_outstanding_delivery_charge()
+
+    def _kx_reinstate_after_retry_delivery(self):
+        """Put the COD advance and the delivery charge back after a failed attempt is delivered."""
+        self.ensure_one()
+        if self.fulfilment_method == 'indiapost' or self.is_return_journey:
+            return
+        returns = self.env['logistics.account.transfer'].sudo().search([
+            ('shipment_id', '=', self.id),
+            ('transfer_type', '=', 'cod_return'),
+            ('state', '=', 'posted'),
+        ])
+        if returns:
+            returns.write({'state': 'cancelled'})
+        self._kx_recharge_refunded_delivery_charge()
 
     def _kx_reverse_own_network_cod_on_return(self):
         """Debit the pickup COD. The booking delivery charge is left as it is.
