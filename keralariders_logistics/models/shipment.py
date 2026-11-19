@@ -365,14 +365,47 @@ class Shipment(models.Model):
             return b''
 
     def _awb_kx_qr_img_src(self):
-        """Crisp KeralaXpress QR. India Post keeps its own image."""
+        """Vector KeralaXpress QR. A scaled PNG blurs on the self-print sheet.
+        India Post keeps its own image.
+        """
         self.ensure_one()
+        svg = self._awb_kx_qr_svg(self.name or '')
+        if svg:
+            return 'data:image/svg+xml;base64,%s' % base64.b64encode(
+                svg.encode('utf-8')).decode()
         png = self._awb_kx_qr_png(self.name or '')
         if not png:
             return self._awb_barcode_png_data_uri(
                 'QR', self.name or '', width=150, height=150,
             )
         return 'data:image/png;base64,%s' % base64.b64encode(png).decode()
+
+    def _awb_kx_qr_svg(self, value):
+        """Path QR so every module stays a hard edge at print size."""
+        value = (value or '').strip()
+        if not value:
+            return ''
+        try:
+            from io import BytesIO
+            import qrcode
+            import qrcode.image.svg
+            from qrcode.constants import ERROR_CORRECT_M
+            code = qrcode.QRCode(
+                error_correction=ERROR_CORRECT_M,
+                image_factory=qrcode.image.svg.SvgPathImage,
+                box_size=10,
+                border=1,
+            )
+            code.add_data(value)
+            code.make(fit=True)
+            image = code.make_image()
+            buf = BytesIO()
+            image.save(buf)
+            svg = buf.getvalue().decode('utf-8')
+            return svg if '<svg' in svg else ''
+        except Exception:
+            _logger.warning('KX QR SVG failed for %r', value, exc_info=True)
+            return ''
 
     def _awb_kx_qr_png(self, value):
         """Integer-module QR so the self-print sheet does not blur the blocks."""

@@ -132,7 +132,9 @@
                      India Post already has the ARN barcode above. -->
                 <tr t-if="not is_ip">
                     <td colspan="3" class="kx-label-awb-barcode">
-                        <img t-att-src="o._awb_kx_barcode_img_src()" alt="AWB Barcode"/>
+                        <img t-att-src="o._awb_kx_barcode_img_src()"
+                             class="kx-label-kx-barcode"
+                             alt="AWB Barcode"/>
                         <div>AWB <span t-field="o.name"/></div>
                     </td>
                 </tr>
@@ -356,6 +358,12 @@
                     height: 8mm !important;
                     max-height: 8mm !important;
                     margin: 0 auto;
+                }
+                .kx-label-100x150 .kx-label-awb-barcode img.kx-label-kx-barcode {
+                    width: auto !important;
+                    max-width: 120mm !important;
+                    height: 12mm !important;
+                    max-height: 12mm !important;
                 }
                 /* wkhtmltopdf ignores max-height on table cells. Do not use
                    -webkit-line-clamp here: that engine paints the clamped
