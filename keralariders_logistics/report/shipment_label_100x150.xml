@@ -208,12 +208,12 @@
                 }
                 .kx-label-100x150 .kx-label-head {
                     padding: 0;
-                    height: 16mm;
+                    height: 12mm;
                 }
                 .kx-label-100x150 .kx-label-head table,
                 .kx-label-100x150 .kx-label-head td {
                     border: 0 !important;
-                    height: 15mm;
+                    height: 11mm;
                 }
                 .kx-label-100x150 .kx-label-kx-logo,
                 .kx-label-100x150 .kx-label-partner-logo {
@@ -335,7 +335,7 @@
                 }
                 .kx-label-100x150 .kx-label-kx-logo img,
                 .kx-label-100x150 .kx-label-partner-logo img {
-                    max-height: 12mm !important;
+                    max-height: 9mm !important;
                 }
                 .kx-label-100x150 .kx-label-qr {
                     width: 12mm !important;
@@ -344,10 +344,10 @@
                     max-height: 12mm !important;
                 }
                 .kx-label-100x150 img.kx-label-kx-qr {
-                    width: 18mm !important;
-                    height: 18mm !important;
-                    max-width: 18mm !important;
-                    max-height: 18mm !important;
+                    width: 15mm !important;
+                    height: 15mm !important;
+                    max-width: 15mm !important;
+                    max-height: 15mm !important;
                     image-rendering: -webkit-optimize-contrast;
                 }
                 .kx-label-100x150 .awb-indiapost-barcode,
@@ -361,10 +361,10 @@
                 }
                 .kx-label-100x150 .kx-label-awb-barcode img.kx-label-kx-barcode {
                     display: block;
-                    width: 88mm !important;
-                    max-width: 88mm !important;
-                    height: 14mm !important;
-                    max-height: 14mm !important;
+                    width: 72mm !important;
+                    max-width: 72mm !important;
+                    height: 12mm !important;
+                    max-height: 12mm !important;
                     margin: 0 auto;
                 }
                 /* wkhtmltopdf ignores max-height on table cells. Do not use
