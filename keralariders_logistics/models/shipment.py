@@ -365,10 +365,38 @@ class Shipment(models.Model):
             return b''
 
     def _awb_kx_qr_img_src(self):
+        """Crisp KeralaXpress QR. India Post keeps its own image."""
         self.ensure_one()
-        return self._awb_barcode_png_data_uri(
-            'QR', self.name or '', width=150, height=150,
-        )
+        png = self._awb_kx_qr_png(self.name or '')
+        if not png:
+            return self._awb_barcode_png_data_uri(
+                'QR', self.name or '', width=150, height=150,
+            )
+        return 'data:image/png;base64,%s' % base64.b64encode(png).decode()
+
+    def _awb_kx_qr_png(self, value):
+        """Integer-module QR so the self-print sheet does not blur the blocks."""
+        value = (value or '').strip()
+        if not value:
+            return b''
+        try:
+            from io import BytesIO
+            import qrcode
+            from qrcode.constants import ERROR_CORRECT_M
+            code = qrcode.QRCode(
+                error_correction=ERROR_CORRECT_M,
+                box_size=12,
+                border=1,
+            )
+            code.add_data(value)
+            code.make(fit=True)
+            image = code.make_image(fill_color='black', back_color='white')
+            buf = BytesIO()
+            image.save(buf, format='PNG')
+            return buf.getvalue()
+        except Exception:
+            _logger.warning('KX QR failed for %r', value, exc_info=True)
+            return b''
 
     def _awb_label_qr_img_src(self):
         """QR already used on the A4 AWB: India Post tracking, else KX AWB."""

@@ -114,7 +114,9 @@
                         <div><strong>Date</strong> <span t-field="o.order_date" t-options="{'widget': 'date'}"/></div>
                     </td>
                     <td class="kx-label-qr-cell">
-                        <img t-att-src="o._awb_label_qr_img_src()" class="kx-label-qr" alt="Tracking QR"/>
+                        <img t-att-src="o._awb_label_qr_img_src()"
+                             t-attf-class="kx-label-qr{{'' if is_ip else ' kx-label-kx-qr'}}"
+                             alt="Tracking QR"/>
                     </td>
                 </tr>
                 <tr t-if="item_desc">
@@ -339,6 +341,13 @@
                     max-width: 12mm !important;
                     max-height: 12mm !important;
                 }
+                .kx-label-100x150 img.kx-label-kx-qr {
+                    width: 18mm !important;
+                    height: 18mm !important;
+                    max-width: 18mm !important;
+                    max-height: 18mm !important;
+                    image-rendering: -webkit-optimize-contrast;
+                }
                 .kx-label-100x150 .awb-indiapost-barcode,
                 .kx-label-100x150 .kx-label-awb-barcode img {
                     display: block;
@@ -462,8 +471,8 @@
                         <div t-if="is_ip and o._awb_indiapost_customer_id()" class="awb-customer-id">
                             CUSTOMER ID: <t t-esc="o._awb_indiapost_customer_id()"/>
                         </div>
-                        <img t-if="not is_ip" t-att-src="o._awb_label_qr_img_src()"
-                             class="kx-label-qr"
+                        <img t-if="not is_ip" t-att-src="o._awb_kx_qr_img_src()"
+                             class="kx-label-qr kx-label-kx-qr"
                              alt="Tracking QR"/>
                     </td>
                 </tr>
@@ -660,6 +669,13 @@
                     max-width: 14mm !important;
                     max-height: 14mm !important;
                     margin: 0.8mm auto 0 auto;
+                }
+                .kx-label-100x150-portrait img.kx-label-kx-qr {
+                    width: 18mm !important;
+                    height: 18mm !important;
+                    max-width: 18mm !important;
+                    max-height: 18mm !important;
+                    image-rendering: -webkit-optimize-contrast;
                 }
                 .kx-label-100x150-portrait .awb-indiapost-barcode {
                     height: 12mm !important;
