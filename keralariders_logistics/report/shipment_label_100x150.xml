@@ -360,10 +360,12 @@
                     margin: 0 auto;
                 }
                 .kx-label-100x150 .kx-label-awb-barcode img.kx-label-kx-barcode {
-                    width: auto !important;
-                    max-width: 120mm !important;
-                    height: 12mm !important;
-                    max-height: 12mm !important;
+                    display: block;
+                    width: 88mm !important;
+                    max-width: 88mm !important;
+                    height: 14mm !important;
+                    max-height: 14mm !important;
+                    margin: 0 auto;
                 }
                 /* wkhtmltopdf ignores max-height on table cells. Do not use
                    -webkit-line-clamp here: that engine paints the clamped
