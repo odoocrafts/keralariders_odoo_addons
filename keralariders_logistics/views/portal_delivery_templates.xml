@@ -27,6 +27,9 @@
                     <button type="button" class="btn btn-primary btn-lg shadow-sm rounded-pill px-5 py-3 btn-scan-qr">
                         <i class="fa fa-camera fa-lg me-2"/> Scan AWB QR Code
                     </button>
+                    <div class="mt-3">
+                        <a href="/my/delivery/custody-scan" class="btn btn-outline-primary">Take custody by scan</a>
+                    </div>
                 </div>
                 <t t-call="keralariders_logistics.portal_qr_scanner_modal"/>
             </t>
@@ -46,7 +49,8 @@
                         <div id="qr-reader" style="width: 100%;"></div>
                     </div>
                     <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <span id="kx-scan-modal-count" class="me-auto text-muted small"></span>
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Done</button>
                     </div>
                 </div>
             </div>
@@ -60,6 +64,8 @@
                     let html5QrCode = null;
                     let scanTargetSelector = null;
                     let scanAutoSubmit = false;
+                    let scanKeepOpen = false;
+                    let lastScan = {code: '', at: 0};
 
                     function extractAwb(decodedText) {
                         if (!decodedText) {
@@ -99,6 +105,17 @@
                     }
 
                     function onScanSuccess(decodedText, decodedResult) {
+                        var awb = extractAwb(decodedText);
+                        var now = Date.now();
+                        if (scanKeepOpen) {
+                            if (awb &amp;&amp; (awb !== lastScan.code || now - lastScan.at &gt; 1200)) {
+                                lastScan = {code: awb, at: now};
+                                if (window.kxAddScannedAwb) {
+                                    window.kxAddScannedAwb(awb);
+                                }
+                            }
+                            return;
+                        }
                         if (html5QrCode) {
                             html5QrCode.stop().then(() => html5QrCode.clear()).catch(e => console.error(e));
                         }
@@ -137,6 +154,7 @@
                             e.preventDefault();
                             scanTargetSelector = btnScan.getAttribute('data-scan-target') || null;
                             scanAutoSubmit = btnScan.getAttribute('data-scan-auto-submit') === '1';
+                            scanKeepOpen = btnScan.getAttribute('data-scan-keep-open') === '1';
                             if (typeof $ !== 'undefined') {
                                 $('#qrScannerModal').modal('show');
                             } else if (typeof bootstrap !== 'undefined') {
@@ -173,6 +191,122 @@
                         });
                     }
                 }
+                document.querySelectorAll('.kx-scan-batch').forEach(function (root) {
+                    if (root.getAttribute('data-kx-bound') === '1') {
+                        return;
+                    }
+                    root.setAttribute('data-kx-bound', '1');
+                    var input = root.querySelector('.kx-scan-awb');
+                    var list = root.querySelector('.kx-scan-list');
+                    var countEl = root.querySelector('.kx-scan-count');
+                    var confirmBtn = root.querySelector('.kx-scan-confirm');
+                    var codes = [];
+                    root.querySelectorAll('.kx-scan-seed').forEach(function (seed) {
+                        if (seed.value &amp;&amp; codes.indexOf(seed.value) === -1) {
+                            codes.push(seed.value);
+                        }
+                    });
+                    function render() {
+                        if (!list) {
+                            return;
+                        }
+                        list.innerHTML = '';
+                        codes.forEach(function (code) {
+                            var item = document.createElement('li');
+                            item.className = 'list-group-item d-flex justify-content-between align-items-center';
+                            var label = document.createElement('strong');
+                            label.textContent = code;
+                            var remove = document.createElement('button');
+                            remove.type = 'button';
+                            remove.className = 'btn btn-sm btn-outline-secondary';
+                            remove.textContent = 'Remove';
+                            remove.addEventListener('click', function () {
+                                codes = codes.filter(function (itemCode) { return itemCode !== code; });
+                                render();
+                            });
+                            item.appendChild(label);
+                            item.appendChild(remove);
+                            list.appendChild(item);
+                        });
+                        if (countEl) {
+                            countEl.textContent = String(codes.length);
+                        }
+                        var badge = document.getElementById('kx-scan-modal-count');
+                        if (badge) {
+                            badge.textContent = codes.length ? (codes.length + ' scanned') : '';
+                        }
+                        if (confirmBtn) {
+                            confirmBtn.disabled = codes.length === 0;
+                        }
+                    }
+                    function add(raw) {
+                        var code = (raw || '').trim();
+                        if (!code || codes.indexOf(code) !== -1) {
+                            if (input) {
+                                input.value = '';
+                                input.focus();
+                            }
+                            return;
+                        }
+                        codes.push(code);
+                        if (input) {
+                            input.value = '';
+                            input.focus();
+                        }
+                        render();
+                    }
+                    window.kxAddScannedAwb = add;
+                    if (input) {
+                        input.addEventListener('keydown', function (ev) {
+                            if (ev.key !== 'Enter') {
+                                return;
+                            }
+                            ev.preventDefault();
+                            add(input.value);
+                        });
+                    }
+                    var addBtn = root.querySelector('.kx-scan-add');
+                    if (addBtn) {
+                        addBtn.addEventListener('click', function () {
+                            add(input ? input.value : '');
+                        });
+                    }
+                    root.addEventListener('submit', function (ev) {
+                        if (root.getAttribute('data-kx-ready') === '1') {
+                            return;
+                        }
+                        ev.preventDefault();
+                    });
+                    if (confirmBtn) {
+                        confirmBtn.addEventListener('click', function (ev) {
+                            ev.preventDefault();
+                            if (!codes.length) {
+                                return;
+                            }
+                            var prompt = confirmBtn.getAttribute('data-confirm') || 'Confirm %s scans?';
+                            if (!window.confirm(prompt.replace('%s', String(codes.length)))) {
+                                return;
+                            }
+                            root.querySelectorAll('input[name="awbs"]').forEach(function (node) {
+                                node.remove();
+                            });
+                            codes.forEach(function (code) {
+                                var hidden = document.createElement('input');
+                                hidden.type = 'hidden';
+                                hidden.name = 'awbs';
+                                hidden.value = code;
+                                root.appendChild(hidden);
+                            });
+                            var expected = root.querySelector('input[name="expected_count"]');
+                            if (expected) {
+                                expected.value = String(codes.length);
+                            }
+                            root.setAttribute('data-kx-ready', '1');
+                            root.submit();
+                        });
+                    }
+                    render();
+                });
             });
         </script>
     </template>
@@ -217,8 +351,9 @@
                        href="/my/deliveries?task=delivery">Delivery</a>
                 </li>
             </ul>
-            <div t-if="task != 'delivery'" class="mb-3">
-                <a href="/my/delivery/pickup-scan" class="btn btn-success btn-sm">Scan pickup</a>
+            <div class="mb-3 d-flex flex-wrap gap-2">
+                <a href="/my/delivery/custody-scan" class="btn btn-primary btn-sm">Scan custody</a>
+                <a t-if="task != 'delivery'" href="/my/delivery/pickup-scan" class="btn btn-success btn-sm">Scan pickup</a>
             </div>
             
             <t t-if="error">
@@ -305,67 +440,73 @@
             <div class="container py-3" style="max-width: 720px;">
                 <a href="/my/deliveries?task=pickup" class="btn btn-link ps-0 mb-2"><i class="fa fa-arrow-left"/> Back to pickups</a>
                 <h3 class="mb-1">Scan pickup</h3>
-                <p class="text-muted small">Each AWB is checked and listed. Nothing is marked picked, and no COD or delivery charge moves, until you confirm the count.</p>
+                <p class="text-muted small">Scan every parcel first. Nothing is marked picked, and no COD or delivery charge moves, until you confirm once for the whole list.</p>
                 <t t-if="error">
                     <div class="alert alert-danger"><t t-esc="error"/></div>
                 </t>
                 <t t-if="success">
                     <div class="alert alert-success"><t t-esc="success"/></div>
                 </t>
-                <form action="/my/delivery/pickup-scan" method="post" class="card shadow-sm p-3 mb-3">
+                <form action="/my/delivery/pickup-scan" method="post" class="card shadow-sm p-3 mb-3 kx-scan-batch">
                     <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
-                    <input type="hidden" name="action" value="add"/>
+                    <input type="hidden" name="action" value="confirm"/>
+                    <input type="hidden" name="expected_count" value="0"/>
+                    <t t-foreach="scan_codes or []" t-as="code">
+                        <input type="hidden" class="kx-scan-seed" t-att-value="code"/>
+                    </t>
                     <label class="form-label">AWB</label>
-                    <div class="input-group">
-                        <input type="text" name="awb" id="kx_pickup_scan_awb" class="form-control" placeholder="Scan or enter AWB" required="1" autofocus="1"/>
-                        <button type="button" class="btn btn-primary btn-scan-qr" data-scan-target="#kx_pickup_scan_awb" data-scan-auto-submit="1" title="Scan AWB">
+                    <div class="input-group mb-3">
+                        <input type="text" class="form-control kx-scan-awb" placeholder="Scan or enter AWB" autofocus="autofocus"/>
+                        <button type="button" class="btn btn-primary btn-scan-qr" data-scan-target=".kx-scan-awb" data-scan-keep-open="1" title="Scan AWB">
                             <i class="fa fa-camera"/>
                         </button>
-                        <button type="submit" class="btn btn-outline-primary">Add</button>
+                        <button type="button" class="btn btn-outline-primary kx-scan-add">Add</button>
                     </div>
+                    <ul class="list-group mb-3 kx-scan-list"></ul>
+                    <div class="mb-3">
+                        <label class="form-label small mb-1">Remark</label>
+                        <input type="text" name="remark" class="form-control form-control-sm" placeholder="Optional remark"/>
+                    </div>
+                    <button type="button" class="btn btn-success kx-scan-confirm" data-confirm="Pick up %s shipments?">
+                        Pick up <span class="kx-scan-count">0</span> shipments
+                    </button>
                 </form>
                 <t t-call="keralariders_logistics.portal_qr_scanner_modal"/>
-                <t t-if="not shipments">
-                    <p class="alert alert-info">No AWBs on this sheet yet.</p>
+            </div>
+        </t>
+    </template>
+
+    <template id="portal_my_custody_scan" name="Custody Scan Sheet">
+        <t t-call="portal.portal_layout">
+            <div class="container py-3" style="max-width: 720px;">
+                <a href="/my/deliveries" class="btn btn-link ps-0 mb-2"><i class="fa fa-arrow-left"/> Back to tasks</a>
+                <h3 class="mb-1">Take custody</h3>
+                <p class="text-muted small">Scan every parcel, then confirm once. Accepts a hub assignment, claims an unassigned hub parcel, or picks up a parcel already assigned to you.</p>
+                <t t-if="error">
+                    <div class="alert alert-danger"><t t-esc="error"/></div>
                 </t>
-                <t t-else="">
-                    <ul class="list-group mb-3">
-                        <t t-foreach="shipments" t-as="shipment">
-                            <li class="list-group-item d-flex justify-content-between align-items-center">
-                                <span>
-                                    <strong><t t-esc="shipment.name"/></strong>
-                                    <span class="text-muted"> — <t t-esc="shipment.shipping_from_name or shipment.seller_id.name or ''"/></span>
-                                </span>
-                                <form action="/my/delivery/pickup-scan" method="post" class="mb-0">
-                                    <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
-                                    <input type="hidden" name="action" value="remove"/>
-                                    <input type="hidden" name="shipment_id" t-att-value="shipment.id"/>
-                                    <button type="submit" class="btn btn-sm btn-outline-secondary">Remove</button>
-                                </form>
-                            </li>
-                        </t>
-                    </ul>
-                    <form action="/my/delivery/pickup-scan" method="post" class="card shadow-sm p-3">
-                        <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
-                        <input type="hidden" name="action" value="confirm"/>
-                        <input type="hidden" name="expected_count" t-att-value="len(shipments)"/>
-                        <p class="mb-2">Confirm pickup of <strong><t t-esc="len(shipments)"/></strong> shipments.</p>
-                        <div class="mb-3">
-                            <label class="form-label small mb-1">Remark</label>
-                            <input type="text" name="remark" class="form-control form-control-sm" placeholder="Optional remark"/>
-                        </div>
-                        <button type="submit" class="btn btn-success"
-                                t-att-data-count="len(shipments)"
-                                onclick="return confirm('Pick up ' + this.getAttribute('data-count') + ' shipments?');">
-                            Pick up <t t-esc="len(shipments)"/> shipments
+                <t t-if="success">
+                    <div class="alert alert-success"><t t-esc="success"/></div>
+                </t>
+                <form action="/my/delivery/custody-scan" method="post" class="card shadow-sm p-3 mb-3 kx-scan-batch">
+                    <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                    <t t-foreach="scan_codes or []" t-as="code">
+                        <input type="hidden" class="kx-scan-seed" t-att-value="code"/>
+                    </t>
+                    <label class="form-label">AWB</label>
+                    <div class="input-group mb-3">
+                        <input type="text" class="form-control kx-scan-awb" placeholder="Scan or enter AWB" autofocus="autofocus"/>
+                        <button type="button" class="btn btn-primary btn-scan-qr" data-scan-target=".kx-scan-awb" data-scan-keep-open="1" title="Scan AWB">
+                            <i class="fa fa-camera"/>
                         </button>
-                    </form>
-                    <form action="/my/delivery/pickup-scan" method="post" class="mt-2">
-                        <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
-                        <input type="hidden" name="action" value="clear"/>
-                        <button type="submit" class="btn btn-link btn-sm ps-0">Clear sheet</button>
-                    </form>
-                </t>
+                        <button type="button" class="btn btn-outline-primary kx-scan-add">Add</button>
+                    </div>
+                    <ul class="list-group mb-3 kx-scan-list"></ul>
+                    <button type="button" class="btn btn-success kx-scan-confirm" data-confirm="Take custody of %s packages?">
+                        Take custody of <span class="kx-scan-count">0</span>
+                    </button>
+                </form>
+                <t t-call="keralariders_logistics.portal_qr_scanner_modal"/>
             </div>
         </t>
     </template>
@@ -462,7 +603,13 @@
                     </div>
 
                     <!-- Pending hub assignment: Accept / Reject (custody still at hub) -->
-                    <t t-if="pending_accept">
+                        <t t-if="can_self_assign and not pending_accept">
+                            <form t-attf-action="/my/delivery/#{shipment.id}/claim" method="post" class="mb-3">
+                                <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                                <button type="submit" class="btn btn-primary w-100">Claim &amp; Take Custody</button>
+                            </form>
+                        </t>
+                        <t t-if="pending_accept">
                         <hr/>
                         <h4 class="mb-3 text-primary">
                             <i class="fa fa-handshake-o"/> Assignment Pending

@@ -250,16 +250,41 @@ class Hub(models.Model):
         hubs.action_assign_district_pincodes()
         return True
 
-    def _kx_network_rider_rows(self):
-        """Own-network riders for these hubs, with open custody and cash held.
+    def _kx_awaiting_pickup_domain(self):
+        """Shipments these hubs still have to give to a pickup rider.
 
-        A rider is listed when their pickup or delivery pincodes meet the
-        hub, or when they are holding an open hub-network parcel for it.
-        India Post shipments are left out.
+        Outbound India Post is collected by the post, so it stays out. A
+        return is collected from the customer, including when India Post
+        carried the outbound leg, and that job is ``return_requested``. The
+        customer's hub (destination) and the seller's hub (source) both see it.
+        """
+        hub_ids = self.exists().ids
+        return [
+            '|',
+            '&', '&',
+            ('source_hub_id', 'in', hub_ids),
+            ('state', 'in', ('pickup_requested', 'order_added')),
+            ('fulfilment_method', '!=', 'indiapost'),
+            '&', '&',
+            ('is_return_journey', '=', True),
+            ('state', '=', 'return_requested'),
+            '|',
+            ('source_hub_id', 'in', hub_ids),
+            ('destination_hub_id', 'in', hub_ids),
+        ]
+
+    def _kx_network_rider_rows(self):
+        """Own-network riders for these hubs.
+
+        Open rows are parcels already in the rider's custody. Pending rows
+        are assigned and not yet in custody. Undeposited COD payments are
+        the lines that should add up to the cash balance.
+        India Post shipments are left out of both lists.
         """
         hubs = self.exists()
         Shipment = self.env['logistics.shipment'].sudo()
         Executive = self.env['logistics.delivery.executive'].sudo()
+        Transfer = self.env['logistics.account.transfer'].sudo()
         executives = Executive.browse()
         pins = hubs.mapped('pincode_ids')
         if pins:
@@ -269,24 +294,62 @@ class Hub(models.Model):
                 ('assigned_pickup_pincodes', 'in', pins.ids),
                 ('assigned_delivery_pincodes', 'in', pins.ids),
             ])
-        held = Shipment.search([
-            ('fulfilment_method', '=', 'own_network'),
-            ('state', 'not in', ('delivered', 'cancelled', 'returned')),
-            ('custodian_type', '=', 'de'),
-            ('custodian_de_id', '!=', False),
+        hub_touch = [
             '|', '|',
             ('source_hub_id', 'in', hubs.ids),
             ('destination_hub_id', 'in', hubs.ids),
             ('current_hub_id', 'in', hubs.ids),
-        ])
+        ]
+        open_states = ('delivered', 'cancelled', 'returned')
+        held = Shipment.search([
+            ('fulfilment_method', '=', 'own_network'),
+            ('state', 'not in', open_states),
+            ('custodian_type', '=', 'de'),
+            ('custodian_de_id', '!=', False),
+        ] + hub_touch)
+        assigned = Shipment.search([
+            ('fulfilment_method', '=', 'own_network'),
+            ('state', 'not in', open_states),
+            '|', '|',
+            ('pickup_executive_id', '!=', False),
+            ('delivery_executive_id', '!=', False),
+            ('active_leg_id.assigned_de_id', '!=', False),
+        ] + hub_touch)
         executives |= held.mapped('custodian_de_id')
+        executives |= assigned.mapped('pickup_executive_id')
+        executives |= assigned.mapped('delivery_executive_id')
+        executives |= assigned.mapped('active_leg_id.assigned_de_id')
+        accounts = executives.mapped('default_cash_account_id')
+        cash_lines = Transfer.search([
+            ('transfer_type', '=', 'cod_payment'),
+            ('to_account_id', 'in', accounts.ids),
+            ('hub_deposit_transfer_id', '=', False),
+            ('state', '=', 'posted'),
+        ]) if accounts else Transfer.browse()
         rows = []
         for executive in executives.sorted(key=lambda rec: (rec.name or '').lower()):
-            mine = held.filtered(lambda shipment, executive=executive: shipment.custodian_de_id == executive)
+            mine = held.filtered(
+                lambda shipment, executive=executive: shipment.custodian_de_id == executive)
+            waiting = assigned.filtered(
+                lambda shipment, executive=executive: (
+                    shipment not in mine and (
+                        shipment.pickup_executive_id == executive
+                        or shipment.delivery_executive_id == executive
+                        or (
+                            shipment.active_leg_id
+                            and shipment.active_leg_id.assigned_de_id == executive
+                        )
+                    )
+                ))
             account = executive.default_cash_account_id
+            undeposited = cash_lines.filtered(
+                lambda transfer, account=account: account and transfer.to_account_id == account)
             rows.append({
                 'executive': executive,
                 'shipments': mine,
+                'pending': waiting,
+                'cash_lines': undeposited,
+                'undeposited_total': sum(undeposited.mapped('amount')),
                 'cash_balance': account.balance if account else 0.0,
             })
         return rows

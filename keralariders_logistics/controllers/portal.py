@@ -2186,15 +2186,36 @@ class LogisticsPortal(CustomerPortal):
                     request.session['success'] = _("%s added. Nothing is picked up yet.") % shipment.name
             return request.redirect('/my/delivery/pickup-scan')
         if request.httprequest.method == 'POST' and action == 'confirm':
-            shipments = Shipment.browse(batch_ids).exists()
-            problems = []
-            ready = Shipment.browse()
-            for shipment in shipments:
-                reason = shipment._kx_validate_pickup_scan(executive)
-                if reason:
-                    problems.append(reason)
-                else:
-                    ready |= shipment
+            posted = self._posted_scan_codes(post)
+            if posted:
+                problems = []
+                ready = Shipment.browse()
+                seen = set()
+                for code in posted:
+                    shipment = self._shipment_for_scan(code)
+                    if not shipment:
+                        problems.append(_("No shipment found for '%s'.") % code)
+                        continue
+                    if shipment.id in seen:
+                        continue
+                    seen.add(shipment.id)
+                    reason = shipment._kx_validate_pickup_scan(executive)
+                    if reason:
+                        problems.append(reason)
+                    else:
+                        ready |= shipment
+                request.session['kx_pickup_codes'] = posted
+            else:
+                shipments = Shipment.browse(batch_ids).exists()
+                problems = []
+                ready = Shipment.browse()
+                for shipment in shipments:
+                    reason = shipment._kx_validate_pickup_scan(executive)
+                    if reason:
+                        problems.append(reason)
+                    else:
+                        ready |= shipment
+                posted = ready.mapped('name')
             try:
                 expected = int(post.get('expected_count') or 0)
             except (TypeError, ValueError):
@@ -2203,10 +2224,10 @@ class LogisticsPortal(CustomerPortal):
                 request.session['error'] = " ".join(problems)
             elif not ready:
                 request.session['error'] = _("Scan at least one AWB before confirming.")
-            elif len(ready) != expected:
+            elif expected != len(posted):
                 request.session['error'] = _(
-                    "The sheet has %(count)s shipments, not %(expected)s. Check the list and confirm again."
-                ) % {'count': len(ready), 'expected': expected}
+                    "The sheet has %(count)s scans, not %(expected)s. Check the list and confirm again."
+                ) % {'count': len(posted), 'expected': expected}
             else:
                 note = (post.get('remark') or '').strip() or False
                 try:
@@ -2218,6 +2239,7 @@ class LogisticsPortal(CustomerPortal):
                     request.session['error'] = str(error)
                 else:
                     self._set_pickup_scan_batch([])
+                    request.session['kx_pickup_codes'] = []
                     request.session['success'] = _(
                         "Picked up %s shipments."
                     ) % len(ready)
@@ -2225,14 +2247,99 @@ class LogisticsPortal(CustomerPortal):
         shipments = Shipment.browse(batch_ids).exists()
         # Keep the sheet in the order they were scanned.
         ordered = Shipment.browse([sid for sid in batch_ids if sid in shipments.ids])
+        scan_codes = list(request.session.get('kx_pickup_codes') or [])
+        if not scan_codes:
+            scan_codes = [shipment.name for shipment in ordered]
         values = {
             'page_name': 'deliveries',
             'delivery_executive': executive,
             'shipments': ordered,
+            'scan_codes': scan_codes,
             'error': request.session.pop('error', None),
             'success': request.session.pop('success', None),
         }
         return request.render("keralariders_logistics.portal_my_pickup_scan", values)
+
+    def _de_take_custody(self, shipment, executive, code):
+        """Move one scanned parcel into this rider's custody.
+
+        Pending hub assignments are accepted. An assigned pickup is marked
+        picked. An unassigned hub parcel the rider is allowed to claim is
+        claimed. A parcel already in their hands is left as it is.
+        """
+        if (
+            shipment.custodian_type == 'de'
+            and shipment.custodian_de_id == executive
+        ):
+            return 'already'
+        shipment._sync_active_leg()
+        if shipment.is_pending_de_acceptance(executive):
+            shipment.action_de_accept_assignment(
+                executive, scanned_code=code or shipment.name)
+            return 'accepted'
+        if shipment._kx_validate_pickup_scan(executive) is False:
+            shipment.action_mark_picked(
+                actor_de=executive, scanned_code=code or shipment.name)
+            return 'picked'
+        if shipment.can_de_self_assign(executive):
+            shipment.action_de_self_assign(
+                executive, scanned_code=code or shipment.name)
+            return 'claimed'
+        reason = shipment._kx_validate_pickup_scan(executive)
+        raise UserError(reason or _(
+            "You cannot take custody of %s."
+        ) % (shipment.name or code))
+
+    @http.route(
+        ['/my/delivery/custody-scan'],
+        type='http', auth="user", website=True, methods=['GET', 'POST'],
+    )
+    def portal_my_custody_scan(self, **post):
+        """Scan several AWBs, then take custody of all of them in one confirm."""
+        executive = request.env['logistics.delivery.executive'].sudo().search(
+            [('user_id', '=', request.env.user.id)], limit=1)
+        if not executive:
+            return request.redirect('/my')
+        if request.httprequest.method == 'POST':
+            codes = self._posted_scan_codes(post)
+            done = []
+            failed = []
+            retry = []
+            for code in codes:
+                shipment = self._shipment_for_scan(code)
+                if not shipment:
+                    failed.append(_("No shipment found for '%s'.") % code)
+                    retry.append(code)
+                    continue
+                try:
+                    with request.env.cr.savepoint():
+                        outcome = self._de_take_custody(shipment, executive, code)
+                except UserError as error:
+                    failed.append("%s: %s" % (code, error))
+                    retry.append(code)
+                else:
+                    if outcome == 'already':
+                        done.append(_("%s was already in your custody.") % shipment.name)
+                    else:
+                        done.append(shipment.name)
+            request.session['kx_custody_codes'] = retry
+            if done:
+                request.session['success'] = _(
+                    "Custody updated for %s."
+                ) % ', '.join(done)
+            if failed:
+                request.session['error'] = ' '.join(failed)
+            elif not done:
+                request.session['error'] = _("Scan at least one AWB.")
+            return request.redirect('/my/delivery/custody-scan')
+        values = {
+            'page_name': 'deliveries',
+            'delivery_executive': executive,
+            'scan_codes': request.session.get('kx_custody_codes') or [],
+            'error': request.session.pop('error', None),
+            'success': request.session.pop('success', None),
+        }
+        return request.render("keralariders_logistics.portal_my_custody_scan", values)
 
     @http.route(['/my/delivery/<int:shipment_id>'], type='http', auth="user", website=True)
     def portal_my_delivery_detail(self, shipment_id=None, **kw):
@@ -2243,6 +2350,8 @@ class LogisticsPortal(CustomerPortal):
         shipment = request.env['logistics.shipment'].sudo().search([('id', '=', shipment_id)], limit=1)
         if not shipment:
             return request.redirect('/my/deliveries')
+
+        shipment._sync_active_leg()
 
         # Prefer claim page when DE can self-assign an *unassigned* hub package.
         # Soft-assigned pending accept stays on detail with Accept / Reject.
@@ -2620,20 +2729,40 @@ class LogisticsPortal(CustomerPortal):
         ]
 
     def _hub_pending_pickup_domain(self, hubs):
-        """Shipments awaiting first pickup whose origin hub the user manages.
+        """Shipments awaiting pickup for these hubs, including returns."""
+        return hubs._kx_awaiting_pickup_domain()
 
-        India Post collects outbound articles from the seller directly, so they
-        are not a KeralaXpress pickup and must stay out of this queue. A return
-        journey is collected from the customer by a KeralaXpress executive
-        whatever the carrier, so those remain listed.
-        """
-        return [
-            ('source_hub_id', 'in', hubs.ids),
-            ('state', 'in', ('pickup_requested', 'order_added')),
-            '|',
-            ('fulfilment_method', '!=', 'indiapost'),
-            ('is_return_journey', '=', True),
-        ]
+    def _normalize_scan_code(self, raw):
+        """AWB text from a wedge scanner or a tracking URL / QR payload."""
+        code = (raw or '').strip()
+        if not code:
+            return ''
+        if 'id=' in code:
+            part = code.split('id=', 1)[1]
+            part = part.split('&', 1)[0].split('#', 1)[0].strip()
+            return part or code
+        if '/' in code:
+            tail = code.rstrip('/').rsplit('/', 1)[-1].strip()
+            if tail and tail not in ('track', 'delivery', 'my'):
+                return tail
+        return code
+
+    def _posted_scan_codes(self, post):
+        codes = []
+        for raw in request.httprequest.form.getlist('awbs'):
+            code = self._normalize_scan_code(raw)
+            if code and code not in codes:
+                codes.append(code)
+        single = self._normalize_scan_code(post.get('awb'))
+        if single and single not in codes:
+            codes.append(single)
+        return codes
+
+    def _shipment_for_scan(self, code):
+        Shipment = request.env['logistics.shipment'].sudo()
+        if not code:
+            return Shipment.browse()
+        return Shipment.search([('name', '=', code)], limit=1)
 
     @http.route(['/my/hub', '/my/hub/'], type='http', auth="user", website=True)
     def portal_my_hub_home(self, **kw):
@@ -2798,23 +2927,43 @@ class LogisticsPortal(CustomerPortal):
         if not hubs:
             return request.redirect('/my')
         if request.httprequest.method == 'POST':
-            awb = (post.get('awb') or '').strip()
-            hub_id = int(post.get('hub_id') or 0)
-            hub = hubs.filtered(lambda h: h.id == hub_id)[:1] or hubs[:1]
-            shipment = request.env['logistics.shipment'].sudo().search([('name', '=', awb)], limit=1)
-            if not shipment:
-                request.session['error'] = f"No shipment found for AWB '{awb}'."
-                return request.redirect('/my/hub/receive')
+            codes = self._posted_scan_codes(post)
             try:
-                shipment.action_hub_receive(hub=hub, scanned_code=awb)
-                request.session['success'] = f"Received {shipment.name} at {hub.name}."
-                return request.redirect('/my/hub/inventory')
-            except UserError as e:
-                request.session['error'] = str(e)
-                return request.redirect('/my/hub/receive')
+                hub_id = int(post.get('hub_id') or 0)
+            except (TypeError, ValueError):
+                hub_id = 0
+            hub = hubs.filtered(lambda h: h.id == hub_id)[:1] or hubs[:1]
+            done = []
+            failed = []
+            retry = []
+            for code in codes:
+                shipment = self._shipment_for_scan(code)
+                if not shipment:
+                    failed.append(_("No shipment found for '%s'.") % code)
+                    retry.append(code)
+                    continue
+                try:
+                    with request.env.cr.savepoint():
+                        shipment.action_hub_receive(hub=hub, scanned_code=code)
+                except UserError as error:
+                    failed.append("%s: %s" % (shipment.name, error))
+                    retry.append(code)
+                else:
+                    done.append(shipment.name)
+            request.session['kx_receive_codes'] = retry
+            if done:
+                request.session['success'] = _(
+                    "Received %(count)s at %(hub)s: %(names)s."
+                ) % {'count': len(done), 'hub': hub.name, 'names': ', '.join(done)}
+            if failed:
+                request.session['error'] = ' '.join(failed)
+            elif not done:
+                request.session['error'] = _("Scan at least one AWB.")
+            return request.redirect('/my/hub/receive')
         values = {
             'page_name': 'hub_receive',
             'hubs': hubs,
+            'scan_codes': request.session.get('kx_receive_codes') or [],
             'error': request.session.pop('error', None),
             'success': request.session.pop('success', None),
         }
@@ -2933,7 +3082,6 @@ class LogisticsPortal(CustomerPortal):
         pickup_sellers = Shipment.search(base_domain).mapped('seller_id').sorted(
             key=lambda seller: (seller.name or '').lower())
         assigned = Shipment.search(domain + [
-            ('fulfilment_method', '!=', 'indiapost'),
             ('pickup_executive_id', '!=', False),
         ])
         seller_marks = []
@@ -2976,7 +3124,13 @@ class LogisticsPortal(CustomerPortal):
         if not hubs:
             return request.redirect('/my')
         shipment = request.env['logistics.shipment'].sudo().browse(shipment_id)
-        if not shipment.exists() or shipment.source_hub_id not in hubs:
+        if not shipment.exists():
+            request.session['error'] = "Shipment is not awaiting pickup for your hub."
+            return request.redirect('/my/hub/pickups')
+        return_pickup = shipment.is_return_journey and shipment.state == 'return_requested'
+        hub_ok = shipment.source_hub_id in hubs or (
+            return_pickup and shipment.destination_hub_id in hubs)
+        if not hub_ok:
             request.session['error'] = "Shipment is not awaiting pickup for your hub."
             return request.redirect('/my/hub/pickups')
         if not shipment._needs_keralaxpress_pickup():
@@ -2986,7 +3140,7 @@ class LogisticsPortal(CustomerPortal):
                 f"assign."
             )
             return request.redirect('/my/hub/pickups')
-        if shipment.state not in ('pickup_requested', 'order_added'):
+        if shipment.state not in ('pickup_requested', 'order_added') and not return_pickup:
             request.session['error'] = (
                 f"Shipment {shipment.name} is no longer awaiting pickup "
                 f"(status: {shipment.state})."
@@ -3037,7 +3191,6 @@ class LogisticsPortal(CustomerPortal):
                 return self._hub_pickups_redirect()
             shipments = Shipment.search(self._hub_pending_pickup_domain(hubs) + [
                 ('seller_id', '=', seller_id),
-                ('fulfilment_method', '!=', 'indiapost'),
             ])
         else:
             raw_ids = request.httprequest.form.getlist('shipment_ids')
@@ -3049,10 +3202,21 @@ class LogisticsPortal(CustomerPortal):
                     continue
             shipments = Shipment.browse(ids).exists().filtered(
                 lambda shipment: (
-                    shipment.source_hub_id in hubs
-                    and shipment.fulfilment_method != 'indiapost'
-                    and shipment.state in ('pickup_requested', 'order_added')
-                    and shipment._needs_keralaxpress_pickup()
+                    shipment._needs_keralaxpress_pickup()
+                    and (
+                        (
+                            shipment.source_hub_id in hubs
+                            and shipment.state in ('pickup_requested', 'order_added')
+                        )
+                        or (
+                            shipment.is_return_journey
+                            and shipment.state == 'return_requested'
+                            and (
+                                shipment.source_hub_id in hubs
+                                or shipment.destination_hub_id in hubs
+                            )
+                        )
+                    )
                 )
             )
         if not shipments:
@@ -3092,7 +3256,6 @@ class LogisticsPortal(CustomerPortal):
         shipments = request.env['logistics.shipment'].sudo().search(
             self._hub_pending_pickup_domain(hubs) + [
                 ('seller_id', '=', seller_id),
-                ('fulfilment_method', '!=', 'indiapost'),
                 ('pickup_executive_id', '!=', False),
             ]
         )
@@ -3113,6 +3276,53 @@ class LogisticsPortal(CustomerPortal):
         return self._hub_pickups_redirect(seller_id)
 
     @http.route(
+        ['/my/hub/shipments/bulk'],
+        type='http', auth="user", website=True, methods=['POST'],
+    )
+    def portal_my_hub_shipments_bulk(self, **post):
+        """Cancel or start a return for the KeralaXpress rows the hub selected."""
+        hubs = self._get_managed_hubs()
+        if not hubs:
+            return request.redirect('/my')
+        action = (post.get('bulk_action') or '').strip()
+        raw_ids = request.httprequest.form.getlist('shipment_ids')
+        ids = []
+        for raw in raw_ids:
+            try:
+                ids.append(int(raw))
+            except (TypeError, ValueError):
+                continue
+        Shipment = request.env['logistics.shipment'].sudo()
+        allowed = Shipment.search(self._hub_all_shipments_domain(hubs) + [
+            ('id', 'in', ids or [0]),
+            ('fulfilment_method', '=', 'own_network'),
+        ])
+        if action not in ('cancel', 'return') or not allowed:
+            request.session['error'] = _(
+                "Select KeralaXpress shipments, then cancel or return them."
+            )
+            return request.redirect('/my/hub/shipments')
+        done = []
+        failed = []
+        for shipment in allowed:
+            try:
+                with request.env.cr.savepoint():
+                    if action == 'cancel':
+                        shipment.action_cancel_shipment()
+                    else:
+                        shipment.action_request_return()
+            except UserError as error:
+                failed.append("%s: %s" % (shipment.name, error))
+            else:
+                done.append(shipment.name)
+        if done:
+            verb = _("Cancelled") if action == 'cancel' else _("Started a return for")
+            request.session['success'] = "%s %s." % (verb, ', '.join(done))
+        if failed:
+            request.session['error'] = ' '.join(failed)
+        return request.redirect('/my/hub/shipments')
+
+    @http.route(
         ['/my/hub/shipments', '/my/hub/shipments/page/<int:page>'],
         type='http', auth="user", website=True,
     )
@@ -3125,10 +3335,7 @@ class LogisticsPortal(CustomerPortal):
         domain = self._hub_all_shipments_domain(hubs)
         sees_all = self._hub_manager_sees_all_shipments(hubs)
 
-        carrier = (kw.get('carrier') or 'own_network').strip()
-        if carrier not in ('own_network', 'indiapost'):
-            carrier = 'own_network'
-        domain = domain + [('fulfilment_method', '=', carrier)]
+        domain = domain + [('fulfilment_method', '=', 'own_network')]
 
         filter_status = (filter_status or '').strip() or None
         search = (search or '').strip() or None
@@ -3157,7 +3364,6 @@ class LogisticsPortal(CustomerPortal):
             url_args={
                 'filter_status': filter_status or None,
                 'search': search or None,
-                'carrier': carrier,
                 'district_id': district_id or None,
             },
             total=shipment_count,
@@ -3183,7 +3389,6 @@ class LogisticsPortal(CustomerPortal):
             'sees_all_shipments': sees_all,
             'filter_status': filter_status,
             'search': search or '',
-            'carrier': carrier,
             'district_id': district_id,
             'districts': request.env['logistics.district'].sudo().search([]),
             'status_options': status_options,

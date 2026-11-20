@@ -218,14 +218,18 @@
             <div class="container py-3" style="max-width: 560px;">
                 <a href="/my/hub" class="btn btn-link ps-0 mb-2"><i class="fa fa-arrow-left"/> Back</a>
                 <h3>Receive at Hub</h3>
+                <p class="text-muted small">Scan every parcel, then confirm once.</p>
                 <t t-if="error">
                     <div class="alert alert-danger"><t t-esc="error"/></div>
                 </t>
                 <t t-if="success">
                     <div class="alert alert-success"><t t-esc="success"/></div>
                 </t>
-                <form action="/my/hub/receive" method="post" class="card shadow-sm p-4">
+                <form action="/my/hub/receive" method="post" class="card shadow-sm p-4 kx-scan-batch">
                     <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                    <t t-foreach="scan_codes or []" t-as="code">
+                        <input type="hidden" class="kx-scan-seed" t-att-value="code"/>
+                    </t>
                     <div class="mb-3">
                         <label class="form-label">Hub</label>
                         <select name="hub_id" class="form-select" required="1">
@@ -237,15 +241,16 @@
                     <div class="mb-3">
                         <label class="form-label">AWB / Scanned Code</label>
                         <div class="input-group">
-                            <input type="text" name="awb" id="hub_receive_awb" class="form-control form-control-lg" placeholder="Enter or scan AWB" required="1" autofocus="1"/>
-                            <button type="button" class="btn btn-primary btn-scan-qr" data-scan-target="#hub_receive_awb" title="Scan AWB QR Code">
+                            <input type="text" class="form-control form-control-lg kx-scan-awb" placeholder="Enter or scan AWB" autofocus="autofocus"/>
+                            <button type="button" class="btn btn-primary btn-scan-qr" data-scan-target=".kx-scan-awb" data-scan-keep-open="1" title="Scan AWB QR Code">
                                 <i class="fa fa-camera"/>
                             </button>
+                            <button type="button" class="btn btn-outline-primary kx-scan-add">Add</button>
                         </div>
-                        <div class="form-text">Or use the camera to scan the AWB QR code.</div>
                     </div>
-                    <button type="submit" class="btn btn-success w-100">
-                        <i class="fa fa-check"/> Confirm Receive
+                    <ul class="list-group mb-3 kx-scan-list"></ul>
+                    <button type="button" class="btn btn-success w-100 kx-scan-confirm" data-confirm="Receive %s packages at this hub?">
+                        <i class="fa fa-check"/> Receive <span class="kx-scan-count">0</span>
                     </button>
                 </form>
                 <t t-call="keralariders_logistics.portal_qr_scanner_modal"/>
@@ -434,7 +439,7 @@
                 <t t-if="seller_marks">
                     <div class="card shadow-sm p-3 mb-3">
                         <h6 class="mb-2">Mark picked, seller by seller</h6>
-                        <p class="small text-muted">Only KeralaXpress pickups that already have an agent. Confirm the count before anything is marked picked.</p>
+                        <p class="small text-muted">Assigned pickups, including returns. Confirm the count before anything is marked picked.</p>
                         <t t-foreach="seller_marks" t-as="mark">
                             <form action="/my/hub/pickups/mark_picked" method="post" class="row g-2 align-items-end border-top pt-2 mt-2">
                                 <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
@@ -482,22 +487,30 @@
                                 <t t-foreach="shipments" t-as="shipment">
                                     <tr>
                                         <td>
-                                            <input t-if="shipment.fulfilment_method != 'indiapost'"
-                                                   type="checkbox" name="shipment_ids" class="kx-pickup-select"
+                                            <input type="checkbox" name="shipment_ids" class="kx-pickup-select"
                                                    form="kx_bulk_assign" t-att-value="shipment.id"/>
                                         </td>
                                         <td>
                                             <strong><t t-esc="shipment.name"/></strong>
-                                            <t t-if="shipment.fulfilment_method == 'indiapost'">
-                                                <div class="small text-muted">India Post return</div>
+                                            <t t-if="shipment.is_return_journey">
+                                                <div><span class="badge text-bg-warning">Return</span></div>
                                             </t>
                                         </td>
                                         <td>
-                                            <t t-esc="shipment.shipping_from_name or shipment.seller_id.name or ''"/><br/>
-                                            <small class="text-muted">
-                                                <t t-esc="shipment.shipping_from_address"/><br/>
-                                                PIN <t t-esc="shipment.shipping_from_zip or '—'"/>
-                                            </small>
+                                            <t t-if="shipment.is_return_journey">
+                                                <t t-esc="shipment.shipping_to_name or ''"/><br/>
+                                                <small class="text-muted">
+                                                    <t t-esc="shipment.shipping_to_address"/><br/>
+                                                    PIN <t t-esc="shipment.shipping_to_zip or '—'"/>
+                                                </small>
+                                            </t>
+                                            <t t-else="">
+                                                <t t-esc="shipment.shipping_from_name or shipment.seller_id.name or ''"/><br/>
+                                                <small class="text-muted">
+                                                    <t t-esc="shipment.shipping_from_address"/><br/>
+                                                    PIN <t t-esc="shipment.shipping_from_zip or '—'"/>
+                                                </small>
+                                            </t>
                                         </td>
                                         <td><t t-esc="shipment.source_hub_id.name"/></td>
                                         <td>
@@ -572,18 +585,7 @@
                         </p>
                     </div>
                 </div>
-                <ul class="nav nav-pills mb-3">
-                    <li class="nav-item">
-                        <a t-attf-class="nav-link #{'active' if carrier != 'indiapost' else ''}"
-                           t-attf-href="/my/hub/shipments?carrier=own_network">KeralaXpress</a>
-                    </li>
-                    <li class="nav-item">
-                        <a t-attf-class="nav-link #{'active' if carrier == 'indiapost' else ''}"
-                           t-attf-href="/my/hub/shipments?carrier=indiapost">India Post</a>
-                    </li>
-                </ul>
                 <form action="/my/hub/shipments" method="get" class="row g-2 align-items-end mb-3">
-                    <input type="hidden" name="carrier" t-att-value="carrier"/>
                     <div class="col-md-3">
                         <label class="form-label small mb-1">Search AWB</label>
                         <input type="text" name="search" class="form-control form-control-sm"
@@ -613,9 +615,22 @@
                     </div>
                     <div class="col-md-3">
                         <button type="submit" class="btn btn-primary btn-sm me-1">Filter</button>
-                        <a t-attf-href="/my/hub/shipments?carrier=#{carrier}" class="btn btn-outline-secondary btn-sm">Clear</a>
+                        <a href="/my/hub/shipments" class="btn btn-outline-secondary btn-sm">Clear</a>
                     </div>
                 </form>
+                <t t-if="shipments">
+                    <form id="kx_shipment_bulk" action="/my/hub/shipments/bulk" method="post" class="d-flex flex-wrap gap-2 mb-3">
+                        <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                        <button type="submit" name="bulk_action" value="cancel" class="btn btn-outline-danger btn-sm"
+                                onclick="return kxConfirmShipmentBulk(this, 'Cancel the selected shipments?');">
+                            Cancel selected
+                        </button>
+                        <button type="submit" name="bulk_action" value="return" class="btn btn-outline-warning btn-sm"
+                                onclick="return kxConfirmShipmentBulk(this, 'Start a return for the selected shipments?');">
+                            Return selected
+                        </button>
+                    </form>
+                </t>
                 <t t-if="not shipments">
                     <p class="alert alert-info">No shipments match your filters.</p>
                 </t>
@@ -624,6 +639,9 @@
                         <table class="table table-hover align-middle">
                             <thead>
                                 <tr>
+                                    <th>
+                                        <input type="checkbox" id="kx_shipment_select_all" title="Select visible rows"/>
+                                    </th>
                                     <th>AWB</th>
                                     <th>Status</th>
                                     <th>Seller</th>
@@ -638,7 +656,7 @@
                             <tbody>
                                 <t t-foreach="district_groups" t-as="group">
                                     <tr class="table-light">
-                                        <td colspan="9">
+                                        <td colspan="10">
                                             <strong>
                                                 <t t-if="group['district']" t-esc="group['district'].name"/>
                                                 <t t-else="">No district</t>
@@ -648,6 +666,10 @@
                                     </tr>
                                     <t t-foreach="group['shipments']" t-as="shipment">
                                     <tr>
+                                        <td>
+                                            <input type="checkbox" name="shipment_ids" class="kx-shipment-select"
+                                                   form="kx_shipment_bulk" t-att-value="shipment.id"/>
+                                        </td>
                                         <td>
                                             <a t-attf-href="/track/#{shipment.tracking_token}" target="_blank" rel="noopener">
                                                 <strong><t t-esc="shipment.name"/></strong>
@@ -689,6 +711,27 @@
                             </tbody>
                         </table>
                     </div>
+                    <script type="text/javascript">
+                        function kxConfirmShipmentBulk(button, message) {
+                            var selected = document.querySelectorAll('.kx-shipment-select:checked');
+                            if (!selected.length) {
+                                window.alert('Select at least one shipment.');
+                                return false;
+                            }
+                            return window.confirm(message + ' (' + selected.length + ')');
+                        }
+                        document.addEventListener('DOMContentLoaded', function () {
+                            var master = document.getElementById('kx_shipment_select_all');
+                            if (!master) {
+                                return;
+                            }
+                            master.addEventListener('change', function () {
+                                document.querySelectorAll('.kx-shipment-select').forEach(function (box) {
+                                    box.checked = master.checked;
+                                });
+                            });
+                        });
+                    </script>
                     <t t-call="portal.pager"/>
                 </t>
             </div>
@@ -700,7 +743,7 @@
             <div class="container py-3">
                 <a href="/my/hub" class="btn btn-link ps-0 mb-2"><i class="fa fa-arrow-left"/> Back</a>
                 <h3 class="mb-1">Riders</h3>
-                <p class="text-muted small">KeralaXpress shipments in each rider's custody, and the COD cash still on that rider's cash account.</p>
+                <p class="text-muted small">Open parcels are in the rider's hands. Pending parcels are assigned and not yet in custody. Undeposited COD is the cash that should add up to the balance.</p>
                 <t t-if="not rider_rows">
                     <p class="alert alert-info">No KeralaXpress riders for your hubs.</p>
                 </t>
@@ -712,11 +755,11 @@
                                     <h5 class="mb-0"><t t-esc="row['executive'].name"/></h5>
                                     <div>COD cash held: <strong><t t-esc="'%.2f' % row['cash_balance']"/></strong></div>
                                 </div>
-                                <p class="small text-muted mb-2"><t t-esc="len(row['shipments'])"/> open shipments in custody</p>
+                                <p class="small text-muted mb-2"><t t-esc="len(row['shipments'])"/> open in custody</p>
                                 <t t-if="not row['shipments']">
-                                    <p class="mb-0 text-muted">Nothing in custody.</p>
+                                    <p class="mb-2 text-muted">Nothing in custody.</p>
                                 </t>
-                                <ul t-else="" class="mb-0">
+                                <ul t-else="" class="mb-3">
                                     <t t-foreach="row['shipments']" t-as="shipment">
                                         <li>
                                             <t t-esc="shipment.name"/>
@@ -724,6 +767,37 @@
                                             <t t-if="shipment.order_payment_type == 'cod'">
                                                 · COD <t t-esc="'%.2f' % (shipment.cod_amount or 0.0)"/>
                                             </t>
+                                        </li>
+                                    </t>
+                                </ul>
+                                <p class="small text-muted mb-2"><t t-esc="len(row['pending'])"/> pending</p>
+                                <t t-if="not row['pending']">
+                                    <p class="mb-2 text-muted">No pending assignments.</p>
+                                </t>
+                                <ul t-else="" class="mb-3">
+                                    <t t-foreach="row['pending']" t-as="shipment">
+                                        <li>
+                                            <t t-esc="shipment.name"/>
+                                            — <t t-esc="shipment.shipping_to_name or ''"/>
+                                            · <t t-esc="shipment.get_tracking_status_label()"/>
+                                            <t t-if="shipment.order_payment_type == 'cod'">
+                                                · COD <t t-esc="'%.2f' % (shipment.cod_amount or 0.0)"/>
+                                            </t>
+                                        </li>
+                                    </t>
+                                </ul>
+                                <p class="small text-muted mb-2">
+                                    Undeposited COD <strong><t t-esc="'%.2f' % row['undeposited_total']"/></strong>
+                                </p>
+                                <t t-if="not row['cash_lines']">
+                                    <p class="mb-0 text-muted">No COD cash waiting to be deposited.</p>
+                                </t>
+                                <ul t-else="" class="mb-0">
+                                    <t t-foreach="row['cash_lines']" t-as="payment">
+                                        <li>
+                                            <t t-esc="payment.shipment_id.name or payment.reference or payment.name"/>
+                                            · <t t-esc="'%.2f' % payment.amount"/>
+                                            <t t-if="payment.transfer_date"> · <t t-esc="payment.transfer_date"/></t>
                                         </li>
                                     </t>
                                 </ul>

@@ -316,6 +316,21 @@ class TestKxNetworkOps(IndiapostHermeticMixin, TransactionCase):
         self.assertEqual(shipment.current_hub_id, mal)
         self.assertEqual(shipment.state, 'at_destination_hub')
         self.assertEqual(len(self._transfers(shipment, 'cod_pickup')), 1)
+        transfer = shipment.estimated_route_ids.filtered(
+            lambda route: route.operation_type == 'hub_transfer'
+        )
+        self.assertTrue(transfer)
+        self.assertEqual(set(transfer.mapped('state')), {'done'})
+        self.assertEqual(shipment.active_leg_id.operation_type, 'delivery')
+        rider = self.env['logistics.delivery.executive'].create({
+            'name': 'Destination Delivery Rider',
+            'mobile': '9000004444',
+            'is_pickup': True,
+            'is_delivery': True,
+            'is_driver': False,
+        })
+        self.assertTrue(shipment.can_de_self_assign(rider))
+        shipment.action_assign_delivery_executive(rider)
 
     def test_wrong_hub_scan_of_a_kozhikode_parcel_writes_no_wallet_line(self):
         koz = self.env.ref('keralariders_logistics.hub_kozhikode')
@@ -386,3 +401,59 @@ class TestKxNetworkOps(IndiapostHermeticMixin, TransactionCase):
             wallet_count,
         )
         self.assertFalse(self._transfers(shipment, 'cod_pickup'))
+
+    def test_return_requested_is_on_the_pickup_queue(self):
+        Shipment = self.env['logistics.shipment']
+        shipment = self._shipment(shipping_to_zip=self._pin('kozhikode'))
+        hub = shipment.source_hub_id
+        self.assertTrue(hub)
+        self.assertIn(shipment, Shipment.search(hub._kx_awaiting_pickup_domain()))
+        shipment.with_context(allow_shipment_state_write=True).write({
+            'state': 'return_requested',
+            'is_return_journey': True,
+        })
+        self.assertIn(shipment, Shipment.search(hub._kx_awaiting_pickup_domain()))
+        customer_hub = shipment.destination_hub_id
+        self.assertTrue(customer_hub)
+        self.assertIn(shipment, Shipment.search(customer_hub._kx_awaiting_pickup_domain()))
+        self.env.cr.execute(
+            "UPDATE logistics_shipment SET fulfilment_method = 'indiapost' WHERE id = %s",
+            [shipment.id],
+        )
+        shipment.invalidate_recordset(['fulfilment_method'])
+        self.assertIn(shipment, Shipment.search(hub._kx_awaiting_pickup_domain()))
+        outbound = self._shipment(shipping_to_zip=self._pin('kozhikode'))
+        self.env.cr.execute(
+            "UPDATE logistics_shipment SET fulfilment_method = 'indiapost' WHERE id = %s",
+            [outbound.id],
+        )
+        outbound.invalidate_recordset(['fulfilment_method'])
+        self.assertNotIn(
+            outbound, Shipment.search(outbound.source_hub_id._kx_awaiting_pickup_domain()))
+
+    def test_rider_rows_list_pending_work_and_undeposited_cod(self):
+        koz_pin = self._pin('kozhikode')
+        pin = self.env['logistics.pincode'].search([('name', '=', koz_pin)], limit=1)
+        self.executive.assigned_pickup_pincodes = [(4, pin.id)]
+        waiting = self._shipment(shipping_to_zip=koz_pin)
+        self.assertEqual(waiting.pickup_executive_id, self.executive)
+        self.assertNotEqual(waiting.custodian_type, 'de')
+        self.env['logistics.account.transfer'].create({
+            'transfer_type': 'cod_payment',
+            'from_account_id': self.company_account.id,
+            'to_account_id': self.executive.default_cash_account_id.id,
+            'amount': 40.0,
+            'reference': 'Undeposited COD',
+            'shipment_id': waiting.id,
+            'related_seller_id': self.seller.id,
+        })
+        koz = self.env.ref('keralariders_logistics.hub_kozhikode')
+        rows = [
+            row for row in koz._kx_network_rider_rows()
+            if row['executive'] == self.executive
+        ]
+        self.assertEqual(len(rows), 1)
+        self.assertNotIn(waiting, rows[0]['shipments'])
+        self.assertIn(waiting, rows[0]['pending'])
+        self.assertAlmostEqual(rows[0]['undeposited_total'], 40.0, places=2)
+        self.assertEqual(len(rows[0]['cash_lines']), 1)
