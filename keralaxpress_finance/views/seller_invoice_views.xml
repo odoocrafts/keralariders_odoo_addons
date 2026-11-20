@@ -8,6 +8,7 @@
                   decoration-muted="state == 'cancelled'" decoration-info="state == 'draft'">
                 <field name="name"/>
                 <field name="seller_id"/>
+                <field name="seller_gstin" string="GST Number"/>
                 <field name="period_label" string="Period"/>
                 <field name="invoice_date"/>
                 <field name="currency_id" column_invisible="1"/>
