@@ -27,7 +27,10 @@ REFUND_LINES = (
     ('scan_adjustment_credit', 'scan_adjustment', 'credit',
      'India Post rate adjustment credits'),
 )
-LINE_KEYS = [(key, label) for key, _cat, _side, label in CHARGE_LINES + REFUND_LINES]
+LINE_KEYS = (
+    [(key, label) for key, _cat, _side, label in CHARGE_LINES + REFUND_LINES]
+    + [('wallet_charge', 'Wallet recharge charges')]
+)
 
 # Fields that make up what was billed. Frozen once an invoice is posted.
 FROZEN_FIELDS = {
@@ -150,28 +153,29 @@ class SellerInvoice(models.Model):
         shipment_charges = additional = 0.0
         booking_count = 0
         for kind, spec in (('charge', CHARGE_LINES), ('refund', REFUND_LINES)):
-            for sequence, (key, category, side, label) in enumerate(spec, start=1):
+            for key, category, side, _label in spec:
                 matched = pick(category, side)
                 amount = currency.round(sum(matched.mapped(side)))
                 if not matched:
                     continue
-                count = len(matched.shipment_id) or len(matched)
                 if key == 'shipment':
                     shipment_charges = amount
                     booking_count = len(matched.shipment_id)
                 elif kind == 'charge':
                     additional += amount
                 totals[kind] += amount
-                invoice_lines.append({
-                    'sequence': sequence + (0 if kind == 'charge' else 100),
-                    'line_key': key,
-                    'name': label,
-                    'quantity': count,
-                    'amount': amount if kind == 'charge' else -amount,
-                })
         recharge_total = currency.round(sum(
             lines.filtered(lambda l: l.category == 'recharge').mapped('credit')))
         amount_total = currency.round(max(totals['charge'] - totals['refund'], 0.0))
+        # One order line. GST is split underneath at the configured rate.
+        if amount_total:
+            invoice_lines.append({
+                'sequence': 1,
+                'line_key': 'wallet_charge',
+                'name': _('Wallet recharge charges'),
+                'quantity': 1,
+                'amount': amount_total,
+            })
 
         gst_percent, sac_code = self.env['res.config.settings'].kx_invoice_tax_settings()
         taxable = currency.round(amount_total * 100.0 / (100.0 + gst_percent))

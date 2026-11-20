@@ -147,6 +147,9 @@ class TestKxFinance(KxFinanceFixtures, TransactionCase):
         self.assertAlmostEqual(inv.cgst_amount + inv.sgst_amount, inv.tax_amount)
         self.assertLessEqual(abs(inv.cgst_amount - inv.sgst_amount), 0.011)
         self.assertEqual(inv.igst_amount, 0.0)
+        self.assertEqual(len(inv.line_ids), 1)
+        self.assertEqual(inv.line_ids.line_key, 'wallet_charge')
+        self.assertAlmostEqual(inv.line_ids.amount, 133.0)
         self.assertAlmostEqual(sum(inv.line_ids.mapped('amount')), 133.0)
         html, _kind = self.env['ir.actions.report']._render_qweb_html(
             'keralaxpress_finance.action_report_seller_invoice', inv.ids)
