@@ -277,8 +277,9 @@ class Hub(models.Model):
         """Own-network riders for these hubs.
 
         Open rows are parcels already in the rider's custody. Pending rows
-        are assigned and not yet in custody. Undeposited COD payments are
-        the lines that should add up to the cash balance.
+        are assigned and still with the seller or a hub. A parcel another
+        rider already holds stays on that rider's open list. Undeposited
+        COD payments are the lines that should add up to the cash balance.
         India Post shipments are left out of both lists.
         """
         hubs = self.exists()
@@ -332,7 +333,9 @@ class Hub(models.Model):
                 lambda shipment, executive=executive: shipment.custodian_de_id == executive)
             waiting = assigned.filtered(
                 lambda shipment, executive=executive: (
-                    shipment not in mine and (
+                    shipment not in mine
+                    and shipment.custodian_type != 'de'
+                    and (
                         shipment.pickup_executive_id == executive
                         or shipment.delivery_executive_id == executive
                         or (

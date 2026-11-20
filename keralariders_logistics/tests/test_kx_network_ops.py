@@ -457,3 +457,29 @@ class TestKxNetworkOps(IndiapostHermeticMixin, TransactionCase):
         self.assertIn(waiting, rows[0]['pending'])
         self.assertAlmostEqual(rows[0]['undeposited_total'], 40.0, places=2)
         self.assertEqual(len(rows[0]['cash_lines']), 1)
+        other = self.env['logistics.delivery.executive'].create({
+            'name': 'Other Network Rider',
+            'mobile': '9000002222',
+            'is_delivery': True,
+        })
+        held = self._shipment(shipping_to_zip=koz_pin)
+        self.env.cr.execute(
+            "UPDATE logistics_shipment SET state = 'out_for_delivery', "
+            "delivery_executive_id = %s, custodian_type = 'de', "
+            "custodian_de_id = %s WHERE id = %s",
+            [self.executive.id, other.id, held.id],
+        )
+        held.invalidate_recordset([
+            'state', 'delivery_executive_id', 'custodian_type', 'custodian_de_id',
+        ])
+        again = [
+            row for row in koz._kx_network_rider_rows()
+            if row['executive'] == self.executive
+        ]
+        self.assertNotIn(held, again[0]['pending'])
+        self.assertNotIn(held, again[0]['shipments'])
+        holder = [
+            row for row in koz._kx_network_rider_rows()
+            if row['executive'] == other
+        ]
+        self.assertIn(held, holder[0]['shipments'])
