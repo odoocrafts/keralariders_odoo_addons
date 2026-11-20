@@ -447,10 +447,43 @@ class Shipment(models.Model):
         return self.portal_indiapost_arn() or (self.name or '').strip()
 
     def _awb_label_top_barcode_img_src(self):
+        """Scannable Code128 for the 100×150 India Post article (or KX AWB).
+
+        The shared renderer returns a short image. Stretching it to the cell
+        makes a reader miss the bars, so this one is drawn wide enough to
+        sit at the portrait size on both sheets.
+        """
         self.ensure_one()
-        return self._awb_barcode_png_data_uri(
-            'Code128', self._awb_label_top_barcode_value(),
-        )
+        value = self._awb_label_top_barcode_value()
+        png = self._awb_scan_code128_png(value)
+        if not png:
+            return self._awb_barcode_png_data_uri('Code128', value)
+        return 'data:image/png;base64,%s' % base64.b64encode(png).decode()
+
+    def _awb_scan_code128_png(self, value):
+        """Code128 with a quiet zone and bars tall enough to scan at 58 mm wide."""
+        value = (value or '').strip()
+        if not value:
+            return b''
+        try:
+            from io import BytesIO
+            import barcode
+            from barcode.writer import ImageWriter
+            buf = BytesIO()
+            barcode.get('code128', value, writer=ImageWriter()).write(buf, {
+                'module_width': 0.33,
+                'module_height': 8.0,
+                'quiet_zone': 2.5,
+                'write_text': False,
+                'font_size': 0,
+                'dpi': 300,
+                'format': 'PNG',
+            })
+            return buf.getvalue()
+        except Exception:
+            _logger.warning(
+                'Scan Code128 failed for %r', value, exc_info=True)
+            return b''
 
     def _awb_label_service_code(self):
         """Large mark on the 100×150 thermal label (sort letter, else KX)."""

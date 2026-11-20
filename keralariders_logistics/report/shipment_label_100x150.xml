@@ -30,9 +30,9 @@
                  the outer frame and a blank panel under the last row. -->
             <table class="kx-label-sheet">
                 <colgroup>
-                    <col style="width: 37%"/>
-                    <col style="width: 27%"/>
-                    <col style="width: 36%"/>
+                    <col style="width: 30%"/>
+                    <col style="width: 22%"/>
+                    <col style="width: 48%"/>
                 </colgroup>
                 <tr>
                     <td colspan="3" class="kx-label-head">
@@ -350,13 +350,20 @@
                     max-height: 15mm !important;
                     image-rendering: -webkit-optimize-contrast;
                 }
-                .kx-label-100x150 .awb-indiapost-barcode,
                 .kx-label-100x150 .kx-label-awb-barcode img {
                     display: block;
                     width: 100%;
                     max-width: 100%;
                     height: 8mm !important;
                     max-height: 8mm !important;
+                    margin: 0 auto;
+                }
+                .kx-label-100x150 img.awb-indiapost-barcode {
+                    display: block;
+                    width: 58mm !important;
+                    max-width: 100% !important;
+                    height: auto !important;
+                    max-height: 16mm !important;
                     margin: 0 auto;
                 }
                 .kx-label-100x150 .kx-label-awb-barcode img.kx-label-kx-barcode {
@@ -687,9 +694,13 @@
                     max-height: 18mm !important;
                     image-rendering: -webkit-optimize-contrast;
                 }
-                .kx-label-100x150-portrait .awb-indiapost-barcode {
-                    height: 12mm !important;
-                    max-height: 12mm !important;
+                .kx-label-100x150-portrait img.awb-indiapost-barcode {
+                    display: block;
+                    width: 58mm !important;
+                    max-width: 100% !important;
+                    height: auto !important;
+                    max-height: 16mm !important;
+                    margin: 0 auto;
                 }
                 .kx-label-100x150-portrait img.kx-label-kx-barcode {
                     display: block;
