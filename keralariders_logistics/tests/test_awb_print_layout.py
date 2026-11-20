@@ -129,8 +129,11 @@ class TestAwbPrintLayout(IndiapostHermeticMixin, TransactionCase):
         self.assertNotIn('TrackConsignment.aspx', html)
         self.assertNotIn('India Post', html)
         self.assertNotIn('CUSTOMER ID', html)
-        self.assertNotIn('Mob:', html)
         self.assertNotIn('Phone:', html)
+        self.assertEqual(shipment._awb_customer_phone(), '9876543210')
+        shipto_html = self._shipto_cell(html)
+        self.assertIn('Mob:', shipto_html)
+        self.assertIn('9876543210', shipto_html)
         assert_awb_barcodes_are_data_uris(self, html)
 
     def test_indiapost_print_awb_uses_seller_and_ip_marks(self):
