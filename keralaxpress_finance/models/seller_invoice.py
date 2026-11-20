@@ -212,8 +212,9 @@ class SellerInvoice(models.Model):
 
     @api.model
     def _has_billable_activity(self, values):
-        return bool(values['amount_total'] or values['recharge_total']
-                    or values['refunds'] or values['shipment_charges'])
+        # A recharge on its own is a deposit, and a month that refunds back
+        # to zero has nothing to put on the single order line.
+        return bool(values['amount_total'])
 
     @api.model
     def generate_for_period(self, date_from, date_to, sellers=None,
