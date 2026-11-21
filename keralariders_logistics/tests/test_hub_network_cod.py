@@ -458,9 +458,13 @@ class TestHubNetworkCod(IndiapostHermeticMixin, TransactionCase):
         self.assertEqual(shipment.state, 'delivered')
         self.assertFalse(shipment.is_return_journey)
         self.assertEqual(shipment.custodian_type, 'customer')
-        self.assertTrue(shipment.estimated_route_ids)
+        self.assertEqual(len(shipment.estimated_route_ids), 3)
         self.assertFalse(shipment.estimated_route_ids.filtered(
             lambda leg: 'Return' in (leg.name or '')))
+        self.assertEqual(
+            set(shipment.estimated_route_ids.mapped('state')),
+            {'done'},
+        )
         self.assertEqual(order.state, 'delivered')
         self.assertFalse(self._transfers(shipment, 'cod_return'))
         self.assertAlmostEqual(

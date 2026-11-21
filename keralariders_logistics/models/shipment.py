@@ -1906,7 +1906,12 @@ class Shipment(models.Model):
             'is_return_journey': False,
             'route_locked': False,
         })
+        # Let the ordinary recompute finish first. It keeps the return route
+        # because custody events already exist. The forced recompute below is
+        # then the only one that inserts the outbound route.
+        self.env.flush_all()
         self.with_context(force_route_recompute=True)._compute_estimated_route_ids()
+        self.env.flush_all()
         finished_at = self.delivered_on or fields.Datetime.now()
         for leg in self.estimated_route_ids:
             if leg.state != 'done':
