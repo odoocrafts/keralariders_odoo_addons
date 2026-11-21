@@ -629,6 +629,10 @@
                                 onclick="return kxConfirmShipmentBulk(this, 'Start a return for the selected shipments?');">
                             Return selected
                         </button>
+                        <button type="submit" name="bulk_action" value="deliver" class="btn btn-outline-success btn-sm"
+                                onclick="return kxConfirmShipmentBulk(this, 'Mark the selected shipments delivered? An accidental return that has not been picked up is put back to Delivered.');">
+                            Mark delivered
+                        </button>
                     </form>
                 </t>
                 <t t-if="not shipments">

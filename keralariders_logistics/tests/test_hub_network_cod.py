@@ -435,6 +435,52 @@ class TestHubNetworkCod(IndiapostHermeticMixin, TransactionCase):
             shipment, 'KX-DLV-RESTORE:%s' % shipment.id))
         self.assertAlmostEqual(self.hub_wallet.balance, 452.0, places=2)
 
+    def test_hub_can_undo_an_unpicked_seller_return(self):
+        shipment = self._shipment(self.hub_seller, cod=500.0)
+        self._charge_wallet(shipment, 48.0)
+        shipment.action_mark_picked()
+        shipment.with_context(allow_shipment_state_write=True).write({
+            'state': 'out_for_delivery',
+        })
+        shipment.action_mark_delivered()
+        order = self.env['logistics.order'].create({
+            'seller_id': self.hub_seller.id,
+        })
+        shipment.order_id = order
+        order._compute_state()
+        self.assertEqual(order.state, 'delivered')
+        shipment.action_request_return()
+        self.assertEqual(shipment.state, 'return_requested')
+        self.assertEqual(order.state, 'partial')
+
+        shipment.action_hub_mark_delivered()
+
+        self.assertEqual(shipment.state, 'delivered')
+        self.assertFalse(shipment.is_return_journey)
+        self.assertEqual(shipment.custodian_type, 'customer')
+        self.assertTrue(shipment.estimated_route_ids)
+        self.assertFalse(shipment.estimated_route_ids.filtered(
+            lambda leg: 'Return' in (leg.name or '')))
+        self.assertEqual(order.state, 'delivered')
+        self.assertFalse(self._transfers(shipment, 'cod_return'))
+        self.assertAlmostEqual(
+            self.Transfer.get_seller_cod_pending_balance(self.hub_seller),
+            500.0, places=2)
+        self.assertAlmostEqual(self.hub_wallet.balance, 452.0, places=2)
+        shipment.action_hub_mark_delivered()
+        self.assertEqual(shipment.state, 'delivered')
+
+        moved = self._shipment(self.hub_seller, cod=100.0)
+        moved.with_context(allow_shipment_state_write=True).write({
+            'state': 'out_for_delivery',
+        })
+        moved.action_mark_delivered()
+        moved.action_request_return()
+        moved._create_custody_event('pickup_scan', to_custodian='de')
+        with self.assertRaises(UserError):
+            moved.action_hub_mark_delivered()
+        self.assertEqual(moved.state, 'return_requested')
+
     def test_return_after_withdrawal_leaves_a_negative_pending_balance(self):
         shipment = self._shipment(self.hub_seller, cod=500.0)
         self._charge_wallet(shipment, 40.0)

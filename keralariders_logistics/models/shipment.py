@@ -1833,6 +1833,113 @@ class Shipment(models.Model):
             })
         return True
 
+    def action_hub_mark_delivered(self):
+        """Hub manager marks the parcel delivered to the customer.
+
+        An accidental seller return that has not been collected is put back
+        to Delivered. A parcel that is out for delivery is delivered with
+        the usual method. Money is not moved by cancelling the return:
+        starting a return never moved any.
+        """
+        for shipment in self:
+            if shipment.state == 'delivered' and not shipment.is_return_journey:
+                continue
+            if (
+                shipment.state == 'return_requested'
+                and shipment.is_return_journey
+            ):
+                shipment._undo_unpicked_seller_return()
+                continue
+            if shipment.state == 'out_for_delivery' and not shipment.is_return_journey:
+                shipment.action_mark_delivered(
+                    note=_("Marked delivered by %s.") % (self.env.user.name or ''),
+                )
+                continue
+            raise UserError(_(
+                "Shipment %s cannot be marked delivered from status %s."
+            ) % (shipment.name, shipment.get_tracking_status_label()))
+        return True
+
+    def _undo_unpicked_seller_return(self):
+        """Put a delivered parcel back to Delivered after a mistaken return.
+
+        Allowed only while the return is still waiting at the customer.
+        A pickup, hub scan, or started return leg has to be finished as a
+        return instead.
+        """
+        self.ensure_one()
+        events = self.event_ids.sorted(key=lambda event: (event.event_time, event.id))
+        seen_return = False
+        delivered_before = False
+        pickup_de = self.env['logistics.delivery.executive']
+        delivery_de = self.env['logistics.delivery.executive']
+        for event in events:
+            if event.event_type == 'return_requested':
+                seen_return = True
+                continue
+            if seen_return:
+                raise UserError(_(
+                    "Shipment %s has already moved on the return. "
+                    "It cannot be put back to Delivered."
+                ) % (self.name or ''))
+            if event.event_type == 'delivered':
+                delivered_before = True
+                if event.actor_de_id:
+                    delivery_de = event.actor_de_id
+            elif event.event_type == 'pickup_scan' and event.actor_de_id:
+                pickup_de = event.actor_de_id
+        if not delivered_before:
+            raise UserError(_(
+                "Shipment %s was not delivered before the return, "
+                "so it cannot be restored."
+            ) % (self.name or ''))
+        started = self.estimated_route_ids.filtered(
+            lambda leg: leg.state in ('in_progress', 'done')
+        )
+        if started:
+            raise UserError(_(
+                "Shipment %s has already moved on the return. "
+                "It cannot be put back to Delivered."
+            ) % (self.name or ''))
+
+        self._write_with_state({
+            'is_return_journey': False,
+            'route_locked': False,
+        })
+        self.with_context(force_route_recompute=True)._compute_estimated_route_ids()
+        finished_at = self.delivered_on or fields.Datetime.now()
+        for leg in self.estimated_route_ids:
+            if leg.state != 'done':
+                leg.write({'state': 'done', 'completed_at': finished_at})
+        self._sync_active_leg()
+        vals = {
+            'state': 'delivered',
+            'custodian_type': 'customer',
+            'custodian_de_id': False,
+            'current_hub_id': False,
+            'active_leg_id': False,
+            'route_locked': True,
+        }
+        if pickup_de:
+            vals['pickup_executive_id'] = pickup_de.id
+        else:
+            vals['pickup_executive_id'] = False
+        if delivery_de:
+            vals['delivery_executive_id'] = delivery_de.id
+        else:
+            vals['delivery_executive_id'] = False
+        self._create_custody_event(
+            'status_override',
+            to_custodian='customer',
+            note=_("Accidental return cancelled by %s. Restored to Delivered.")
+            % (self.env.user.name or ''),
+        )
+        self._write_with_state(vals)
+        self.message_post(body=_(
+            "Accidental seller return cancelled. The shipment is Delivered again."
+        ))
+        return True
+
     def action_mark_picked(self, actor_de=None, scanned_code=None, note=None):
         """DE confirms pickup from seller (outbound) or customer (return). Custody → DE."""
         for shipment in self:

@@ -3280,7 +3280,7 @@ class LogisticsPortal(CustomerPortal):
         type='http', auth="user", website=True, methods=['POST'],
     )
     def portal_my_hub_shipments_bulk(self, **post):
-        """Cancel or start a return for the KeralaXpress rows the hub selected."""
+        """Cancel, return, or mark delivered the KeralaXpress rows the hub selected."""
         hubs = self._get_managed_hubs()
         if not hubs:
             return request.redirect('/my')
@@ -3297,9 +3297,9 @@ class LogisticsPortal(CustomerPortal):
             ('id', 'in', ids or [0]),
             ('fulfilment_method', '=', 'own_network'),
         ])
-        if action not in ('cancel', 'return') or not allowed:
+        if action not in ('cancel', 'return', 'deliver') or not allowed:
             request.session['error'] = _(
-                "Select KeralaXpress shipments, then cancel or return them."
+                "Select KeralaXpress shipments, then cancel, return, or mark them delivered."
             )
             return request.redirect('/my/hub/shipments')
         done = []
@@ -3309,6 +3309,8 @@ class LogisticsPortal(CustomerPortal):
                 with request.env.cr.savepoint():
                     if action == 'cancel':
                         shipment.action_cancel_shipment()
+                    elif action == 'deliver':
+                        shipment.action_hub_mark_delivered()
                     else:
                         shipment.action_request_return()
             except UserError as error:
@@ -3316,7 +3318,12 @@ class LogisticsPortal(CustomerPortal):
             else:
                 done.append(shipment.name)
         if done:
-            verb = _("Cancelled") if action == 'cancel' else _("Started a return for")
+            if action == 'cancel':
+                verb = _("Cancelled")
+            elif action == 'deliver':
+                verb = _("Marked delivered")
+            else:
+                verb = _("Started a return for")
             request.session['success'] = "%s %s." % (verb, ', '.join(done))
         if failed:
             request.session['error'] = ' '.join(failed)
